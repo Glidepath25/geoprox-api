@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GeoProx — MVP Client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 32px; color:#0b1f33;}
+    h1 { margin-top:0; }
+    label { font-weight:600; display:block; margin:.6rem 0 .25rem; }
+    input, textarea { width:100%; padding:.6rem .7rem; border:1px solid #c8d1dc; border-radius:6px; font-size:15px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    .row { margin-bottom: 12px; }
+    button { background:#0b6aa2; color:#fff; border:0; padding:.6rem 1rem; border-radius:8px; cursor:pointer; }
+    button:disabled { background:#7fa9c4; cursor:not-allowed; }
+    .muted { color:#6a7a89; font-size: 13px; margin-top:4px; }
+    pre { background:#f7f9fc; border:1px solid #e6edf4; border-radius:8px; padding:12px; overflow:auto; }
+    .links a { display:inline-block; margin-right:16px; margin-top:10px; text-decoration:none; color:#0b6aa2; }
+    .links a:hover { text-decoration:underline; }
+    .wrap { max-width: 960px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>GeoProx — MVP Client</h1>
+
+    <form id="f">
+      <label for="loc">Location (lat,lon or what3words)</label>
+      <input id="loc" placeholder="54.5973,-5.9301 or ///filled.count.soap" value="54.5973,-5.9301" />
+
+      <div class="grid">
+        <div class="row">
+          <label for="rad">Radius (metres)</label>
+          <input id="rad" type="number" min="10" max="3000" value="2000" />
+        </div>
+        <div class="row">
+          <label for="permit">Permit</label>
+          <input id="permit" value="K6001-DAF-ACON-95841" />
+        </div>
+      </div>
+
+      <label for="cats">Categories (comma-separated keys)</label>
+      <input id="cats" value="manufacturing,petrol_stations,substations,sewage_treatment,landfills,scrapyards,waste_disposal,gas_holding,mines" />
+      <div class="muted">
+        Valid keys: manufacturing, petrol_stations, substations, sewage_treatment, landfills, scrapyards, waste_disposal, gas_holding, mines
+      </div>
+
+      <div style="margin-top:12px;">
+        <button id="run" type="submit">Run search</button>
+      </div>
+    </form>
+
+    <h3 style="margin-top:24px;">Response</h3>
+    <pre id="log">–</pre>
+    <div id="out" class="links"></div>
+  </div>
+
+  <script>
+    const API = "http://127.0.0.1:8000/search";
+
+    const $ = s => document.querySelector(s);
+    const setBusy = b => { $("#run").disabled = b; };
+
+    // Clean location: remove zero-width chars, collapse spaces, tidy commas
+    function normalizeLocation(raw) {
+      return (raw || "")
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")  // zero-width
+        .replace(/\s+/g, " ")
+        .replace(/\s*,\s*/g, ",")
+        .trim();
+    }
+
+    function parseCategories(raw) {
+      return (raw || "")
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    async function postJSON(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(body)
+      });
+      const text = await r.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch { /* not JSON */ }
+      if (!r.ok) {
+        const msg = data?.error || text || `HTTP ${r.status}`;
+        throw new Error(msg);
+      }
+      return data ?? {};
+    }
+
+    $("#f").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("#log").textContent = "Running…";
+      $("#out").innerHTML = "";
+      setBusy(true);
+
+      const body = {
+        location: normalizeLocation($("#loc").value),
+        radius_m: parseInt($("#rad").value, 10),
+        permit: ($("#permit").value || "").trim(),
+        categories: parseCategories($("#cats").value)
+      };
+
+      try {
+        const j = await postJSON(API, body);
+        $("#log").textContent = JSON.stringify(j, null, 2);
+
+        if (j.status !== "done") {
+          throw new Error(j.error || "Unknown error from API");
+        }
+
+        const a = j?.result?.artifacts || {};
+        const links = [];
+
+        const pdfHref = a.pdf_url || (a.pdf_path ? ("file:///" + a.pdf_path.replace(/\\/g, "/")) : "");
+        if (pdfHref) links.push({ href: pdfHref, text: "Download PDF" });
+
+        const mapHref = a.map_html_url || (a.map_html_path ? ("file:///" + a.map_html_path.replace(/\\/g, "/")) : "");
+        if (mapHref) links.push({ href: mapHref, text: "Open interactive map" });
+
+        const out = $("#out");
+        links.forEach(l => {
+          const a = document.createElement("a");
+          a.href = l.href; a.target = "_blank"; a.rel = "noopener";
+          a.textContent = l.text;
+          out.appendChild(a);
+        });
+
+      } catch (err) {
+        $("#log").textContent = "Client error: " + (err?.message || String(err));
+        console.error(err);
+      } finally {
+        setBusy(false);
+      }
+    });
+  </script>
+</body>
+</html>
