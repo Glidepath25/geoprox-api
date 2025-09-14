@@ -1,3 +1,0 @@
-Launch VE - & .\.venv\Scripts\Activate.ps1
-
-Launch Sandbox:  python -m uvicorn app.main:app --reload

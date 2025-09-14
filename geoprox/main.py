@@ -1,7 +1,7 @@
-from fastapi import FastAPI
-import logging, inspect
+﻿from fastapi import FastAPI
+import logging
 
-app = FastAPI(title="GeoProx API (probe)")
+app = FastAPI(title="GeoProx API")
 
 logger = logging.getLogger("uvicorn.error")
 
