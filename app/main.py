@@ -8,6 +8,15 @@ import traceback, os
 from .core import run_geoprox_search
 
 from fastapi.responses import FileResponse
+
+from fastapi import FastAPI
+
+app = FastAPI(title="GeoProx API")
+
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
