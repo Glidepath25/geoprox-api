@@ -148,9 +148,13 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
     return "[out:json][timeout:180];\n(\n" + body + "\n);\n" "out center tags;\n"
 
 
-def _http_post(url: str, data: Dict[str, Any]) -> requests.Response:
+def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
+    import requests
     return requests.post(url, data=data, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)
 
+def geocode_location_flex(loc: str, w3w_key: Optional[str]) -> Tuple[float, float, str]:
+    import requests
+    ...
 
 def run_overpass_resilient(qi: QueryInput, abort_cb: Optional[callable] = None) -> Dict[str, Any]:
     query_all = build_overpass_query_flat(qi)
