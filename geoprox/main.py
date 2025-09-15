@@ -21,6 +21,60 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+# geoprox/main.py
+
+from pathlib import Path
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+# ... your other imports ...
+
+app = FastAPI(title="GeoProx API")
+
+# CORS (leave as you already have it)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_headers=["*"],
+    allow_methods=["*"],
+)
+
+# ---- Static paths ----
+# repo root = parent of geoprox/
+REPO_ROOT = Path(__file__).resolve().parents[1]
+STATIC_DIR = (REPO_ROOT / "static").resolve()
+
+# serve /static/* (logo, css, js, etc.)
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+else:
+    print("WARNING: static/ directory not found")
+
+# ---- Landing page routes ----
+@app.get("/", response_class=FileResponse)
+def root():
+    """
+    Serve the SPA landing page from static/index.html
+    """
+    index_html = STATIC_DIR / "index.html"
+    if not index_html.exists():
+        # fallback, useful for health probes during deploys
+        return JSONResponse({"status": "ok"})
+    return FileResponse(str(index_html))
+
+@app.get("/index.html", response_class=FileResponse)
+def index_html():
+    """
+    Support direct /index.html links (browsers, bookmarks, etc.)
+    """
+    index_file = STATIC_DIR / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(str(index_file))
+
+# ... keep the remainder of your API (healthz, /api/search, /artifacts/*, etc.) ...
+
 log = logging.getLogger("uvicorn.error")
 
 HERE = Path(__file__).resolve()
