@@ -12,6 +12,34 @@ from pydantic import BaseModel, Field
 
 from geoprox.core import run_geoprox_search
 
+import os
+from fastapi.responses import FileResponse
+from fastapi import HTTPException
+
+# Where your API already writes artifacts:
+ARTIFACTS_DIR = os.environ.get("ARTIFACTS_DIR", "/tmp/artifacts")
+
+def _safe_join_artifact(name: str) -> str:
+    # prevent directory traversal
+    name = os.path.basename(name)
+    full = os.path.join(ARTIFACTS_DIR, name)
+    if not os.path.abspath(full).startswith(os.path.abspath(ARTIFACTS_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+    if not os.path.exists(full):
+        raise HTTPException(status_code=404, detail="File not found")
+    return full
+
+@app.get("/artifacts/pdf/{name}")
+def get_pdf_artifact(name: str):
+    full = _safe_join_artifact(name)
+    return FileResponse(full, media_type="application/pdf", filename=name)
+
+@app.get("/artifacts/html/{name}")
+def get_html_artifact(name: str):
+    full = _safe_join_artifact(name)
+    return FileResponse(full, media_type="text/html; charset=utf-8", filename=name)
+
+
 # ---------- App & CORS ----------
 app = FastAPI(title="GeoProx API", version="0.2.0")
 
@@ -48,6 +76,18 @@ def root():
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
+
+app.mount("/static", StaticFiles(directory="geoprox/static"), name="static")
+templates = Jinja2Templates(directory="geoprox/templates")
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 # ---------- GeoProx endpoints ----------
 @app.post("/api/search", response_model=SearchResp)
