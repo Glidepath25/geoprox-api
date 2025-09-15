@@ -7,6 +7,6 @@ build:
       - pip install -r requirements.txt
 
 run:
-  command: python3 start.py
+  command: python start.py
   network:
     port: 8000
