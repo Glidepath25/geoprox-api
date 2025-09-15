@@ -14,6 +14,38 @@ from pydantic import BaseModel, Field
 
 from geoprox.core import run_geoprox_search
 
+def _normalise_location(s: str) -> str:
+    """
+    Accepts:
+      - 'lat,lon' with optional spaces, e.g. '54.35, -6.65'
+      - what3words starting with '///'
+    Returns a canonical 'lat,lon' or the original what3words string.
+    Raises HTTPException(400) on invalid input.
+    """
+    if not s:
+        raise HTTPException(status_code=400, detail="Location is required.")
+
+    s = s.strip()
+    if s.startswith("///"):
+        return s  # let the core handle what3words
+
+    # Try 'lat,lon' with loose spacing
+    try:
+        parts = s.replace(" ", "").split(",")
+        if len(parts) != 2:
+            raise ValueError("Expected two comma-separated numbers.")
+        lat = float(parts[0])
+        lon = float(parts[1])
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise ValueError("Latitude/longitude out of range.")
+        # Canonical string—no spaces
+        return f"{lat},{lon}"
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid location. Use 'lat,lon' (e.g. '54.35,-6.65') or a '///what.three.words' address.",
+        )
+
 # -----------------------------------------------------------------------------
 # Setup & paths
 # -----------------------------------------------------------------------------
@@ -107,36 +139,41 @@ def get_artifact(path: str):
 
 @app.post("/api/search", response_model=SearchResp)
 def api_search(req: SearchReq):
-    """
-    Run a GeoProx search and return results.
-    Adds artifact URLs (/artifacts/...) when only local paths are present.
-    """
     try:
-        w3w_key = os.environ.get("WHAT3WORDS_API_KEY")
+        os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+
+        # NEW: normalise location to avoid None being unpacked in the core
+        safe_location = _normalise_location(req.location)
 
         result = run_geoprox_search(
-            location=req.location,
+            location=safe_location,
             radius_m=req.radius_m,
-            categories=req.categories,
+            categories=req.categories or [],  # protect None
             permit=req.permit or "",
             out_dir=ARTIFACTS_DIR,
-            w3w_key=w3w_key,
+            w3w_key=os.environ.get("OXT6XQ19")
             max_results=req.max_results,
         )
 
-        arts = result.get("artifacts", {}) or {}
+        # Defensive: If the core ever returns None, surface a friendly error
+        if result is None:
+            raise HTTPException(status_code=500, detail="Search returned no result.")
 
-        # normalize artifact URLs for browser
+        arts = result.get("artifacts", {}) or {}
         if arts.get("pdf_path") and not arts.get("pdf_url"):
             arts["pdf_url"] = f"/artifacts/{Path(arts['pdf_path']).name}"
         if arts.get("map_html_path") and not arts.get("map_url"):
             arts["map_url"] = f"/artifacts/{Path(arts['map_html_path']).name}"
-
         result["artifacts"] = arts
+
         return SearchResp(status="done", result=result)
 
+    except HTTPException:
+        # re-raise validation errors cleanly to the client
+        raise
     except Exception as e:
         import traceback
         tb = traceback.format_exc(limit=8)
-        log.error(f"GeoProx error: {e}\n{tb}")
+        log.error(f"GeoProx failure: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
+
