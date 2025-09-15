@@ -84,29 +84,66 @@ def parse_latlon(raw: str) -> Tuple[float, float]:
     return lat, lon
 
 
-def geocode_location_flex(loc: str, w3w_key: Optional[str]) -> Tuple[float, float, str]:
+# --- replace the entire geocode_location_flex function with this ---
+
+def geocode_location_flex(
+    loc: str,
+    w3w_key: str | None = None,
+) -> tuple[float, float, str]:
     """
     Accepts either:
-      - plain coordinates 'lat,lon'
-      - what3words '///word.word.word' (requires WHAT3WORDS_API_KEY)
-    Returns (lat, lon, display_string)
+      - "lat,lon"   (commas and/or extra spaces tolerated)
+      - "lat lon"   (space separated)
+      - "///word.word.word" (what3words, if w3w_key provided)
+
+    Returns (lat, lon, display_string) or raises ValueError on invalid input.
     """
     loc = (loc or "").strip()
+
+    # what3words
     if loc.startswith("///"):
         if not w3w_key:
-            raise ValueError("No what3words API key configured. Set WHAT3WORDS_API_KEY.")
-        words = loc.lstrip("/ ")
-        url = "https://api.what3words.com/v3/convert-to-coordinates"
-        r = requests.get(url, params={"words": words, "key": w3w_key}, timeout=15)
-        if r.status_code != 200:
-            raise ValueError(f"what3words error: HTTP {r.status_code}")
+            raise ValueError("what3words location supplied but WHAT3WORDS_API_KEY is not set")
+        words = loc.lstrip("/")
+
+        # very small inline call (keeps existing requests flow and avoids None returns)
+        import requests
+        r = requests.get(
+            "https://api.what3words.com/v3/convert-to-coordinates",
+            params={"words": words, "key": w3w_key},
+            timeout=10,
+        )
+        r.raise_for_status()
         data = r.json()
+        if "coordinates" not in data:
+            raise ValueError(f"what3words could not geocode '{loc}'")
         lat = float(data["coordinates"]["lat"])
         lon = float(data["coordinates"]["lng"])
-        return lat, lon, f"{words} → {lat:.6f}, {lon:.6f}"
-    # else: treat as lat,lon
-    lat, lon = parse_latlon(loc)
+        return lat, lon, f"{lat:.6f}, {lon:.6f}"
+
+    # numeric lat/lon – handle "lat, lon" OR "lat lon"
+    # normalise separators to comma, then split
+    clean = loc.replace("  ", " ").replace("\t", " ").replace(" ,", ",").replace(", ", ",")
+    if "," in clean:
+        parts = clean.split(",")
+    else:
+        parts = clean.split()
+
+    if len(parts) != 2:
+        raise ValueError("Location must be 'lat,lon', 'lat lon', or a what3words address starting with ///")
+
+    try:
+        lat = float(parts[0])
+        lon = float(parts[1])
+    except Exception:
+        raise ValueError("Could not parse latitude/longitude numbers")
+
+    # quick sanity bounds
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        raise ValueError("Latitude/Longitude out of bounds")
+
     return lat, lon, f"{lat:.6f}, {lon:.6f}"
+
 
 
 def _ovf(token: str) -> str:
@@ -152,9 +189,6 @@ def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
     import requests
     return requests.post(url, data=data, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)
 
-def geocode_location_flex(loc: str, w3w_key: Optional[str]) -> Tuple[float, float, str]:
-    import requests
-    ...
 
 def run_overpass_resilient(qi: QueryInput, abort_cb: Optional[callable] = None) -> Dict[str, Any]:
     query_all = build_overpass_query_flat(qi)
