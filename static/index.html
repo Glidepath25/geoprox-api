@@ -4,16 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GeoProx — Proximity Checker</title>
+  <link rel="icon" href="/static/geoprox-logo.png">
   <style>
     :root { --bg:#0b1724; --panel:#12263a; --text:#e6f1ff; --muted:#9fb3c7; --accent:#2b7cff; }
-    * { box-sizing: border-box }
-    body { margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--text); }
+    * { box-sizing:border-box }
+    body { margin:0; font-family:system-ui, Arial, sans-serif; background:var(--bg); color:var(--text); }
     header { display:flex; align-items:center; gap:.6rem; padding:1rem 1.25rem; }
     header img { height:32px }
     header h1 { font-size:1.1rem; margin:0; font-weight:600 }
     main { max-width:1200px; margin:0 auto; padding:1rem; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:1rem; }
-    @media (min-width: 1100px) { .grid { grid-template-columns: 1.2fr .8fr } }
+    .grid { display:grid; grid-template-columns:1fr; gap:1rem; }
+    @media (min-width:1100px){ .grid{ grid-template-columns:1.2fr .8fr } }
     .card { background:var(--panel); border-radius:12px; padding:1rem; }
     .row { display:flex; gap:.75rem; flex-wrap:wrap; }
     label.small { display:block; color:var(--muted); font-size:.82rem; margin:.2rem 0 .35rem; }
@@ -23,18 +24,19 @@
     }
     .btn { padding:.55rem .9rem; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; }
     .btn.secondary { background:#1a3350 }
+    .btn[disabled] { opacity:.6; cursor:not-allowed }
     .badge { display:inline-block; padding:.25rem .6rem; border-radius:999px; font-weight:600; }
-    .badge-low { background:#0b4d27 } .badge-medium { background:#614a00 } .badge-high { background:#6b1111 }
-    table { width:100%; border-collapse: collapse; }
-    th, td { padding:.55rem .6rem; border-bottom:1px solid #1f3952; text-align:left; }
-    .muted { color:var(--muted) }
-    iframe { width:100%; height:520px; border:0; background:#06111b }
-    .error { color:#ff9e9e; white-space: pre-wrap; }
+    .badge-low{background:#0b4d27} .badge-medium{background:#614a00} .badge-high{background:#6b1111}
+    table{ width:100%; border-collapse:collapse }
+    th,td{ padding:.55rem .6rem; border-bottom:1px solid #1f3952; text-align:left }
+    .muted{ color:var(--muted) }
+    iframe{ width:100%; height:520px; border:0; background:#06111b }
+    .error{ color:#ff9e9e; white-space:pre-wrap }
   </style>
 </head>
 <body>
   <header>
-    <img src="./geoprox-logo.png" alt="GeoProx" />
+    <img src="/static/geoprox-logo.png" alt="GeoProx">
     <h1>GeoProx — Proximity Checker</h1>
   </header>
 
@@ -62,15 +64,14 @@
       <div style="margin-top:.6rem">
         <label class="small">Categories to search</label>
         <div class="row muted" style="line-height:1.9">
-          <!-- name="cat" so script can collect them; value used by backend -->
-          <label><input type="checkbox" name="cat" data-cat="industrial" checked /> Industrial / Manufacturing</label>
-          <label><input type="checkbox" name="cat" data-cat="gas" checked /> Gas holder stations</label>
-          <label><input type="checkbox" name="cat" data-cat="mining" checked /> Mining (coal, metalliferous)</label>
-          <label><input type="checkbox" name="cat" data-cat="petrol" checked /> Petrol stations / Garages</label>
-          <label><input type="checkbox" name="cat" data-cat="subs" checked /> Sub-Stations</label>
-          <label><input type="checkbox" name="cat" data-cat="landfill" checked /> Waste Site — Landfill / Disposal</label>
-          <label><input type="checkbox" name="cat" data-cat="scrapyard" checked /> Waste Site — Scrapyard / Metal</label>
-          <label><input type="checkbox" name="cat" data-cat="other" checked /> Waste Site — Other</label>
+          <label><input type="checkbox" name="cat" data-cat="industrial" checked> Industrial / Manufacturing</label>
+          <label><input type="checkbox" name="cat" data-cat="gas" checked> Gas holder stations</label>
+          <label><input type="checkbox" name="cat" data-cat="mining" checked> Mining (coal, metalliferous)</label>
+          <label><input type="checkbox" name="cat" data-cat="petrol" checked> Petrol stations / Garages</label>
+          <label><input type="checkbox" name="cat" data-cat="subs" checked> Sub-Stations</label>
+          <label><input type="checkbox" name="cat" data-cat="landfill" checked> Waste Site — Landfill / Disposal</label>
+          <label><input type="checkbox" name="cat" data-cat="scrapyard" checked> Waste Site — Scrapyard / Metal</label>
+          <label><input type="checkbox" name="cat" data-cat="other" checked> Waste Site — Other</label>
         </div>
       </div>
 
@@ -82,19 +83,17 @@
         <div class="muted">•</div>
         <div class="muted" id="permitLabel"></div>
         <div style="flex:1"></div>
-        <button id="downloadPdfBtn" class="btn secondary">Download PDF</button>
-        <button id="openMapBtn" class="btn secondary">Open Map</button>
+        <a id="downloadBtn" class="btn secondary" href="#" target="_blank" rel="noopener" disabled>Download PDF</a>
+        <button id="openMapBtn" class="btn secondary" disabled>Open Map</button>
       </div>
 
       <!-- Summary table -->
-      <div id="summaryBody" style="margin-top:.6rem">
+      <div style="margin-top:.6rem">
         <table>
           <thead>
             <tr><th>Category</th><th>No</th><th>&lt;10m</th><th>10–25m</th><th>25–100m</th></tr>
           </thead>
-          <tbody id="detailsBody">
-            <!-- populated by JS -->
-          </tbody>
+          <tbody id="detailsBody"><tr><td class="muted" colspan="5">Run a search to see results.</td></tr></tbody>
         </table>
       </div>
 
@@ -109,128 +108,132 @@
   </main>
 
   <script>
-  (() => {
-    // ---------- small helpers ----------
+    // ---------- helpers ----------
     const $  = (sel) => document.querySelector(sel);
     const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    const text = (el, t) => { if (el) el.textContent = t ?? ""; };
+    const html = (el, h) => { if (el) el.innerHTML = h ?? ""; };
+    const showError = (msg) => {
+      const e = $('#errorTxt');
+      if (!msg) { e.style.display = 'none'; e.textContent = ''; return; }
+      e.textContent = msg; e.style.display = 'block';
+    };
 
-    // inputs
     const locationEl = $('#location');
     const radiusEl   = $('#radius');
     const permitEl   = $('#permit');
 
-    // buttons
-    const runBtn          = $('#runBtn');
-    const downloadPdfBtn  = $('#downloadPdfBtn');
-    const openMapBtn      = $('#openMapBtn');
+    const runBtn     = $('#runBtn');
+    const downloadBtn= $('#downloadBtn');
+    const openMapBtn = $('#openMapBtn');
 
-    // output
     const outcomeBadge = $('#outcomeBadge');
     const centerLabel  = $('#centerLabel');
     const radiusLabel  = $('#radiusLabel');
     const permitLabel  = $('#permitLabel');
-    const summaryBody  = $('#summaryBody');
     const detailsBody  = $('#detailsBody');
     const mapFrame     = $('#mapFrame');
-    const errorTxt     = $('#errorTxt');
 
-    function text(el, t){ if(!el) return; el.textContent = t ?? ''; }
-    function html(el, h){ if(!el) return; el.innerHTML = h ?? ''; }
-
-    function getSelectedCats() {
-      const boxes = $$('input[type="checkbox"][name="cat"]');
-      const keys = [];
-      boxes.forEach(b => { if(b.checked){ keys.push(b.dataset.cat || b.value); } });
-      return keys;
-    }
-
-    function setOutcome(level) {
-      const lvl = (level || 'LOW').toUpperCase();
+    const setOutcomeBadge = (level='LOW') => {
+      const lvl = String(level || 'LOW').toUpperCase();
       outcomeBadge.classList.remove('badge-high','badge-medium','badge-low');
       if (lvl === 'HIGH') outcomeBadge.classList.add('badge-high');
       else if (lvl === 'MEDIUM') outcomeBadge.classList.add('badge-medium');
       else outcomeBadge.classList.add('badge-low');
       text(outcomeBadge, lvl);
-    }
+    };
 
-    function toRow(label, cols){
-      const tds = cols.map(v => `<td>${v ? '✔️' : ''}</td>`).join('');
-      return `<tr><td>${label}</td>${tds}</tr>`;
-    }
+    const selectedCategories = () =>
+      $$('input[type="checkbox"][name="cat"]').filter(b => b.checked).map(b => b.dataset.cat || b.value);
 
-    function renderSummaryTable(summary){
-      // summary is expected like:
-      // [{label:"Industrial / Manufacturing", no:true, lt10:false, r10_25:true, r25_100:false}, ...]
-      html(detailsBody, summary.map(s =>
-        toRow(s.label, [s.no, s.lt10, s.r10_25, s.r25_100])
-      ).join(''));
-    }
+    const row = (label, cols) =>
+      `<tr><td>${label}</td>${cols.map(v => `<td>${v ? '✔️' : ''}</td>`).join('')}</tr>`;
 
-    function setError(msg){
-      if(!msg){ errorTxt.style.display='none'; text(errorTxt,''); return; }
-      text(errorTxt, msg); errorTxt.style.display='block';
-    }
+    const renderSummaryTable = (items=[]) => {
+      if (!Array.isArray(items) || items.length === 0) {
+        html(detailsBody, `<tr><td class="muted" colspan="5">No nearby features found.</td></tr>`);
+        return;
+      }
+      const rows = items.map(s => row(
+        s.label ?? '—',
+        [s.no, s.lt10, s.r10_25, s.r25_100]
+      )).join('');
+      html(detailsBody, rows);
+    };
 
-    async function runSearch() {
-      try{
-        setError('');
-        const body = {
+    async function runSearch(){
+      try {
+        showError('');
+
+        const payload = {
           location: (locationEl.value || '').trim(),
-          radius_m: parseInt(radiusEl.value || '0', 10),
-          permit: (permitEl.value || '').trim(),
-          categories: getSelectedCats()
+          radius_m: parseInt(radiusEl.value, 10) || 2000,
+          categories: selectedCategories(),
+          permit: (permitEl.value || '').trim() || null,
+          max_results: null
         };
 
-        // fetch to same origin:
-        const resp = await fetch('/api/search', {
+        const res = await fetch('/api/search', {
           method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify(body)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
 
-        if(!resp.ok){
-          const t = await resp.text();
-          throw new Error(`API ${resp.status}: ${t}`);
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          showError(json?.error || `Request failed (${res.status})`);
+          if (json?.debug?.trace) console.error(json.debug.trace);
+          return;
         }
-        const data = await resp.json();
-        if(data.status !== 'done') throw new Error(data.error || 'Search failed');
+        if (json.status !== 'done' || !json.result) {
+          showError(json?.error || 'Search failed.');
+          if (json?.debug?.trace) console.error(json.debug.trace);
+          return;
+        }
 
-        // Display header bits
-        const r = data.result || {};
-        setOutcome((r.summary && r.summary.outcome) || 'LOW');
-        text(centerLabel,  r.center_text || '');
-        text(radiusLabel,  `Radius: ${r.radius_m || body.radius_m} m`);
-        text(permitLabel,  r.permit || body.permit || 'no permit');
+        const result    = json.result || {};
+        const summary   = result.summary || {};
+        const artifacts = result.artifacts || {};
 
-        // Summary table
-        renderSummaryTable((r.summary && r.summary.rows) || []);
+        setOutcomeBadge(summary.outcome || 'LOW');
 
-        // Map + PDF
-        const art = r.artifacts || {};
-        const mapUrl = art.map_url || art.map_html_url || null;
-        const pdfUrl = art.pdf_url || null;
+        text(centerLabel, summary.center || '');
+        text(radiusLabel, summary.radius ? `Radius: ${summary.radius} m` : '');
+        text(permitLabel, summary.permit ? `Permit: ${summary.permit}` : '');
 
-        if(mapUrl){ mapFrame.src = mapUrl; }
-        if(pdfUrl){
-          downloadPdfBtn.onclick = () => window.open(pdfUrl, '_blank');
+        renderSummaryTable(summary.categories || []);
+
+        // PDF
+        const pdfUrl = artifacts.pdf_url || artifacts.pdf_download_url || null;
+        if (pdfUrl) {
+          downloadBtn.href = pdfUrl;
+          downloadBtn.removeAttribute('disabled');
         } else {
-          downloadPdfBtn.onclick = () => alert('PDF not available for this run.');
+          downloadBtn.setAttribute('disabled', 'true');
+          downloadBtn.removeAttribute('href');
         }
-        openMapBtn.onclick = () => {
-          if(mapUrl) window.open(mapUrl, '_blank');
-          else alert('Map not available yet.');
-        };
-      }
-      catch(err){
+
+        // Map
+        const mapUrl = artifacts.map_url || artifacts.map_embed_url || null;
+        if (mapUrl) {
+          mapFrame.src = mapUrl;
+          openMapBtn.removeAttribute('disabled');
+          openMapBtn.onclick = () => window.open(mapUrl, '_blank', 'noopener');
+        } else {
+          mapFrame.src = 'about:blank';
+          openMapBtn.setAttribute('disabled', 'true');
+          openMapBtn.onclick = null;
+        }
+      } catch (err) {
         console.error(err);
-        setError(String(err.message || err));
+        showError(err?.message || 'Unexpected error');
       }
     }
 
-    // Wire up
+    // wire up
     runBtn.addEventListener('click', (e) => { e.preventDefault(); runSearch(); });
-    locationEl.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); runSearch(); } });
-  })();
+    locationEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
   </script>
 </body>
 </html>
