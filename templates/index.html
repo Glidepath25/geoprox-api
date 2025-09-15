@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GeoProx — Proximity Checker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #f7f9fc;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    header img {
+      height: 50px;
+      margin-right: 15px;
+    }
+    header h1 {
+      color: #0b6aa2;
+      margin: 0;
+    }
+    .form-section {
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      margin-top: 1.5rem;
+      padding: 10px 20px;
+      background: #0b6aa2;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #084b72;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2rem;
+      background: #fff;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+    th {
+      background: #0b6aa2;
+      color: white;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/static/geoprox-logo.png" alt="GeoProx Logo">
+    <h1>GeoProx — Proximity Checker</h1>
+  </header>
+
+  <div class="form-section">
+    <form id="searchForm">
+      <label>Location (lat,lon or what3words):</label>
+      <input type="text" name="location" value="54.5973,-5.9301" required>
+
+      <label>Radius (metres):</label>
+      <input type="number" name="radius_m" value="2000">
+
+      <label>Categories:</label>
+      <select name="categories" multiple size="6">
+        <option value="manufacturing">Industrial / Manufacturing</option>
+        <option value="gas_holding">Gas holder stations</option>
+        <option value="mines">Mining (coal, metalliferous)</option>
+        <option value="petrol_stations">Petrol stations / Garages</option>
+        <option value="sewage_treatment">Sewage Treatment Works</option>
+        <option value="substations">Sub-Stations</option>
+        <option value="landfills">Waste Site – Landfill & Disposal</option>
+        <option value="scrapyards">Waste Site – Scrapyard / Metal Recycling</option>
+        <option value="waste_disposal">Waste Site – Other</option>
+      </select>
+
+      <label>Permit number:</label>
+      <input type="text" name="permit" placeholder="K6001-DAF-ACON-9666">
+
+      <button type="submit">Run search</button>
+    </form>
+  </div>
+
+  <h2>Results</h2>
+
+<div id="artifactBar" style="display:none; margin-top:1rem;">
+  <a id="btnPdf" href="#" target="_blank"
+     style="display:inline-block;margin-right:10px;padding:8px 12px;background:#2e7d32;color:#fff;border-radius:4px;text-decoration:none;">
+    Open PDF
+  </a>
+  <a id="btnHtml" href="#" target="_blank"
+     style="display:inline-block;padding:8px 12px;background:#0b6aa2;color:#fff;border-radius:4px;text-decoration:none;">
+    Open Map (HTML)
+  </a>
+  <span id="artifactNote" style="margin-left:10px;color:#666;"></span>
+</div>
+
+<table id="resultsTable" style="display:none;">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Category</th>
+      <th>Lat</th>
+      <th>Lon</th>
+      <th>Distance (m)</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+  function basename(p) {
+    return (p || "").split(/[\\/]/).pop();
+  }
+
+  document.getElementById("searchForm").onsubmit = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+
+    const categories = Array.from(form.categories.selectedOptions).map(o => o.value);
+
+    const payload = {
+      location: form.location.value,
+      radius_m: parseInt(form.radius_m.value),
+      categories: categories,
+      permit: form.permit.value || "TEST-PERMIT"
+    };
+
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    const table = document.getElementById("resultsTable");
+    const tbody = table.querySelector("tbody");
+    const bar   = document.getElementById("artifactBar");
+    const btnPdf  = document.getElementById("btnPdf");
+    const btnHtml = document.getElementById("btnHtml");
+    const note    = document.getElementById("artifactNote");
+
+    tbody.innerHTML = "";
+    bar.style.display = "none";
+    note.textContent = "";
+
+    if (data.result) {
+      // 1) Populate table
+      const rows = (data.result.details_100m || []);
+      if (rows.length) {
+        table.style.display = "table";
+        rows.forEach(item => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${item.name}</td>
+            <td>${item.category}</td>
+            <td>${Number(item.lat).toFixed(5)}</td>
+            <td>${Number(item.lon).toFixed(5)}</td>
+            <td>${item.distance_m}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        table.style.display = "none";
+      }
+
+      // 2) Show artifact buttons
+      const a = data.result.artifacts || {};
+
+      // Prefer S3 pre-signed URLs if present
+      const pdfUrl  = a.pdf_url  || (a.pdf_path  ? "/artifacts/pdf/"  + encodeURIComponent(basename(a.pdf_path)) : null);
+      const htmlUrl = a.map_html_url || (a.map_html_path ? "/artifacts/html/" + encodeURIComponent(basename(a.map_html_path)) : null);
+
+      if (pdfUrl || htmlUrl) {
+        bar.style.display = "block";
+        if (pdfUrl) {
+          btnPdf.style.display = "inline-block";
+          btnPdf.href = pdfUrl;
+        } else {
+          btnPdf.style.display = "none";
+        }
+        if (htmlUrl) {
+          btnHtml.style.display = "inline-block";
+          btnHtml.href = htmlUrl;
+        } else {
+          btnHtml.style.display = "none";
+        }
+      }
+
+      if (data.result.warning) {
+        note.textContent = data.result.warning;
+      }
+    } else {
+      table.style.display = "none";
+      alert("Error: " + (data.error || "Unknown"));
+    }
+  };
+</script>
+
+</body>
+</html>
