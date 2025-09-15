@@ -1,0 +1,253 @@
+<script>
+(() => {
+  // ------- DOM helpers -------
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+  // Inputs
+  const locationEl = $('#location');
+  const radiusEl   = $('#radius');
+  const permitEl   = $('#permit');
+
+  // Buttons / links
+  const runBtn         = $('#runBtn') || $('#runbtn') || $('#run_search') || $('[data-role="run"]');
+  const downloadPdfBtn = $('#downloadPdfBtn');
+  const openMapBtn     = $('#openMapBtn');
+
+  // Output areas
+  const outcomeBadge = $('#outcomeBadge');
+  const centerLabel  = $('#centerLabel');
+  const radiusLabel  = $('#radiusLabel');
+  const permitLabel  = $('#permitLabel');
+  const summaryBody  = $('#summaryBody');
+  const detailsBody  = $('#detailsBody');
+  const mapFrame     = $('#mapFrame');
+  const errorText    = $('#errorText');
+
+  // Small utilities
+  const setText = (el, txt) => { if (el) el.textContent = txt ?? ''; };
+  const setHtml = (el, html) => { if (el) el.innerHTML = html ?? ''; };
+
+  function getSelectedCategories() {
+    // Support either data-cat or name="cat"
+    const boxes = $$('input[type="checkbox"][data-cat], input[type="checkbox"][name="cat"]');
+    const keys = [];
+    boxes.forEach(b => {
+      if (b.checked) {
+        const key = b.dataset.cat || b.value;
+        if (key) keys.push(key);
+      }
+    });
+    return keys;
+  }
+
+  function tick(v) {
+    return v ? '✔' : '';
+  }
+
+  function setOutcomeBadge(level) {
+    if (!outcomeBadge) return;
+    const lvl = (level || '').toUpperCase();
+    setText(outcomeBadge, lvl || '—');
+    // Reset + apply a simple color scheme (tailor to your CSS)
+    outcomeBadge.classList.remove('badge-low','badge-medium','badge-high');
+    if (lvl === 'HIGH')   outcomeBadge.classList.add('badge-high');
+    if (lvl === 'MEDIUM') outcomeBadge.classList.add('badge-medium');
+    if (lvl === 'LOW')    outcomeBadge.classList.add('badge-low');
+  }
+
+  function renderSummaryTable(summary_bins) {
+    if (!summaryBody) return;
+    setHtml(summaryBody, '');
+    if (!summary_bins || typeof summary_bins !== 'object') return;
+
+    const rows = [];
+    for (const [cat, bins] of Object.entries(summary_bins)) {
+      const has10  = (bins['<10m'] || 0) > 0;
+      const has25  = (bins['10–25m'] || bins['10-25m'] || 0) > 0;
+      const has100 = (bins['25–100m'] || bins['25-100m'] || 0) > 0;
+      const no     = !(has10 || has25 || has100);
+      rows.push(`
+        <tr>
+          <td>${cat}</td>
+          <td class="c">${tick(no)}</td>
+          <td class="c">${tick(has10)}</td>
+          <td class="c">${tick(has25)}</td>
+          <td class="c">${tick(has100)}</td>
+        </tr>
+      `);
+    }
+    summaryBody.insertAdjacentHTML('beforeend', rows.join(''));
+  }
+
+  function renderDetailsTable(details) {
+    if (!detailsBody) return;
+    setHtml(detailsBody, '');
+    if (!Array.isArray(details)) return;
+
+    const rows = details.map(r => {
+      // r = {distance_m, category, name, lat, lon, address}
+      const d = Number(r.distance_m ?? r[0] ?? 0);
+      const cat = r.category ?? r[1] ?? '';
+      const name = r.name ?? r[2] ?? '(unnamed)';
+      const lat = r.lat ?? r[3] ?? '';
+      const lon = r.lon ?? r[4] ?? '';
+      const addr = r.address ?? r[5] ?? '';
+
+      return `
+        <tr>
+          <td class="c">${isFinite(d) ? Math.round(d) : ''}</td>
+          <td>${cat}</td>
+          <td>${name}</td>
+          <td class="c">${lat !== '' ? Number(lat).toFixed(5) : ''}</td>
+          <td class="c">${lon !== '' ? Number(lon).toFixed(5) : ''}</td>
+          <td>${addr || ''}</td>
+        </tr>
+      `;
+    });
+
+    detailsBody.insertAdjacentHTML('beforeend', rows.join(''));
+  }
+
+  function setArtifacts(arts) {
+    const pdfUrl = arts?.pdf_download_url || arts?.pdf_url;
+    const mapUrl = arts?.map_embed_url || arts?.map_html_url || arts?.map_url;
+
+    if (downloadPdfBtn) {
+      if (pdfUrl) {
+        downloadPdfBtn.href = pdfUrl;
+        downloadPdfBtn.target = '_blank';
+        downloadPdfBtn.rel = 'noopener';
+        downloadPdfBtn.classList.remove('disabled');
+      } else {
+        downloadPdfBtn.removeAttribute('href');
+        downloadPdfBtn.classList.add('disabled');
+      }
+    }
+
+    if (openMapBtn) {
+      if (mapUrl) {
+        openMapBtn.href = mapUrl;
+        openMapBtn.target = '_blank';
+        openMapBtn.rel = 'noopener';
+        openMapBtn.classList.remove('disabled');
+      } else {
+        openMapBtn.removeAttribute('href');
+        openMapBtn.classList.add('disabled');
+      }
+    }
+
+    if (mapFrame) {
+      if (mapUrl) {
+        // If it's a relative /artifacts/... path, iframe can use it directly
+        mapFrame.src = mapUrl;
+        mapFrame.removeAttribute('hidden');
+      } else {
+        mapFrame.removeAttribute('src');
+        mapFrame.setAttribute('hidden', '');
+      }
+    }
+  }
+
+  function setMeta(result) {
+    if (!result) return;
+    const center = result.center || {};
+    setText(centerLabel, center.display || (center.lat && center.lon ? `${center.lat.toFixed?.(6)}, ${center.lon.toFixed?.(6)}` : ''));
+    setText(radiusLabel, (result.radius_m != null) ? `${result.radius_m} m` : '');
+    setText(permitLabel, result.permit || '');
+  }
+
+  function showError(msg) {
+    if (errorText) {
+      errorText.textContent = msg || 'An error occurred.';
+      errorText.style.display = 'block';
+    } else {
+      alert(msg || 'An error occurred.');
+    }
+  }
+
+  function clearError() {
+    if (errorText) {
+      errorText.textContent = '';
+      errorText.style.display = 'none';
+    }
+  }
+
+  async function runSearch() {
+    clearError();
+
+    const location = (locationEl?.value || '').trim();
+    const radius_m = Number(radiusEl?.value || 0);
+    const permit   = (permitEl?.value || '').trim();
+    const categories = getSelectedCategories();
+
+    if (!location) return showError('Please enter a location.');
+    if (!radius_m || radius_m < 10) return showError('Please enter a valid radius (>= 10 m).');
+
+    const payload = { location, radius_m, categories, permit };
+
+    try {
+      runBtn?.setAttribute('disabled', 'disabled');
+      runBtn?.classList.add('is-loading');
+
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(()=> '');
+        throw new Error(`API ${res.status}: ${txt || res.statusText}`);
+      }
+
+      const data = await res.json();
+      const result = data?.result;
+
+      // Outcome (server may include `summary_bins` + server-side outcome in PDF, but we compute client display from bins)
+      // If backend includes `result.outcome`, use it; else do a quick client flag:
+      const outcome = result?.outcome || (() => {
+        const bins = result?.summary_bins || {};
+        // HIGH if any <10m anywhere; MEDIUM if any 10–25m; else LOW
+        let high = false, med = false;
+        for (const b of Object.values(bins)) {
+          if ((b['<10m'] || 0) > 0) high = true;
+          if ((b['10–25m'] || b['10-25m'] || 0) > 0) med = true;
+        }
+        if (high) return 'HIGH';
+        if (med)  return 'MEDIUM';
+        return 'LOW';
+      })();
+
+      setOutcomeBadge(outcome);
+      setMeta(result);
+      renderSummaryTable(result?.summary_bins);
+      renderDetailsTable(result?.details_100m);
+      setArtifacts(result?.artifacts);
+
+    } catch (err) {
+      console.error(err);
+      showError(err?.message || 'Search failed.');
+    } finally {
+      runBtn?.removeAttribute('disabled');
+      runBtn?.classList.remove('is-loading');
+    }
+  }
+
+  // Wire up button
+  if (runBtn) {
+    runBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      runSearch();
+    });
+  }
+
+  // (Optional) allow Enter on the location field to trigger
+  locationEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runSearch();
+    }
+  });
+})();
+</script>
