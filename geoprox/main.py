@@ -15,6 +15,37 @@ from pydantic import BaseModel, Field
 from geoprox.core import run_geoprox_search
 
 log = logging.getLogger("uvicorn.error")
+import logging
+from pathlib import Path
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+log = logging.getLogger("uvicorn.error")
+
+HERE = Path(__file__).resolve()
+REPO_ROOT = HERE.parents[1]
+STATIC_DIR = (REPO_ROOT / "static").resolve()
+
+app = FastAPI(title="GeoProx API")
+
+# Mount only /static for assets (logo, etc.)
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    log.info(f"STATIC_DIR resolved to: {STATIC_DIR} (exists={STATIC_DIR.exists()})")
+else:
+    log.warning(f"STATIC_DIR not found: {STATIC_DIR}")
+
+# Serve index.html for both / and /index.html
+@app.get("/", response_class=FileResponse)
+@app.get("/index.html", response_class=FileResponse)
+def homepage():
+    index_file = STATIC_DIR / "index.html"
+    if not index_file.exists():
+        log.error(f"index.html not found at {index_file}")
+        return JSONResponse({"status": "ok"})  # fallback so healthz still passes
+    return FileResponse(str(index_file), media_type="text/html")
+
 
 # -----------------------------------------------------------------------------
 # Paths
@@ -64,14 +95,6 @@ class SearchResp(BaseModel):
 # -----------------------------------------------------------------------------
 # Routes
 # -----------------------------------------------------------------------------
-@app.get("/")
-def homepage():
-    """Serve the homepage index.html"""
-    index_file = STATIC_DIR / "index.html"
-    if not index_file.exists():
-        return JSONResponse({"status": "ok"})
-    return FileResponse(str(index_file))
-
 
 @app.get("/healthz")
 def healthz():
