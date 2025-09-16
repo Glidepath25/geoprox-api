@@ -728,7 +728,8 @@ def run_geoprox_search(
     map_html = out_dir / f"proximity_map_{safe_permit}.html"
     make_map(df, (lat, lon), radius_m, str(map_html))
 
-    pdf_path = out_dir / f"GeoProx search - {safe_permit}.pdf"
+    safe_name = safe_permit or "no_permit"
+    pdf_path = out_dir / f"GeoProx - {safe_name}.pdf"
     _now = datetime.utcnow()
     _outcome = compute_outcome(summary)
     summary_payload = _build_summary_payload(

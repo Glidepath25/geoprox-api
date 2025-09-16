@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -122,6 +123,8 @@ async def login_action(request: Request, username: str = Form(...), password: st
     users = load_users()
     if verify_user(users, username, password):
         request.session["user"] = username
+        if request.session.get("history") is None:
+            request.session["history"] = []
         log.info("User %s logged in", username)
         return RedirectResponse(url="/app", status_code=303)
     error = "Invalid username or password."
@@ -169,6 +172,12 @@ def auth_status(request: Request):
     if request.session.get("user"):
         return {"authenticated": True}
     raise HTTPException(status_code=401, detail="Authentication required")
+
+
+@app.get("/api/history")
+def api_history(request: Request):
+    _require_user(request)
+    return {"history": request.session.get("history") or []}
 
 
 @app.get("/app")
@@ -229,6 +238,15 @@ def api_search(request: Request, req: SearchReq):
             arts["map_url"] = f"/artifacts/{Path(arts['map_html_path']).name}"
 
         result["artifacts"] = arts
+
+        entry = {"timestamp": datetime.utcnow().isoformat() + "Z",
+                 "location": safe_location,
+                 "radius_m": req.radius_m,
+                 "outcome": result.get("summary", {}).get("outcome")}
+        history = request.session.get("history") or []
+        history.append(entry)
+        request.session["history"] = history[-20:]
+
         return SearchResp(status="done", result=result)
 
     except Exception as e:

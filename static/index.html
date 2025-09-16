@@ -49,6 +49,11 @@
     .logout-btn { background: #1a3350; color: var(--muted); border: 1px solid rgba(255, 255, 255, 0.08); padding: .45rem .8rem; border-radius: 8px; cursor: pointer; }
     .logout-btn:hover { color: #fff; border-color: rgba(255, 255, 255, 0.18); }
     #pickerMap { height: 280px; border-radius: 12px; margin-top: 0.25rem; width: 100%; background: #0e2133; }
+    .history-section { margin-top: 1rem; }
+    .history-title { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.4rem; }
+    .history-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .history-table th, .history-table td { padding: 0.35rem 0.45rem; border-bottom: 1px solid #1f3952; text-align: left; color: var(--text); }
+    .history-table tbody tr:nth-child(odd) { background: rgba(255, 255, 255, 0.03); }
   </style>
 </head>
 <body>
@@ -126,6 +131,15 @@
     <section class="card">
       <div class="muted" style="margin-bottom:.4rem">Map preview</div>
       <iframe id="mapFrame" src="about:blank" title="GeoProx map"></iframe>
+      <div class="history-section">
+        <div class="history-title">Previous searches</div>
+        <table class="history-table">
+          <thead>
+            <tr><th>When (UTC)</th><th>Location</th><th>Radius (m)</th><th>Outcome</th></tr>
+          </thead>
+          <tbody id="historyBody"><tr><td class="muted" colspan="4">No history yet.</td></tr></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
@@ -231,6 +245,36 @@
       }
     };
 
+    const renderHistory = (items) => {
+      if (!historyBody) return;
+      if (!items || items.length === 0) {
+        historyBody.innerHTML = "<tr><td class='muted' colspan='4'>No history yet.</td></tr>";
+        return;
+      }
+      const rows = items.map((row) => {
+        const when = row.timestamp || '';
+        const loc = row.location || '';
+        const rad = row.radius_m != null ? row.radius_m : '';
+        const outcome = (row.outcome || '').toString().toUpperCase();
+        return `<tr><td>${when}</td><td>${loc}</td><td>${rad}</td><td>${outcome}</td></tr>`;
+      }).join('');
+      historyBody.innerHTML = rows;
+    };
+
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('/api/history', { credentials: 'include' });
+        if (res.status === 401) {
+          window.location.href = '/';
+          return;
+        }
+        const data = await res.json();
+        renderHistory(Array.isArray(data.history) ? data.history : []);
+      } catch (err) {
+        console.error('Failed to load history', err);
+      }
+    };
+
     async function runSearch() {
       try {
         showError('');
@@ -282,6 +326,8 @@
           updatePickerMarker([summary.center_coords.lat, summary.center_coords.lon]);
         }
 
+        fetchHistory();
+
         const pdfUrl = artifacts.pdf_url || artifacts.pdf_download_url || null;
         if (pdfUrl) {
           downloadBtn.href = pdfUrl;
@@ -319,7 +365,9 @@
       .then((res) => {
         if (res.status === 401) {
           window.location.href = '/';
+          return;
         }
+        fetchHistory();
       })
       .catch(() => {});
 
