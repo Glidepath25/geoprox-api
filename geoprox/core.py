@@ -710,6 +710,7 @@ def run_geoprox_search(
     summary = summarise_by_bins(df, (lat, lon))
     details = build_details_rows(df, (lat, lon))
     details = sorted(details, key=lambda row: row[0])
+    log.info('Detail rows for PDF: %s', len(details))
 
     # Cap number of detail rows processed/returned
     if max_results is not None:
