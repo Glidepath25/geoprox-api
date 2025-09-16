@@ -176,17 +176,17 @@
       }
       const rows = items.map((row) => `
         <tr>
-          <td>${row.label ?? 'â€”'}</td>
-          <td>${row.no ? 'âœ”ï¸Ž' : ''}</td>
-          <td>${row.lt10 ? 'âœ”ï¸Ž' : ''}</td>
-          <td>${row.r10_25 ? 'âœ”ï¸Ž' : ''}</td>
-          <td>${row.r25_100 ? 'âœ”ï¸Ž' : ''}</td>
+          <td>${row.label ?? '-'}</td>
+          <td>${row.no ? 'X' : ''}</td>
+          <td>${row.lt10 ? 'X' : ''}</td>
+          <td>${row.r10_25 ? 'X' : ''}</td>
+          <td>${row.r25_100 ? 'X' : ''}</td>
         </tr>
       `).join('');
       html(detailsBody, rows);
     };
 
-    const parseLocation = (value) => {
+  const parseLocation = (value) => {
       if (!value) return null;
       if (value.startsWith('///')) return null;
       const cleaned = value.replace(/\s+/g, '');

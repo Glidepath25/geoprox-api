@@ -128,7 +128,7 @@ def geocode_location_flex(
         lon = float(data["coordinates"]["lng"])
         return lat, lon, f"{lat:.6f}, {lon:.6f}"
 
-    # numeric lat/lon – handle "lat, lon" OR "lat lon"
+    # numeric lat/lon - handle "lat, lon" OR "lat lon"
     # normalise separators to comma, then split
     clean = loc.replace("  ", " ").replace("\t", " ").replace(" ,", ",").replace(", ", ",")
     if "," in clean:
@@ -473,11 +473,11 @@ def _display_category(tags: Dict[str, Any]) -> str:
     if (t.get("landuse") == "industrial") or (t.get("man_made") == "works") or ("factory" in t):
         return "Industrial / Manufacturing"
     if (t.get("landuse") == "landfill") or (t.get("amenity") in {"waste_disposal", "waste_transfer_station"}):
-        return "Waste Site – Landfill & Treatment / Disposal"
+        return "Waste Site - Landfill & Treatment / Disposal"
     if (t.get("landuse") == "scrap_yard") or (t.get("amenity") == "scrapyard"):
-        return "Waste Site – Scrapyard / Metal Recycling"
+        return "Waste Site - Scrapyard / Metal Recycling"
     if (t.get("amenity") == "recycling"):
-        return "Waste Site – Other"
+        return "Waste Site - Other"
     if (t.get("man_made") == "gasometer") or (t.get("storage") == "tank"):
         return "Gas holder stations"
     return "Other"
@@ -558,7 +558,7 @@ def generate_pdf_summary(
     flow: List[Any] = []
 
     # Title
-    flow.append(Paragraph("GeoProx — Proximity Summary", title))
+    flow.append(Paragraph("GeoProx - Proximity Summary", title))
     flow.append(Spacer(1, 3 * mm))
 
     # Info bar
