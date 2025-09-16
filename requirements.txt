@@ -14,3 +14,6 @@ pandas>=2.0
 folium>=0.15
 reportlab>=3.6
 boto3>=1.26
+shapely>=2.0
+pyproj>=3.6
+

@@ -16,6 +16,10 @@ from typing import Optional, List, Tuple, Dict, Any
 import requests
 import pandas as pd
 import folium
+from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform as shapely_transform
+import pyproj
 
 # PDF (ReportLab)
 from reportlab.lib import colors
@@ -52,11 +56,11 @@ OSM_FILTERS: Dict[str, List[str]] = {
 
 # ---------- Basic helpers ----------
 def compute_outcome(summary_bins: Dict[str, Dict[str, int]]) -> str:
-    """HIGH if any category has <10 m, MEDIUM if any 10–25 m, else LOW."""
+    """HIGH if any category has <10 m, MEDIUM if any 10-25 m, else LOW."""
     has10 = any(b.get("<10m", 0) > 0 for b in summary_bins.values())
     if has10:
         return "HIGH"
-    has25 = any(b.get("10–25m", 0) > 0 for b in summary_bins.values())
+    has25 = any(b.get("10-25m", 0) > 0 for b in summary_bins.values())
     if has25:
         return "MEDIUM"
     return "LOW"
@@ -158,6 +162,156 @@ def _ovf(token: str) -> str:
     return f'["{token.strip()}"]'
 
 
+def _geometry_from_osm_element(el: Dict[str, Any]) -> Optional[BaseGeometry]:
+    coords = el.get("geometry") or []
+    points: List[Tuple[float, float]] = []
+    for pt in coords:
+        try:
+            points.append((float(pt["lon"]), float(pt["lat"])))
+        except Exception:
+            continue
+    geom: Optional[BaseGeometry] = None
+    if points:
+        if len(points) >= 4 and points[0] == points[-1]:
+            try:
+                poly = Polygon(points)
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                geom = poly
+            except Exception:
+                geom = None
+        if geom is None and len(points) >= 2:
+            try:
+                geom = LineString(points)
+            except Exception:
+                geom = None
+        if geom is None:
+            geom = ShapelyPoint(points[0])
+    if geom is None:
+        lat = el.get("lat")
+        lon = el.get("lon")
+        if lat is not None and lon is not None:
+            try:
+                geom = ShapelyPoint(float(lon), float(lat))
+            except Exception:
+                geom = None
+    if geom is None:
+        center = el.get("center") or {}
+        lat = center.get("lat")
+        lon = center.get("lon")
+        if lat is not None and lon is not None:
+            try:
+                geom = ShapelyPoint(float(lon), float(lat))
+            except Exception:
+                geom = None
+    if geom is not None and getattr(geom, "is_empty", False):
+        return None
+    return geom
+
+
+def _geom_centroid_latlon(geom: Optional[BaseGeometry]) -> Tuple[Optional[float], Optional[float]]:
+    if geom is None:
+        return None, None
+    try:
+        if isinstance(geom, ShapelyPoint):
+            return float(geom.y), float(geom.x)
+        centroid = geom.centroid
+        return float(centroid.y), float(centroid.x)
+    except Exception:
+        return None, None
+
+
+def _utm_transformer(lat: float, lon: float) -> Optional[pyproj.Transformer]:
+    try:
+        zone = int((lon + 180.0) / 6.0) + 1
+        zone = max(1, min(60, zone))
+        hemisphere = "north" if lat >= 0 else "south"
+        proj = pyproj.CRS.from_proj4(f"+proj=utm +zone={zone} +{hemisphere} +datum=WGS84 +units=m +no_defs")
+        return pyproj.Transformer.from_crs("EPSG:4326", proj, always_xy=True)
+    except Exception:
+        return None
+
+
+def _annotate_distances(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.DataFrame:
+    if df.empty:
+        return df
+    lat0, lon0 = origin
+    transformer = _utm_transformer(lat0, lon0)
+    origin_point = ShapelyPoint(lon0, lat0)
+    origin_projected = None
+    if transformer is not None:
+        try:
+            origin_projected = shapely_transform(transformer.transform, origin_point)
+        except Exception:
+            origin_projected = None
+    distances: List[float] = []
+    for _, row in df.iterrows():
+        dist = None
+        geom = row.get("geom")
+        if geom is not None and transformer is not None and origin_projected is not None:
+            try:
+                projected_geom = shapely_transform(transformer.transform, geom)
+                dist = float(origin_projected.distance(projected_geom))
+            except Exception:
+                dist = None
+        if dist is None:
+            lat = row.get("lat")
+            lon = row.get("lon")
+            if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
+                distances.append(float("inf"))
+            else:
+                distances.append(float(_haversine_m(lat0, lon0, float(lat), float(lon))))
+        else:
+            distances.append(dist)
+    out = df.copy()
+    out["distance_m"] = distances
+    return out
+
+
+def _ensure_distance_column(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.DataFrame:
+    if df.empty or "distance_m" in df.columns:
+        return df
+    return _annotate_distances(df, origin)
+
+
+def _build_summary_payload(
+    summary_bins: Dict[str, Dict[str, int]],
+    *,
+    outcome: str,
+    center: str,
+    radius: int,
+    permit: str,
+    lat: float,
+    lon: float,
+) -> Dict[str, Any]:
+    rows: List[Dict[str, Any]] = []
+    for label, bins in summary_bins.items():
+        lt_10 = (bins or {}).get("<10m", 0) or 0
+        r_10_25 = (bins or {}).get("10-25m", 0) or 0
+        r_25_100 = (bins or {}).get("25-100m", 0) or 0
+        has_lt = lt_10 > 0
+        has_mid = r_10_25 > 0
+        has_far = r_25_100 > 0
+        rows.append(
+            {
+                "label": label,
+                "no": not (has_lt or has_mid or has_far),
+                "lt10": has_lt,
+                "r10_25": has_mid,
+                "r25_100": has_far,
+            }
+        )
+    return {
+        "outcome": outcome,
+        "center": center,
+        "radius": radius,
+        "permit": permit,
+        "center_coords": {"lat": lat, "lon": lon},
+        "categories": rows,
+    }
+
+
+
 @dataclass
 class QueryInput:
     lat: float
@@ -182,7 +336,7 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
                 f"relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
             ]
     body = "\n".join(parts)
-    return "[out:json][timeout:180];\n(\n" + body + "\n);\n" "out center tags;\n"
+    return "[out:json][timeout:180];\n(\n" + body + "\n);\n" "out body center geom;\n"
 
 
 def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
@@ -211,33 +365,39 @@ def osm_elements_to_df(data: Dict[str, Any]) -> pd.DataFrame:
         el_type = el.get("type")
         tags = el.get("tags", {}) or {}
         name = tags.get("name") or "(unnamed)"
-        if el_type == "node":
-            lat = el.get("lat")
-            lon = el.get("lon")
-        else:
-            c = el.get("center") or {}
-            lat = c.get("lat")
-            lon = c.get("lon")
-        rows.append({"type": el_type, "name": name, "lat": lat, "lon": lon, "tags": tags})
+        geom = _geometry_from_osm_element(el)
+        lat_val: Optional[float] = None
+        lon_val: Optional[float] = None
+        lat_raw = el.get("lat")
+        lon_raw = el.get("lon")
+        try:
+            if lat_raw is not None:
+                lat_val = float(lat_raw)
+        except Exception:
+            lat_val = None
+        try:
+            if lon_raw is not None:
+                lon_val = float(lon_raw)
+        except Exception:
+            lon_val = None
+        if geom is not None:
+            c_lat, c_lon = _geom_centroid_latlon(geom)
+            if c_lat is not None and c_lon is not None:
+                lat_val = c_lat
+                lon_val = c_lon
+        rows.append({"type": el_type, "name": name, "lat": lat_val, "lon": lon_val, "tags": tags, "geom": geom})
     df = pd.DataFrame(rows)
     if df.empty:
-        df = pd.DataFrame(columns=["type", "name", "lat", "lon", "tags"])
+        df = pd.DataFrame(columns=["type", "name", "lat", "lon", "tags", "geom"])
     return df
 
 
 def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str, Dict[str, int]]:
-    lat0, lon0 = origin
     out: Dict[str, Dict[str, int]] = {}
 
-    def dist_m(row: pd.Series) -> float:
-        try:
-            return _haversine_m(lat0, lon0, float(row["lat"]), float(row["lon"]))
-        except Exception:
-            return float("inf")
+    bins_template = {"<10m": 0, "10-25m": 0, "25-100m": 0, ">100m / not found": 0}
 
-    bins_template = {"<10m": 0, "10–25m": 0, "25–100m": 0, ">100m / not found": 0}
-
-    # empty → produce all zeros for the report
+    # empty -> produce all zeros for the report
     if df.empty:
         for label in [
             "Industrial / Manufacturing",
@@ -246,15 +406,17 @@ def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str
             "Petrol stations / Garages",
             "Sewage Treatment Works",
             "Sub-Stations",
-            "Waste Site – Landfill & Treatment / Disposal",
-            "Waste Site – Scrapyard / Metal Recycling",
-            "Waste Site – Other",
+            "Waste Site - Landfill & Treatment / Disposal",
+            "Waste Site - Scrapyard / Metal Recycling",
+            "Waste Site - Other",
         ]:
             out[label] = dict(bins_template)
         return out
 
-    dfe = df.copy()
-    dfe["distance_m"] = dfe.apply(dist_m, axis=1)
+    dfe = _ensure_distance_column(df, origin).copy()
+    if "distance_m" not in dfe.columns:
+        dfe["distance_m"] = float("inf")
+    dfe["distance_m"] = pd.to_numeric(dfe["distance_m"], errors="coerce").fillna(float("inf"))
 
     cat_map = {
         "Industrial / Manufacturing": lambda t: ("industrial" in t)
@@ -272,11 +434,11 @@ def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str
         "Sewage Treatment Works": lambda t: (t.get("man_made") == "wastewater_plant")
         or (t.get("water") == "wastewater"),
         "Sub-Stations": lambda t: (t.get("power") == "substation"),
-        "Waste Site – Landfill & Treatment / Disposal": lambda t: (t.get("landuse") == "landfill")
+        "Waste Site - Landfill & Treatment / Disposal": lambda t: (t.get("landuse") == "landfill")
         or (t.get("amenity") in {"waste_disposal", "waste_transfer_station"}),
-        "Waste Site – Scrapyard / Metal Recycling": lambda t: (t.get("landuse") == "scrap_yard")
+        "Waste Site - Scrapyard / Metal Recycling": lambda t: (t.get("landuse") == "scrap_yard")
         or (t.get("amenity") == "scrapyard"),
-        "Waste Site – Other": lambda t: (t.get("amenity") in {"recycling"}) and (t.get("landuse") != "scrap_yard"),
+        "Waste Site - Other": lambda t: (t.get("amenity") in {"recycling"}) and (t.get("landuse") != "scrap_yard"),
     }
 
     for disp, pred in cat_map.items():
@@ -288,8 +450,8 @@ def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str
             d100 = ((dfi["distance_m"] >= 25) & (dfi["distance_m"] <= 100)).sum()
             rest = len(dfi) - (d10 + d25 + d100)
             b["<10m"] = int(d10)
-            b["10–25m"] = int(d25)
-            b["25–100m"] = int(d100)
+            b["10-25m"] = int(d25)
+            b["25-100m"] = int(d100)
             b[">100m / not found"] = int(rest)
         out[disp] = b
     return out
@@ -319,26 +481,22 @@ def _display_category(tags: Dict[str, Any]) -> str:
 
 
 def build_details_rows(df: pd.DataFrame, origin: Tuple[float, float]) -> List[Tuple[Any, ...]]:
-    """Return rows for the ≤100 m table, nearest → farthest."""
+    """Return rows for the <=100 m table, nearest -> farthest."""
     if df.empty:
         return []
-    lat0, lon0 = origin
 
-    def dist_m(row: pd.Series) -> float:
-        try:
-            return _haversine_m(lat0, lon0, float(row["lat"]), float(row["lon"]))
-        except Exception:
-            return float("inf")
-
-    dfe = df.copy()
-    dfe["distance_m"] = dfe.apply(dist_m, axis=1)
+    dfe = _ensure_distance_column(df, origin).copy()
+    if "distance_m" not in dfe.columns:
+        dfe["distance_m"] = float("inf")
+    dfe["distance_m"] = pd.to_numeric(dfe["distance_m"], errors="coerce").fillna(float("inf"))
     dfe = dfe[dfe["distance_m"] <= 100].sort_values("distance_m")
 
     rows: List[Tuple[Any, ...]] = []
     for _, r in dfe.iterrows():
+        dist_val = float(r.get("distance_m", float("inf")))
         rows.append(
             (
-                int(round(r["distance_m"])),
+                int(round(dist_val)),
                 _display_category(r.get("tags") or {}),
                 r.get("name") or "(unnamed)",
                 float(r.get("lat") or 0.0),
@@ -412,7 +570,7 @@ def generate_pdf_summary(
         ],
         [
             Paragraph(f"<b>Search center:</b> {display_center}", body),
-            Paragraph(f"<b>Open map:</b> <font color='#0b6aa2'><u>{map_html or ''}</u></font>", body),
+            Paragraph("", body),
         ],
     ]
     info_tbl = Table(info_data, colWidths=[95 * mm, 95 * mm])
@@ -435,15 +593,15 @@ def generate_pdf_summary(
     flow.append(Spacer(1, 6 * mm))
 
     # Summary table with ticks
-    header = ["Category", "No", "<10m", "10–25m", "25–100m"]
+    header = ["Category", "No", "<10m", "10-25m", "25-100m"]
     rows: List[List[Any]] = [header]
 
     def to_checks(bins: Dict[str, int]) -> List[str]:
         has10 = bins.get("<10m", 0) > 0
-        has25 = bins.get("10–25m", 0) > 0
-        has100 = bins.get("25–100m", 0) > 0
-        no = not (has10 or has25 or has100)  # nothing within 100 m
-        return ["✔" if no else "", "✔" if has10 else "", "✔" if has25 else "", "✔" if has100 else ""]
+        has25 = bins.get("10-25m", 0) > 0
+        has100 = bins.get("25-100m", 0) > 0
+        no = not (has10 or has25 or has100)
+        return ["X" if no else "", "X" if has10 else "", "X" if has25 else "", "X" if has100 else ""]
 
     for cat, bins in summary_bins.items():
         rows.append([Paragraph(cat, body), *to_checks(bins)])
@@ -464,16 +622,29 @@ def generate_pdf_summary(
     flow.append(sum_tbl)
     flow.append(Spacer(1, 6 * mm))
 
-    # Details table (≤100 m)
-    flow.append(Paragraph("<b>Found items within 100 m (nearest → farthest)</b>", body))
+    # Details table (<=100 m)
+    flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
     det_header = ["Distance (m)", "Category", "Name", "Lat", "Lon", "Address"]
     det_data: List[List[Any]] = [det_header]
     for dist, cat, name, lat, lon, addr in (details_rows or []):
-        det_data.append([dist, Paragraph(cat, body), Paragraph(name or "(unnamed)", body), f"{lat:.5f}", f"{lon:.5f}", Paragraph(addr or "", body)])
+        det_data.append([
+            dist,
+            Paragraph(cat, body),
+            Paragraph(name or "(unnamed)", body),
+            f"{lat:.5f}",
+            f"{lon:.5f}",
+            Paragraph(addr or "", body),
+        ])
     det_tbl = Table(det_data, repeatRows=1, colWidths=[24 * mm, 34 * mm, 46 * mm, 20 * mm, 20 * mm, 46 * mm])
-    det_tbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")), ("GRID", (0, 0), (-1, -1), 0.25, colors.grey), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    flow.append(det_tbl)
-
+    det_tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
     doc.build(flow)
 
 
@@ -501,6 +672,7 @@ def run_geoprox_search(
     qi = QueryInput(lat=lat, lon=lon, radius_m=radius_m, selected_categories=categories)
     data = run_overpass_resilient(qi)
     df = osm_elements_to_df(data)
+    df = _annotate_distances(df, (lat, lon))
 
     # 3) Summaries
     summary = summarise_by_bins(df, (lat, lon))
@@ -521,6 +693,15 @@ def run_geoprox_search(
     pdf_path = out_dir / f"GeoProx search - {safe_permit}.pdf"
     _now = datetime.utcnow()
     _outcome = compute_outcome(summary)
+    summary_payload = _build_summary_payload(
+        summary_bins=summary,
+        outcome=_outcome,
+        center=disp,
+        radius=radius_m,
+        permit=_permit,
+        lat=lat,
+        lon=lon,
+    )
     generate_pdf_summary(
         display_center=disp,
         summary_bins=summary,
@@ -570,6 +751,7 @@ def run_geoprox_search(
                 "center": {"lat": lat, "lon": lon, "display": disp},
                 "radius_m": radius_m,
                 "permit": _permit,
+                "summary": summary_payload,
                 "summary_bins": summary,
                 "details_100m": details_rows_json,
                 "artifacts": {"pdf_url": pdf_url, "map_html_url": html_url},
@@ -580,6 +762,7 @@ def run_geoprox_search(
                 "center": {"lat": lat, "lon": lon, "display": disp},
                 "radius_m": radius_m,
                 "permit": _permit,
+                "summary": summary_payload,
                 "summary_bins": summary,
                 "details_100m": details_rows_json,
                 "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
@@ -591,6 +774,7 @@ def run_geoprox_search(
         "center": {"lat": lat, "lon": lon, "display": disp},
         "radius_m": radius_m,
         "permit": _permit,
+        "summary": summary_payload,
         "summary_bins": summary,
         "details_100m": details_rows_json,
         "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
