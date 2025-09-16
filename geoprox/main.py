@@ -1,4 +1,4 @@
-﻿# geoprox/main.py
+# geoprox/main.py
 from __future__ import annotations
 
 import os
@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from geoprox.core import run_geoprox_search
+from geoprox.auth import BasicAuthMiddleware, load_users
 
 log = logging.getLogger("uvicorn.error")
 
@@ -43,6 +44,13 @@ if STATIC_DIR.exists():
     log.info(f"Static dir: {STATIC_DIR}")
 else:
     log.warning(f"static/ not found at {STATIC_DIR}")
+
+USERS = load_users()
+if not USERS:
+    log.warning('No users configured in users/. Add accounts with manage_users.py')
+else:
+    log.info('Loaded %d user account(s) for basic auth', len(USERS))
+app.add_middleware(BasicAuthMiddleware, users=USERS)
 
 # ---------------------------------------------------------------------------
 # Models
