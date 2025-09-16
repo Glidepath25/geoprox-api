@@ -6,14 +6,15 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from geoprox.core import run_geoprox_search
-from geoprox.auth import BasicAuthMiddleware, load_users
+from geoprox.auth import load_users, verify_user
 
 log = logging.getLogger("uvicorn.error")
 
@@ -23,13 +24,19 @@ log = logging.getLogger("uvicorn.error")
 HERE = Path(__file__).resolve()
 REPO_ROOT = HERE.parents[1]
 STATIC_DIR = (REPO_ROOT / "static").resolve()
+TEMPLATES_DIR = (REPO_ROOT / "templates").resolve()
 ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts")).resolve()
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Ensure templates directory exists
+if not TEMPLATES_DIR.exists():
+    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    log.warning("templates/ directory was missing; created at %s", TEMPLATES_DIR)
 
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
-app = FastAPI(title="GeoProx API", version="0.6.0")
+app = FastAPI(title="GeoProx API", version="0.7.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +45,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SESSION_SECRET = os.environ.get("SESSION_SECRET")
+if not SESSION_SECRET:
+    SESSION_SECRET = "dev-secret-key"
+    log.warning("SESSION_SECRET not set; using insecure default. Set SESSION_SECRET in production.")
+
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="strict")
+
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
 # only mount /static (not as root) for assets like logo/index
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -45,12 +61,81 @@ if STATIC_DIR.exists():
 else:
     log.warning(f"static/ not found at {STATIC_DIR}")
 
-USERS = load_users()
-if not USERS:
-    log.warning('No users configured in users/. Add accounts with manage_users.py')
-else:
-    log.info('Loaded %d user account(s) for basic auth', len(USERS))
-app.add_middleware(BasicAuthMiddleware, users=USERS)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _normalise_location(s: str) -> str:
+    """Normalise/validate location string."""
+    if not s:
+        raise HTTPException(status_code=400, detail="Location is required.")
+    s = s.strip()
+    if s.startswith("///"):
+        return s
+
+    try:
+        parts = s.replace(" ", "").split(",")
+        if len(parts) != 2:
+            raise ValueError("Need two comma-separated numbers.")
+        lat = float(parts[0])
+        lon = float(parts[1])
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise ValueError("Lat/lon out of range.")
+        return f"{lat},{lon}"
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid location. Use 'lat,lon' (e.g. '54.35,-6.65') or a '///what.three.words' address.",
+        )
+
+
+def _safe_artifact(path: str, request: Request) -> Path:
+    _require_user(request)
+    full = (ARTIFACTS_DIR / path).resolve()
+    if not str(full).startswith(str(ARTIFACTS_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+    if not full.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return full
+
+
+def _require_user(request: Request) -> str:
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Auth views
+# ---------------------------------------------------------------------------
+@app.get("/", response_class=HTMLResponse)
+async def login_page(request: Request) -> HTMLResponse:
+    if request.session.get("user"):
+        return RedirectResponse(url="/app", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request, "error": None, "username": ""})
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_action(request: Request, username: str = Form(...), password: str = Form(...)) -> HTMLResponse:
+    users = load_users()
+    if verify_user(users, username, password):
+        request.session["user"] = username
+        log.info("User %s logged in", username)
+        return RedirectResponse(url="/app", status_code=303)
+    error = "Invalid username or password."
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": error, "username": username},
+        status_code=401,
+    )
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/", status_code=303)
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -71,51 +156,6 @@ class SearchResp(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-def _normalise_location(s: str) -> str:
-    """
-    Accept:
-      - 'lat,lon' (spaces allowed) e.g. '54.35, -6.65'
-      - what3words starting with '///'
-    Return canonical 'lat,lon' or the what3words string.
-    Raise HTTP 400 on invalid input.
-    """
-    if not s:
-        raise HTTPException(status_code=400, detail="Location is required.")
-    s = s.strip()
-    if s.startswith("///"):
-        return s
-
-    # Try parse "lat,lon"
-    try:
-        parts = s.replace(" ", "").split(",")
-        if len(parts) != 2:
-            raise ValueError("Need two comma-separated numbers.")
-        lat = float(parts[0])
-        lon = float(parts[1])
-        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-            raise ValueError("Lat/lon out of range.")
-        return f"{lat},{lon}"
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid location. Use 'lat,lon' (e.g. '54.35,-6.65') "
-                   "or a '///what.three.words' address.",
-        )
-
-
-def _safe_artifact(path: str) -> Path:
-    """Join safely within ARTIFACTS_DIR and ensure it exists."""
-    full = (ARTIFACTS_DIR / path).resolve()
-    if not str(full).startswith(str(ARTIFACTS_DIR)):
-        raise HTTPException(status_code=400, detail="Invalid artifact path")
-    if not full.exists():
-        raise HTTPException(status_code=404, detail="Not Found")
-    return full
-
-
-# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.get("/healthz")
@@ -123,23 +163,19 @@ def healthz() -> Dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/", response_class=FileResponse)
-@app.get("/index.html", response_class=FileResponse)
-def homepage():
-    """Serve SPA landing page from /static/index.html."""
+@app.get("/app")
+async def app_page(request: Request):
+    if not request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
-        # keep health happy while deploys/renames happen
         return JSONResponse({"status": "ok"})
     return FileResponse(str(index_file), media_type="text/html")
 
 
 @app.get("/artifacts/{path:path}")
-def get_artifact(path: str):
-    """
-    Serve generated artifacts and their nested asset files (e.g. leaflet _files).
-    """
-    full = _safe_artifact(path)
+def get_artifact(request: Request, path: str):
+    full = _safe_artifact(path, request)
     suffix = full.suffix.lower()
     if suffix == ".html":
         media = "text/html"
@@ -155,13 +191,16 @@ def get_artifact(path: str):
 
 
 @app.post("/api/search", response_model=SearchResp)
-def api_search(req: SearchReq):
+def api_search(request: Request, req: SearchReq):
+    _require_user(request)
     try:
         w3w_key = os.environ.get("WHAT3WORDS_API_KEY")
         log.info(f"Incoming request: {req.dict()}")
 
+        safe_location = _normalise_location(req.location)
+
         result = run_geoprox_search(
-            location=req.location,
+            location=safe_location,
             radius_m=req.radius_m,
             categories=req.categories,
             permit=req.permit or "",
