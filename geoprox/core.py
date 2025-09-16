@@ -30,6 +30,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 
 
+log = logging.getLogger("uvicorn.error")
+
 # ---------- Defaults / constants ----------
 DEFAULT_USER = "Contractor A - Streetworks coordinator"
 
