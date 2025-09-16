@@ -660,6 +660,7 @@ def generate_pdf_summary(
             tuples.append(tup)
 
     tuples.sort(key=lambda x: x[0])
+    log.info('PDF detail tuples: %s', tuples)
 
     for dist, cat, name, lat, lon, addr in tuples:
         det_data.append([
