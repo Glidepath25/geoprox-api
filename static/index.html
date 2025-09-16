@@ -4,6 +4,7 @@
   <meta charset='utf-8'>
   <title>GeoProx</title>
   <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' integrity='sha256-o9N1j7kP5S2s3fV0w5pG1rN1Lt3vJhbC7rGQ2PpHt0A=' crossorigin=''/>
   <style>
     :root {
       color-scheme: dark;
@@ -47,6 +48,7 @@
     .top-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-bottom: .75rem; }
     .logout-btn { background: #1a3350; color: var(--muted); border: 1px solid rgba(255, 255, 255, 0.08); padding: .45rem .8rem; border-radius: 8px; cursor: pointer; }
     .logout-btn:hover { color: #fff; border-color: rgba(255, 255, 255, 0.18); }
+    #pickerMap { height: 280px; border-radius: 12px; margin-top: 0.25rem; }
   </style>
 </head>
 <body>
@@ -92,6 +94,11 @@
         </div>
       </div>
 
+      <div style='margin-top:.6rem'>
+        <label class='small'>Click map to set search origin</label>
+        <div id='pickerMap'></div>
+      </div>
+
       <div class='row' style='margin-top:.6rem; align-items:center'>
         <div id='outcomeBadge' class='badge badge-low'>LOW</div>
         <div class='muted' id='centerLabel'></div>
@@ -122,30 +129,34 @@
     </section>
   </main>
 
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' integrity='sha256-o8UstJf3yJ3bWc6RRL/bM7PqYpX9GL4j1ZNu2wQAE1w=' crossorigin=''></script>
   <script>
     const $ = (sel) => document.querySelector(sel);
     const $$ = (sel) => Array.from(document.querySelectorAll(sel));
     const text = (el, val) => { if (el) el.textContent = val ?? ''; };
     const html = (el, val) => { if (el) el.innerHTML = val ?? ''; };
     const showError = (msg) => {
-      const box = document.getElementById('errorTxt');
+      const box = $('#errorTxt');
       if (!msg) { box.style.display = 'none'; box.textContent = ''; return; }
       box.textContent = msg;
       box.style.display = 'block';
     };
 
-    const locationEl = document.getElementById('location');
-    const radiusEl = document.getElementById('radius');
-    const permitEl = document.getElementById('permit');
-    const runBtn = document.getElementById('runBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
-    const openMapBtn = document.getElementById('openMapBtn');
-    const outcomeBadge = document.getElementById('outcomeBadge');
-    const centerLabel = document.getElementById('centerLabel');
-    const radiusLabel = document.getElementById('radiusLabel');
-    const permitLabel = document.getElementById('permitLabel');
-    const detailsBody = document.getElementById('detailsBody');
-    const mapFrame = document.getElementById('mapFrame');
+    const locationEl = $('#location');
+    const radiusEl = $('#radius');
+    const permitEl = $('#permit');
+    const runBtn = $('#runBtn');
+    const downloadBtn = $('#downloadBtn');
+    const openMapBtn = $('#openMapBtn');
+    const outcomeBadge = $('#outcomeBadge');
+    const centerLabel = $('#centerLabel');
+    const radiusLabel = $('#radiusLabel');
+    const permitLabel = $('#permitLabel');
+    const detailsBody = $('#detailsBody');
+    const mapFrame = $('#mapFrame');
+
+    let pickerMap;
+    let pickerMarker;
 
     const setOutcomeBadge = (level = 'LOW') => {
       const lvl = String(level || 'LOW').toUpperCase();
@@ -172,6 +183,50 @@
         </tr>
       `).join('');
       html(detailsBody, rows);
+    };
+
+    const parseLocation = (value) => {
+      if (!value) return null;
+      if (value.startsWith('///')) return null;
+      const cleaned = value.replace(/\s+/g, '');
+      const parts = cleaned.split(',');
+      if (parts.length !== 2) return null;
+      const lat = parseFloat(parts[0]);
+      const lon = parseFloat(parts[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return [lat, lon];
+    };
+
+    const initialisePickerMap = () => {
+      const defaultCenter = [54.5973, -5.9301];
+      const parsed = parseLocation(locationEl.value);
+      const center = parsed || defaultCenter;
+
+      pickerMap = L.map('pickerMap', { zoomControl: true }).setView(center, 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(pickerMap);
+
+      pickerMarker = L.marker(center, { draggable: false }).addTo(pickerMap);
+
+      pickerMap.on('click', (event) => {
+        const { lat, lng } = event.latlng;
+        locationEl.value = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        updatePickerMarker([lat, lng]);
+      });
+    };
+
+    const updatePickerMarker = (coords) => {
+      if (!coords || !Array.isArray(coords)) return;
+      const lat = coords[0];
+      const lon = coords[1];
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      if (pickerMarker) {
+        pickerMarker.setLatLng([lat, lon]);
+      }
+      if (pickerMap) {
+        pickerMap.setView([lat, lon]);
+      }
     };
 
     async function runSearch() {
@@ -221,6 +276,10 @@
         text(permitLabel, summary.permit ? `Permit: ${summary.permit}` : '');
         renderSummaryTable(summary.categories || []);
 
+        if (summary.center_coords) {
+          updatePickerMarker([summary.center_coords.lat, summary.center_coords.lon]);
+        }
+
         const pdfUrl = artifacts.pdf_url || artifacts.pdf_download_url || null;
         if (pdfUrl) {
           downloadBtn.href = pdfUrl;
@@ -253,6 +312,13 @@
         }
       })
       .catch(() => {});
+
+    initialisePickerMap();
+
+    const initialCoords = parseLocation(locationEl.value);
+    if (initialCoords) {
+      updatePickerMarker(initialCoords);
+    }
 
     runBtn.addEventListener('click', runSearch);
     locationEl.addEventListener('keydown', (event) => {
