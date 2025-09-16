@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from pydantic import BaseModel, Field
 
 from geoprox.core import run_geoprox_search
 from geoprox.auth import load_users, verify_user
