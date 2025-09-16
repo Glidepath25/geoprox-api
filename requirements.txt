@@ -15,5 +15,5 @@ folium>=0.15
 reportlab>=3.6
 boto3>=1.26
 shapely==2.0.5
-pyproj==3.6.1
+pyproj==3.5.0
 
