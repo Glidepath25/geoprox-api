@@ -626,7 +626,7 @@ def generate_pdf_summary(
     flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
     det_header = ["Distance (m)", "Category", "Name", "Lat", "Lon", "Address"]
     det_data: List[List[Any]] = [det_header]
-    for dist, cat, name, lat, lon, addr in (details_rows or []):
+    for dist, cat, name, lat, lon, addr in sorted(details_rows or [], key=lambda row: row[0]):
         det_data.append([
             dist,
             Paragraph(cat, body),
@@ -677,6 +677,7 @@ def run_geoprox_search(
     # 3) Summaries
     summary = summarise_by_bins(df, (lat, lon))
     details = build_details_rows(df, (lat, lon))
+    details = sorted(details, key=lambda row: row[0])
 
     # Cap number of detail rows processed/returned
     if max_results is not None:
