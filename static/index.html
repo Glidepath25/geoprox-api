@@ -54,7 +54,7 @@
 <body>
   <header>
     <img src='/static/geoprox-logo.png' alt='GeoProx logo'>
-    <h1>GeoProx — Proximity Checker</h1>
+    <h1>GeoProx â€” Proximity Checker</h1>
   </header>
 
   <main class='grid'>
@@ -88,9 +88,9 @@
           <label><input type='checkbox' name='cat' data-cat='mining' checked> Mining (coal, metalliferous)</label>
           <label><input type='checkbox' name='cat' data-cat='petrol' checked> Petrol stations / Garages</label>
           <label><input type='checkbox' name='cat' data-cat='subs' checked> Sub-Stations</label>
-          <label><input type='checkbox' name='cat' data-cat='landfill' checked> Waste Site — Landfill / Disposal</label>
-          <label><input type='checkbox' name='cat' data-cat='scrapyard' checked> Waste Site — Scrapyard / Metal</label>
-          <label><input type='checkbox' name='cat' data-cat='other' checked> Waste Site — Other</label>
+          <label><input type='checkbox' name='cat' data-cat='landfill' checked> Waste Site â€” Landfill / Disposal</label>
+          <label><input type='checkbox' name='cat' data-cat='scrapyard' checked> Waste Site â€” Scrapyard / Metal</label>
+          <label><input type='checkbox' name='cat' data-cat='other' checked> Waste Site â€” Other</label>
         </div>
       </div>
 
@@ -102,9 +102,9 @@
       <div class='row' style='margin-top:.6rem; align-items:center'>
         <div id='outcomeBadge' class='badge badge-low'>LOW</div>
         <div class='muted' id='centerLabel'></div>
-        <div class='muted'>•</div>
+        <div class='muted'>â€¢</div>
         <div class='muted' id='radiusLabel'></div>
-        <div class='muted'>•</div>
+        <div class='muted'>â€¢</div>
         <div class='muted' id='permitLabel'></div>
         <div style='flex:1'></div>
         <a id='downloadBtn' class='btn secondary' href='#' target='_blank' rel='noopener' disabled>Download PDF</a>
@@ -114,7 +114,7 @@
       <div style='margin-top:.6rem'>
         <table>
           <thead>
-            <tr><th>Category</th><th>No</th><th>&lt;10m</th><th>10–25m</th><th>25–100m</th></tr>
+            <tr><th>Category</th><th>No</th><th>&lt;10m</th><th>10â€“25m</th><th>25â€“100m</th></tr>
           </thead>
           <tbody id='detailsBody'><tr><td class='muted' colspan='5'>Run a search to see results.</td></tr></tbody>
         </table>
@@ -157,6 +157,7 @@
 
     let pickerMap;
     let pickerMarker;
+    let leafletReady = typeof window !== 'undefined' && typeof window.L !== 'undefined';
 
     const setOutcomeBadge = (level = 'LOW') => {
       const lvl = String(level || 'LOW').toUpperCase();
@@ -175,11 +176,11 @@
       }
       const rows = items.map((row) => `
         <tr>
-          <td>${row.label ?? '—'}</td>
-          <td>${row.no ? '✔︎' : ''}</td>
-          <td>${row.lt10 ? '✔︎' : ''}</td>
-          <td>${row.r10_25 ? '✔︎' : ''}</td>
-          <td>${row.r25_100 ? '✔︎' : ''}</td>
+          <td>${row.label ?? 'â€”'}</td>
+          <td>${row.no ? 'âœ”ï¸Ž' : ''}</td>
+          <td>${row.lt10 ? 'âœ”ï¸Ž' : ''}</td>
+          <td>${row.r10_25 ? 'âœ”ï¸Ž' : ''}</td>
+          <td>${row.r25_100 ? 'âœ”ï¸Ž' : ''}</td>
         </tr>
       `).join('');
       html(detailsBody, rows);
@@ -198,22 +199,28 @@
     };
 
     const initialisePickerMap = () => {
+      if (!leafletReady) {
+        console.warn('Leaflet not available; skipping picker map.');
+        return;
+      }
       const defaultCenter = [54.5973, -5.9301];
       const parsed = parseLocation(locationEl.value);
       const center = parsed || defaultCenter;
-
-      pickerMap = L.map('pickerMap', { zoomControl: true }).setView(center, 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(pickerMap);
-
-      pickerMarker = L.marker(center, { draggable: false }).addTo(pickerMap);
-
-      pickerMap.on('click', (event) => {
-        const { lat, lng } = event.latlng;
-        locationEl.value = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-        updatePickerMarker([lat, lng]);
-      });
+      try {
+        pickerMap = L.map('pickerMap', { zoomControl: true }).setView(center, 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(pickerMap);
+        pickerMarker = L.marker(center, { draggable: false }).addTo(pickerMap);
+        pickerMap.on('click', (event) => {
+          const { lat, lng } = event.latlng;
+          locationEl.value = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+          updatePickerMarker([lat, lng]);
+        });
+      } catch (err) {
+        console.error('Failed to initialise picker map', err);
+        leafletReady = false;
+      }
     };
 
     const updatePickerMarker = (coords) => {
@@ -316,7 +323,7 @@
     initialisePickerMap();
 
     const initialCoords = parseLocation(locationEl.value);
-    if (initialCoords) {
+    if (leafletReady && initialCoords) {
       updatePickerMarker(initialCoords);
     }
 
