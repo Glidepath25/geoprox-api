@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang='en'>
+<html lang="en">
 <head>
-  <meta charset='utf-8'>
+  <meta charset="utf-8">
   <title>GeoProx</title>
-  <meta name='viewport' content='width=device-width, initial-scale=1'>
-  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' integrity='sha256-o9N1j7kP5S2s3fV0w5pG1rN1Lt3vJhbC7rGQ2PpHt0A=' crossorigin=''/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <style>
     :root {
       color-scheme: dark;
@@ -48,89 +48,90 @@
     .top-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-bottom: .75rem; }
     .logout-btn { background: #1a3350; color: var(--muted); border: 1px solid rgba(255, 255, 255, 0.08); padding: .45rem .8rem; border-radius: 8px; cursor: pointer; }
     .logout-btn:hover { color: #fff; border-color: rgba(255, 255, 255, 0.18); }
-    #pickerMap { height: 280px; border-radius: 12px; margin-top: 0.25rem; }
+    #pickerMap { height: 280px; border-radius: 12px; margin-top: 0.25rem; width: 100%; background: #0e2133; }
   </style>
 </head>
 <body>
   <header>
-    <img src='/static/geoprox-logo.png' alt='GeoProx logo'>
-    <h1>GeoProx â€” Proximity Checker</h1>
+    <img src="/static/geoprox-logo.png" alt="GeoProx logo">
+    <h1>GeoProx - Proximity Checker</h1>
   </header>
 
-  <main class='grid'>
-    <section class='card'>
-      <form class='top-actions' method='post' action='/logout'>
-        <button class='logout-btn' type='submit'>Sign out</button>
+  <main class="grid">
+    <section class="card">
+      <form class="top-actions" method="post" action="/logout">
+        <button class="logout-btn" type="submit">Sign out</button>
       </form>
-      <div class='row'>
-        <div style='flex:2'>
-          <label class='small'>Location (lat,lon or ///what.three.words)</label>
-          <input id='location' type='text' placeholder='54.35,-6.65  or  ///three.words.here'>
+      <div class="row">
+        <div style="flex:2">
+          <label class="small">Location (lat,lon or ///what.three.words)</label>
+          <input id="location" type="text" placeholder="54.35,-6.65 or ///three.words.here">
         </div>
-        <div style='flex:.8'>
-          <label class='small'>Radius (metres)</label>
-          <input id='radius' type='number' value='2000' min='10' max='20000'>
+        <div style="flex:.8">
+          <label class="small">Radius (metres)</label>
+          <input id="radius" type="number" value="2000" min="10" max="20000">
         </div>
-        <div style='flex:1.2'>
-          <label class='small'>Permit number (optional)</label>
-          <input id='permit' type='text' placeholder='K6001-DAF-ACON-12345'>
+        <div style="flex:1.2">
+          <label class="small">Permit number (optional)</label>
+          <input id="permit" type="text" placeholder="K6001-DAF-ACON-12345">
         </div>
-        <div style='align-self:flex-end'>
-          <button id='runBtn' class='btn' type='button'>Run search</button>
-        </div>
-      </div>
-
-      <div style='margin-top:.6rem'>
-        <label class='small'>Categories to search</label>
-        <div class='row muted' style='line-height:1.9'>
-          <label><input type='checkbox' name='cat' data-cat='industrial' checked> Industrial / Manufacturing</label>
-          <label><input type='checkbox' name='cat' data-cat='gas' checked> Gas holder stations</label>
-          <label><input type='checkbox' name='cat' data-cat='mining' checked> Mining (coal, metalliferous)</label>
-          <label><input type='checkbox' name='cat' data-cat='petrol' checked> Petrol stations / Garages</label>
-          <label><input type='checkbox' name='cat' data-cat='subs' checked> Sub-Stations</label>
-          <label><input type='checkbox' name='cat' data-cat='landfill' checked> Waste Site â€” Landfill / Disposal</label>
-          <label><input type='checkbox' name='cat' data-cat='scrapyard' checked> Waste Site â€” Scrapyard / Metal</label>
-          <label><input type='checkbox' name='cat' data-cat='other' checked> Waste Site â€” Other</label>
+        <div style="align-self:flex-end">
+          <button id="runBtn" class="btn" type="button">Run search</button>
         </div>
       </div>
 
-      <div style='margin-top:.6rem'>
-        <label class='small'>Click map to set search origin</label>
-        <div id='pickerMap'></div>
+      <div style="margin-top:.6rem">
+        <label class="small">Categories to search</label>
+        <div class="row muted" style="line-height:1.9">
+          <label><input type="checkbox" name="cat" data-cat="industrial" checked> Industrial / Manufacturing</label>
+          <label><input type="checkbox" name="cat" data-cat="gas" checked> Gas holder stations</label>
+          <label><input type="checkbox" name="cat" data-cat="mining" checked> Mining (coal, metalliferous)</label>
+          <label><input type="checkbox" name="cat" data-cat="petrol" checked> Petrol stations / Garages</label>
+          <label><input type="checkbox" name="cat" data-cat="subs" checked> Sub-Stations</label>
+          <label><input type="checkbox" name="cat" data-cat="landfill" checked> Waste Site - Landfill / Disposal</label>
+          <label><input type="checkbox" name="cat" data-cat="scrapyard" checked> Waste Site - Scrapyard / Metal</label>
+          <label><input type="checkbox" name="cat" data-cat="other" checked> Waste Site - Other</label>
+        </div>
       </div>
 
-      <div class='row' style='margin-top:.6rem; align-items:center'>
-        <div id='outcomeBadge' class='badge badge-low'>LOW</div>
-        <div class='muted' id='centerLabel'></div>
-        <div class='muted'>â€¢</div>
-        <div class='muted' id='radiusLabel'></div>
-        <div class='muted'>â€¢</div>
-        <div class='muted' id='permitLabel'></div>
-        <div style='flex:1'></div>
-        <a id='downloadBtn' class='btn secondary' href='#' target='_blank' rel='noopener' disabled>Download PDF</a>
-        <button id='openMapBtn' class='btn secondary' type='button' disabled>Open Map</button>
+      <div style="margin-top:.6rem">
+        <label class="small">Click map to set search origin</label>
+        <div id="pickerMap"></div>
       </div>
 
-      <div style='margin-top:.6rem'>
+      <div class="row" style="margin-top:.6rem; align-items:center">
+        <div id="outcomeBadge" class="badge badge-low">LOW</div>
+        <div class="muted" id="centerLabel"></div>
+        <div class="muted">.</div>
+        <div class="muted" id="radiusLabel"></div>
+        <div class="muted">.</div>
+        <div class="muted" id="permitLabel"></div>
+        <div style="flex:1"></div>
+        <a id="downloadBtn" class="btn secondary" href="#" target="_blank" rel="noopener" disabled>Download PDF</a>
+        <button id="openMapBtn" class="btn secondary" type="button" disabled>Open Map</button>
+      </div>
+
+      <div style="margin-top:.6rem">
         <table>
           <thead>
-            <tr><th>Category</th><th>No</th><th>&lt;10m</th><th>10â€“25m</th><th>25â€“100m</th></tr>
+            <tr><th>Category</th><th>No</th><th><10m</th><th>10-25m</th><th>25-100m</th></tr>
           </thead>
-          <tbody id='detailsBody'><tr><td class='muted' colspan='5'>Run a search to see results.</td></tr></tbody>
+          <tbody id="detailsBody"><tr><td class="muted" colspan="5">Run a search to see results.</td></tr></tbody>
         </table>
       </div>
 
-      <div id='errorTxt' class='error' style='display:none; margin-top:.5rem'></div>
+      <div id="errorTxt" class="error" style="display:none; margin-top:.5rem"></div>
     </section>
 
-    <section class='card'>
-      <div class='muted' style='margin-bottom:.4rem'>Map preview</div>
-      <iframe id='mapFrame' src='about:blank' title='GeoProx map'></iframe>
+    <section class="card">
+      <div class="muted" style="margin-bottom:.4rem">Map preview</div>
+      <iframe id="mapFrame" src="about:blank" title="GeoProx map"></iframe>
     </section>
   </main>
 
-  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' integrity='sha256-o8UstJf3yJ3bWc6RRL/bM7PqYpX9GL4j1ZNu2wQAE1w=' crossorigin=''></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
+  (function () {
     const $ = (sel) => document.querySelector(sel);
     const $$ = (sel) => Array.from(document.querySelectorAll(sel));
     const text = (el, val) => { if (el) el.textContent = val ?? ''; };
@@ -157,7 +158,6 @@
 
     let pickerMap;
     let pickerMarker;
-    let leafletReady = typeof window !== 'undefined' && typeof window.L !== 'undefined';
 
     const setOutcomeBadge = (level = 'LOW') => {
       const lvl = String(level || 'LOW').toUpperCase();
@@ -186,7 +186,7 @@
       html(detailsBody, rows);
     };
 
-  const parseLocation = (value) => {
+    const parseLocation = (value) => {
       if (!value) return null;
       if (value.startsWith('///')) return null;
       const cleaned = value.replace(/\s+/g, '');
@@ -199,28 +199,23 @@
     };
 
     const initialisePickerMap = () => {
-      if (!leafletReady) {
-        console.warn('Leaflet not available; skipping picker map.');
+      if (typeof window.L === 'undefined') {
+        console.warn('Leaflet library not available; picker map disabled.');
         return;
       }
       const defaultCenter = [54.5973, -5.9301];
       const parsed = parseLocation(locationEl.value);
       const center = parsed || defaultCenter;
-      try {
-        pickerMap = L.map('pickerMap', { zoomControl: true }).setView(center, 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(pickerMap);
-        pickerMarker = L.marker(center, { draggable: false }).addTo(pickerMap);
-        pickerMap.on('click', (event) => {
-          const { lat, lng } = event.latlng;
-          locationEl.value = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-          updatePickerMarker([lat, lng]);
-        });
-      } catch (err) {
-        console.error('Failed to initialise picker map', err);
-        leafletReady = false;
-      }
+      pickerMap = L.map('pickerMap', { zoomControl: true }).setView(center, 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(pickerMap);
+      pickerMarker = L.marker(center, { draggable: false }).addTo(pickerMap);
+      pickerMap.on('click', (event) => {
+        const { lat, lng } = event.latlng;
+        locationEl.value = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        updatePickerMarker([lat, lng]);
+      });
     };
 
     const updatePickerMarker = (coords) => {
@@ -312,6 +307,14 @@
       }
     }
 
+    document.addEventListener('DOMContentLoaded', () => {
+      initialisePickerMap();
+      const initialCoords = parseLocation(locationEl.value);
+      if (initialCoords) {
+        updatePickerMarker(initialCoords);
+      }
+    });
+
     fetch('/auth-status', { credentials: 'include' })
       .then((res) => {
         if (res.status === 401) {
@@ -320,13 +323,6 @@
       })
       .catch(() => {});
 
-    initialisePickerMap();
-
-    const initialCoords = parseLocation(locationEl.value);
-    if (leafletReady && initialCoords) {
-      updatePickerMarker(initialCoords);
-    }
-
     runBtn.addEventListener('click', runSearch);
     locationEl.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -334,6 +330,7 @@
         runSearch();
       }
     });
+  })();
   </script>
 </body>
 </html>
