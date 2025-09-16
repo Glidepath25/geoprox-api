@@ -626,10 +626,42 @@ def generate_pdf_summary(
     flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
     det_header = ["Distance (m)", "Category", "Name", "Lat", "Lon", "Address"]
     det_data: List[List[Any]] = [det_header]
-    for dist, cat, name, lat, lon, addr in sorted(details_rows or [], key=lambda row: row[0]):
+
+    tuples: List[tuple] = []
+    for item in details_rows or []:
+        if isinstance(item, dict):
+            try:
+                tup = (
+                    int(item.get('distance_m')),
+                    item.get('category') or '',
+                    item.get('name') or '',
+                    float(item.get('lat') or 0.0),
+                    float(item.get('lon') or 0.0),
+                    item.get('address') or '',
+                )
+            except Exception:
+                tup = None
+        else:
+            try:
+                tup = (
+                    int(item[0]),
+                    item[1],
+                    item[2],
+                    float(item[3]),
+                    float(item[4]),
+                    item[5],
+                )
+            except Exception:
+                tup = None
+        if tup is not None:
+            tuples.append(tup)
+
+    tuples.sort(key=lambda x: x[0])
+
+    for dist, cat, name, lat, lon, addr in tuples:
         det_data.append([
             dist,
-            Paragraph(cat, body),
+            Paragraph(cat or '', body),
             Paragraph(name or "(unnamed)", body),
             f"{lat:.5f}",
             f"{lon:.5f}",
