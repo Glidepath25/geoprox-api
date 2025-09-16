@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import secrets
 from pathlib import Path
@@ -61,7 +62,7 @@ def verify_user(users: Dict[str, Dict[str, str]], username: str, password: str) 
     except ValueError:
         return False
     candidate = _hash_password(password, salt=salt)
-    return hashlib.compare_digest(candidate, expected)
+    return hmac.compare_digest(candidate, expected)
 
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
