@@ -164,6 +164,13 @@ def healthz() -> Dict[str, bool]:
     return {"ok": True}
 
 
+@app.get("/auth-status")
+def auth_status(request: Request):
+    if request.session.get("user"):
+        return {"authenticated": True}
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
 @app.get("/app")
 async def app_page(request: Request):
     if not request.session.get("user"):
