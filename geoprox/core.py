@@ -681,6 +681,7 @@ def generate_pdf_summary(
             ]
         )
     )
+    flow.append(det_tbl)
     doc.build(flow)
 
 
