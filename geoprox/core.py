@@ -364,8 +364,7 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
                 f"  relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
             ]
 
-    base_block = "
-".join(base_items)
+    base_block = "\n".join(base_items)
 
     petrol_filters = OSM_FILTERS.get("petrol_stations", [])
     petrol_items: List[str] = []
@@ -376,20 +375,17 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
             f"  way{flt}(around:{q.radius_m},{q.lat},{q.lon});",
             f"  relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
         ]
-    petrol_block = "
-".join(petrol_items)
+    petrol_block = "\n".join(petrol_items)
 
     lines: List[str] = ["[out:json][timeout:180];"]
-    lines.append('(
-' + base_block + '
-);->.base;')
+    lines.append("(\n" + base_block + "\n);->.base;")
 
     if petrol_block:
         lines.extend([
-            '(
-' + petrol_block,
-            ');->.fuel;',
-            '(',
+            "(",
+            petrol_block,
+            ");->.fuel;",
+            "(",
             '  rel(pivot.fuel);',
             '  convert rel ::=::, ::id, ::type, ::geom, "geoprox:boundary"="fuel";',
             '  way(pivot.fuel);',
@@ -403,8 +399,7 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
 
     lines.append('out body center geom;')
     lines.append('')
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
     import requests

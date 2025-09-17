@@ -64,12 +64,13 @@
     .permit-input { flex: 1; }
     .layout { display: flex; flex-direction: column; gap: 1.2rem; margin-top: 1rem; }
     .map-panel { display: flex; flex-direction: column; gap: .85rem; }
-    .map-panel .map-header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    .map-preview { display: flex; flex-direction: column; gap: .85rem; }
+    .map-preview .map-header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
     .map-controls { display: flex; gap: .5rem; flex-wrap: wrap; }
     .map-controls .btn { width: 100%; }
     .map-frame { width: 100%; border: 0; border-radius: 12px; background: #06111b; height: 300px; }
-    .map-panel.expanded { position: fixed; inset: 5vh 8vw; z-index: 1000; padding: 1.5rem; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
-    .map-panel.expanded .map-frame { flex: 1; height: 100%; }
+    .map-preview.expanded { position: fixed; inset: 5vh 8vw; z-index: 1000; padding: 1.5rem; background: var(--panel); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); display: flex; flex-direction: column; gap: .85rem; max-height: 90vh; overflow: hidden; }
+    .map-preview.expanded .map-frame { flex: 1; height: 100%; }
     .btn.small { font-size: .78rem; padding: .45rem .7rem; }
     body.no-scroll { overflow: hidden; }
     #mapOverlay { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 900; }
@@ -112,14 +113,16 @@
 
   <main class="layout">
     <section class="card map-panel" id="mapPanel">
-      <div class="map-header">
-        <span class="muted">Map preview</span>
-        <div class="map-controls">
-          <button id="toggleMapSize" class="btn secondary small" type="button">Enlarge map</button>
-          <button id="openMapBtn" class="btn secondary small" type="button" disabled>Open Map</button>
+      <div class="map-preview" id="mapPreview">
+        <div class="map-header">
+          <span class="muted">Map preview</span>
+          <div class="map-controls">
+            <button id="toggleMapSize" class="btn secondary small" type="button">Enlarge map</button>
+            <button id="openMapBtn" class="btn secondary small" type="button" disabled>Open Map</button>
+          </div>
         </div>
+        <iframe id="mapFrame" class="map-frame" src="about:blank" title="GeoProx map"></iframe>
       </div>
-      <iframe id="mapFrame" class="map-frame" src="about:blank" title="GeoProx map"></iframe>
       <div class="history-section">
         <div class="history-title">Previous searches</div>
         <table class="history-table">
@@ -233,6 +236,7 @@
     const detailsBody = $('#detailsBody');
     const mapFrame = $('#mapFrame');
     const mapPanel = $('#mapPanel');
+    const mapPreview = $('#mapPreview');
     const toggleMapBtn = $('#toggleMapSize');
     const mapOverlay = $('#mapOverlay');
     const streetViewFrame = $('#streetViewFrame');
@@ -245,8 +249,9 @@
     let streetViewUrl = null;
 
     const setMapExpanded = (expanded) => {
-      if (!mapPanel) return;
-      mapPanel.classList.toggle('expanded', expanded);
+      if (mapPreview) {
+        mapPreview.classList.toggle('expanded', expanded);
+      }
       if (toggleMapBtn) {
         toggleMapBtn.textContent = expanded ? 'Close map' : 'Enlarge map';
       }
@@ -287,7 +292,7 @@
 
     if (toggleMapBtn) {
       toggleMapBtn.addEventListener('click', () => {
-        const expanded = mapPanel?.classList.contains('expanded');
+        const expanded = mapPreview?.classList.contains('expanded');
         setMapExpanded(!expanded);
       });
     }
