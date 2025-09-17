@@ -555,6 +555,21 @@ def generate_pdf_summary(
     doc = SimpleDocTemplate(
         pdf_path, pagesize=A4, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=12 * mm, bottomMargin=12 * mm
     )
+    permit_clean = (permit or "").strip()
+    doc_title = "GeoProx - {}".format(permit_clean or "no permit")
+    author_name = (user_name or "GeoProx").strip() or "GeoProx"
+    subject_text = "Permit: {}".format(permit_clean) if permit_clean else "GeoProx proximity summary"
+
+    def _apply_metadata(canvas_obj, _doc):
+        canvas_obj.setTitle(doc_title)
+        canvas_obj.setAuthor(author_name)
+        canvas_obj.setSubject(subject_text)
+        canvas_obj.setCreator("GeoProx API")
+        keywords = ["outcome:{}".format(outcome_label)]
+        if permit_clean:
+            keywords.append("permit:{}".format(permit_clean))
+        canvas_obj.setKeywords(keywords)
+
     flow: List[Any] = []
 
     # Title
@@ -682,7 +697,7 @@ def generate_pdf_summary(
         )
     )
     flow.append(det_tbl)
-    doc.build(flow)
+    doc.build(flow, onFirstPage=_apply_metadata, onLaterPages=_apply_metadata)
 
 
 # ---------- Coordinator used by the API ----------
