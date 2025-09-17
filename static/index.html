@@ -53,7 +53,28 @@
     .history-title { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.4rem; }
     .history-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     .history-table th, .history-table td { padding: 0.35rem 0.45rem; border-bottom: 1px solid #1f3952; text-align: left; color: var(--text); }
-    .history-table tbody tr:nth-child(odd) { background: rgba(255, 255, 255, 0.03); }
+    
+    .search-layout { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+    .search-main { display: flex; flex-direction: column; gap: 1rem; }
+    .map-panel { background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: .75rem; display: flex; flex-direction: column; gap: .75rem; }
+    .map-panel-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .map-controls { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .map-panel iframe { width: 100%; border: 0; border-radius: 10px; background: #06111b; height: 280px; }
+    .map-panel.expanded { position: fixed; inset: 5vh 8vw; z-index: 1000; padding: 1.25rem; background: var(--panel); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
+    .map-panel.expanded iframe { flex: 1; height: calc(100% - 0.5rem); }
+    .btn.small { font-size: .78rem; padding: .45rem .7rem; }
+    body.no-scroll { overflow: hidden; }
+    #mapOverlay { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 900; }
+    #mapOverlay.visible { display: block; }
+    @media (min-width: 900px) {
+      .search-layout { flex-direction: row; align-items: stretch; }
+      .search-main { flex: 1.5; }
+      .map-panel { flex: 1; }
+      .map-panel iframe { height: 100%; min-height: 320px; }
+    }
+    .streetview-header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-bottom: .4rem; }
+    #streetViewFrame { width: 100%; height: 320px; border: 0; border-radius: 10px; background: #06111b; }
+    #streetViewHint { margin-top: .4rem; font-size: .8rem; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -99,38 +120,55 @@
         </div>
       </div>
 
-      <div style="margin-top:.6rem">
-        <label class="small">Click map to set search origin</label>
-        <div id="pickerMap"></div>
-      </div>
+      <div class="search-layout">
+        <div class="search-main">
+          <div>
+            <label class="small">Click map to set search origin</label>
+            <div id="pickerMap"></div>
+          </div>
 
-      <div class="row" style="margin-top:.6rem; align-items:center">
-        <div id="outcomeBadge" class="badge badge-low">LOW</div>
-        <div class="muted" id="centerLabel"></div>
-        <div class="muted">.</div>
-        <div class="muted" id="radiusLabel"></div>
-        <div class="muted">.</div>
-        <div class="muted" id="permitLabel"></div>
-        <div style="flex:1"></div>
-        <a id="downloadBtn" class="btn secondary" href="#" target="_blank" rel="noopener" disabled>Download PDF</a>
-        <button id="openMapBtn" class="btn secondary" type="button" disabled>Open Map</button>
-      </div>
+          <div class="row" style="align-items:center">
+            <div id="outcomeBadge" class="badge badge-low">LOW</div>
+            <div class="muted" id="centerLabel"></div>
+            <div class="muted">.</div>
+            <div class="muted" id="radiusLabel"></div>
+            <div class="muted">.</div>
+            <div class="muted" id="permitLabel"></div>
+            <div style="flex:1"></div>
+            <a id="downloadBtn" class="btn secondary" href="#" target="_blank" rel="noopener" disabled>Download PDF</a>
+          </div>
 
-      <div style="margin-top:.6rem">
-        <table>
-          <thead>
-            <tr><th>Category</th><th>No</th><th><10m</th><th>10-25m</th><th>25-100m</th></tr>
-          </thead>
-          <tbody id="detailsBody"><tr><td class="muted" colspan="5">Run a search to see results.</td></tr></tbody>
-        </table>
-      </div>
+          <div>
+            <table>
+              <thead>
+                <tr><th>Category</th><th>No</th><th><10m</th><th>10-25m</th><th>25-100m</th></tr>
+              </thead>
+              <tbody id="detailsBody"><tr><td class="muted" colspan="5">Run a search to see results.</td></tr></tbody>
+            </table>
+          </div>
 
-      <div id="errorTxt" class="error" style="display:none; margin-top:.5rem"></div>
+          <div id="errorTxt" class="error" style="display:none; margin-top:.5rem"></div>
+        </div>
+        <aside class="map-panel" id="mapPanel">
+          <div class="map-panel-header">
+            <div class="muted">Map preview</div>
+            <div class="map-controls">
+              <button id="toggleMapSize" class="btn secondary small" type="button">Enlarge map</button>
+              <button id="openMapBtn" class="btn secondary small" type="button" disabled>Open Map</button>
+            </div>
+          </div>
+          <iframe id="mapFrame" src="about:blank" title="GeoProx map"></iframe>
+        </aside>
+      </div>
     </section>
 
     <section class="card">
-      <div class="muted" style="margin-bottom:.4rem">Map preview</div>
-      <iframe id="mapFrame" src="about:blank" title="GeoProx map"></iframe>
+      <div class="streetview-header">
+        <span class="muted">Street View preview</span>
+        <button id="openStreetViewBtn" class="btn secondary small" type="button" disabled>Open Street View</button>
+      </div>
+      <iframe id="streetViewFrame" src="about:blank" title="Street View preview"></iframe>
+      <div id="streetViewHint" class="muted" style="font-size:.8rem; margin-top:.35rem;">Street View appears once a search returns a location.</div>
       <div class="history-section">
         <div class="history-title">Previous searches</div>
         <table class="history-table">
@@ -142,6 +180,7 @@
       </div>
     </section>
   </main>
+  <div id="mapOverlay"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
@@ -169,9 +208,73 @@
     const permitLabel = $('#permitLabel');
     const detailsBody = $('#detailsBody');
     const mapFrame = $('#mapFrame');
+    const mapPanel = $('#mapPanel');
+    const toggleMapBtn = $('#toggleMapSize');
+    const mapOverlay = $('#mapOverlay');
+    const streetViewFrame = $('#streetViewFrame');
+    const streetViewHint = $('#streetViewHint');
+    const openStreetViewBtn = $('#openStreetViewBtn');
+    const historyBody = $('#historyBody');
 
     let pickerMap;
     let pickerMarker;
+    let streetViewUrl = null;
+
+    const setMapExpanded = (expanded) => {
+      if (!mapPanel) return;
+      mapPanel.classList.toggle('expanded', expanded);
+      if (toggleMapBtn) {
+        toggleMapBtn.textContent = expanded ? 'Close map' : 'Enlarge map';
+      }
+      if (mapOverlay) {
+        mapOverlay.classList.toggle('visible', expanded);
+      }
+      document.body.classList.toggle('no-scroll', expanded);
+    };
+
+    const updateStreetView = (coords) => {
+      if (!streetViewFrame) return;
+      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+        const { lat, lon } = coords;
+        const embedUrl = `https://www.google.com/maps?q=&layer=c&cbll=${lat},${lon}&cbp=11,0,0,0,0&z=18&output=svembed`;
+        streetViewFrame.src = embedUrl;
+        streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
+        if (streetViewHint) {
+          streetViewHint.textContent = 'Use Street View to explore the surroundings of the permit location.';
+        }
+        if (openStreetViewBtn) {
+          openStreetViewBtn.disabled = false;
+          openStreetViewBtn.onclick = () => window.open(streetViewUrl, '_blank', 'noopener');
+        }
+      } else {
+        streetViewFrame.src = 'about:blank';
+        streetViewUrl = null;
+        if (streetViewHint) {
+          streetViewHint.textContent = 'Street View appears once a search returns a location.';
+        }
+        if (openStreetViewBtn) {
+          openStreetViewBtn.disabled = true;
+          openStreetViewBtn.onclick = null;
+        }
+      }
+    };
+
+    updateStreetView(null);
+
+    if (toggleMapBtn) {
+      toggleMapBtn.addEventListener('click', () => {
+        const expanded = mapPanel?.classList.contains('expanded');
+        setMapExpanded(!expanded);
+      });
+    }
+    if (mapOverlay) {
+      mapOverlay.addEventListener('click', () => setMapExpanded(false));
+    }
+    window.addEventListener('keyup', (event) => {
+      if (event.key === 'Escape') {
+        setMapExpanded(false);
+      }
+    });
 
     const setOutcomeBadge = (level = 'LOW') => {
       const lvl = String(level || 'LOW').toUpperCase();
@@ -275,6 +378,25 @@
       }
     };
 
+    const extractStreetCoords = (summary, result) => {
+      if (summary && summary.center_coords) {
+        const { lat, lon } = summary.center_coords;
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          return { lat, lon };
+        }
+      }
+      const details = result?.details_100m;
+      if (Array.isArray(details) && details.length > 0) {
+        const first = details[0];
+        const lat = Number(first.lat ?? (Array.isArray(first) ? first[3] : null));
+        const lon = Number(first.lon ?? (Array.isArray(first) ? first[4] : null));
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          return { lat, lon };
+        }
+      }
+      return null;
+    };
+
     async function runSearch() {
       try {
         showError('');
@@ -303,12 +425,14 @@
         if (!res.ok) {
           showError(json?.error || `Request failed (${res.status})`);
           console.error('API error', json);
+          updateStreetView(null);
           return;
         }
 
         if (json.status !== 'done' || !json.result) {
           showError(json?.error || 'Search failed.');
           console.error('Unexpected response', json);
+          updateStreetView(null);
           return;
         }
 
@@ -339,17 +463,27 @@
 
         const mapUrl = artifacts.map_url || artifacts.map_embed_url || null;
         if (mapUrl) {
-          mapFrame.src = mapUrl;
+          if (mapFrame) {
+            mapFrame.src = mapUrl;
+          }
           openMapBtn.removeAttribute('disabled');
           openMapBtn.onclick = () => window.open(mapUrl, '_blank', 'noopener');
         } else {
-          mapFrame.src = 'about:blank';
+          if (mapFrame) {
+            mapFrame.src = 'about:blank';
+          }
           openMapBtn.setAttribute('disabled', 'true');
           openMapBtn.onclick = null;
+          setMapExpanded(false);
         }
+
+        const coords = extractStreetCoords(summary, result);
+        updateStreetView(coords);
       } catch (err) {
         console.error(err);
         showError(err?.message || 'Unexpected error');
+        updateStreetView(null);
+        setMapExpanded(false);
       }
     }
 
@@ -382,3 +516,5 @@
   </script>
 </body>
 </html>
+
+
