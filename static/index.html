@@ -53,6 +53,9 @@
     .history-title { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.35rem; }
     .history-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     .history-table th, .history-table td { padding: 0.35rem 0.45rem; border-bottom: 1px solid #1f3952; text-align: left; color: var(--text); }
+    .history-low { color: #2e7d32; font-weight: 600; }
+    .history-medium { color: #ef6c00; font-weight: 600; }
+    .history-high { color: #c62828; font-weight: 600; }
     
     .category-list { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .78rem; }
     .category-list label { display: inline-flex; align-items: center; gap: .3rem; }
@@ -121,9 +124,9 @@
         <div class="history-title">Previous searches</div>
         <table class="history-table">
           <thead>
-            <tr><th>When (UTC)</th><th>Location</th><th>Radius (m)</th><th>Outcome</th></tr>
+            <tr><th>When</th><th>Location</th><th>Outcome</th></tr>
           </thead>
-          <tbody id="historyBody"><tr><td class="muted" colspan="4">No history yet.</td></tr></tbody>
+          <tbody id="historyBody"><tr><td class="muted" colspan="3">No history yet.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -372,15 +375,19 @@
     const renderHistory = (items) => {
       if (!historyBody) return;
       if (!items || items.length === 0) {
-        historyBody.innerHTML = "<tr><td class='muted' colspan='4'>No history yet.</td></tr>";
+        historyBody.innerHTML = "<tr><td class='muted' colspan='3'>No history yet.</td></tr>";
         return;
       }
       const rows = items.map((row) => {
-        const when = row.timestamp || '';
+        const whenRaw = row.timestamp || '';
+        const whenDate = whenRaw ? new Date(whenRaw) : null;
+        const formatted = whenDate && !Number.isNaN(whenDate.getTime())
+          ? `${whenDate.getDate().toString().padStart(2, '0')}/${(whenDate.getMonth() + 1).toString().padStart(2, '0')}/${(whenDate.getFullYear() % 100).toString().padStart(2, '0')}, ${whenDate.toLocaleTimeString('en-GB', { hour12: false })}`
+          : whenRaw;
         const loc = row.location || '';
-        const rad = row.radius_m != null ? row.radius_m : '';
-        const outcome = (row.outcome || '').toString().toUpperCase();
-        return `<tr><td>${when}</td><td>${loc}</td><td>${rad}</td><td>${outcome}</td></tr>`;
+        const outcomeRaw = (row.outcome || '').toString().toUpperCase();
+        const outcomeClass = outcomeRaw === 'HIGH' ? 'history-high' : outcomeRaw === 'MEDIUM' ? 'history-medium' : 'history-low';
+        return `<tr><td>${formatted}</td><td>${loc}</td><td><span class="${outcomeClass}">${outcomeRaw}</span></td></tr>`;
       }).join('');
       historyBody.innerHTML = rows;
     };
@@ -537,8 +544,4 @@
   </script>
 </body>
 </html>
-
-
-
-
 
