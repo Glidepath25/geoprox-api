@@ -19,8 +19,9 @@ import pandas as pd
 import folium
 from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform as shapely_transform
+from shapely.ops import transform as shapely_transform, nearest_points
 import pyproj
+from pyproj.enums import TransformDirection
 
 # PDF (ReportLab)
 from reportlab.lib import colors
@@ -242,32 +243,55 @@ def _annotate_distances(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.Dat
     transformer = _utm_transformer(lat0, lon0)
     origin_point = ShapelyPoint(lon0, lat0)
     origin_projected = None
+    inverse_func = None
     if transformer is not None:
         try:
             origin_projected = shapely_transform(transformer.transform, origin_point)
+            def _inverse(x, y, z=None, _transform=transformer):
+                return _transform.transform(x, y, z, direction=TransformDirection.INVERSE)
+            inverse_func = _inverse
         except Exception:
             origin_projected = None
+            inverse_func = None
     distances: List[float] = []
+    nearest_lats: List[Optional[float]] = []
+    nearest_lons: List[Optional[float]] = []
     for _, row in df.iterrows():
-        dist = None
+        dist: Optional[float] = None
+        nearest_lat: Optional[float] = None
+        nearest_lon: Optional[float] = None
         geom = row.get("geom")
         if geom is not None and transformer is not None and origin_projected is not None:
             try:
                 projected_geom = shapely_transform(transformer.transform, geom)
                 dist = float(origin_projected.distance(projected_geom))
+                if inverse_func is not None:
+                    _, closest = nearest_points(origin_projected, projected_geom)
+                    nearest_point = shapely_transform(inverse_func, closest)
+                    nearest_lon = float(nearest_point.x)
+                    nearest_lat = float(nearest_point.y)
             except Exception:
                 dist = None
+                nearest_lat = None
+                nearest_lon = None
         if dist is None:
             lat = row.get("lat")
             lon = row.get("lon")
             if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
                 distances.append(float("inf"))
-            else:
-                distances.append(float(_haversine_m(lat0, lon0, float(lat), float(lon))))
-        else:
-            distances.append(dist)
+                nearest_lats.append(None)
+                nearest_lons.append(None)
+                continue
+            dist = float(_haversine_m(lat0, lon0, float(lat), float(lon)))
+            nearest_lat = float(lat)
+            nearest_lon = float(lon)
+        distances.append(dist)
+        nearest_lats.append(nearest_lat)
+        nearest_lons.append(nearest_lon)
     out = df.copy()
     out["distance_m"] = distances
+    out["nearest_lat"] = nearest_lats
+    out["nearest_lon"] = nearest_lons
     return out
 
 
@@ -514,13 +538,46 @@ def make_map(df: pd.DataFrame, center: Tuple[float, float], radius_m: int, out_h
     m = folium.Map(location=center, zoom_start=15, control_scale=True)
     folium.Marker(center, tooltip="Search origin", icon=folium.Icon(color="red")).add_to(m)
     folium.Circle(center, radius=radius_m, color="#1F6FEB", fill=False).add_to(m)
+
+    center_lat, center_lon = float(center[0]), float(center[1])
     for _, r in df.iterrows():
-        if pd.isna(r.get("lat")) or pd.isna(r.get("lon")):
+        lat = r.get("lat")
+        lon = r.get("lon")
+        if pd.isna(lat) or pd.isna(lon):
             continue
         folium.Marker(
-            (float(r["lat"]), float(r["lon"])),
-            tooltip=f'{r.get("name") or "(unnamed)"}',
+            (float(lat), float(lon)),
+            tooltip=f"{r.get('name') or '(unnamed)'}",
             icon=folium.Icon(color="blue", icon="info-sign"),
+        ).add_to(m)
+
+        nearest_lat = r.get("nearest_lat")
+        nearest_lon = r.get("nearest_lon")
+        dist_val = r.get("distance_m")
+        if nearest_lat is None or nearest_lon is None or pd.isna(nearest_lat) or pd.isna(nearest_lon):
+            continue
+        try:
+            distance_float = float(dist_val) if dist_val is not None else None
+        except Exception:
+            distance_float = None
+
+        folium.PolyLine(
+            [(center_lat, center_lon), (float(nearest_lat), float(nearest_lon))],
+            color="#ff9800",
+            weight=2.5,
+            opacity=0.8,
+        ).add_to(m)
+        tooltip_text = 'Nearest boundary'
+        if distance_float is not None and distance_float != float('inf'):
+            tooltip_text = f"Nearest boundary (distance: {distance_float:.1f} m)"
+        folium.CircleMarker(
+            (float(nearest_lat), float(nearest_lon)),
+            radius=4,
+            color="#ff9800",
+            fill=True,
+            fill_color="#ff9800",
+            fill_opacity=0.9,
+            tooltip=tooltip_text,
         ).add_to(m)
     m.save(out_html)
 
@@ -834,3 +891,4 @@ def run_geoprox_search(
         "details_100m": details_rows_json,
         "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
     }
+
