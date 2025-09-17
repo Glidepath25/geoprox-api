@@ -347,24 +347,64 @@ class QueryInput:
     selected_categories: List[str]
 
 
+
 def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = None) -> str:
     cats = cat_subset or q.selected_categories or list(OSM_FILTERS.keys())
     cats = [c for c in cats if c in OSM_FILTERS]
     if not cats:
         raise ValueError("No valid categories to query.")
 
-    parts: List[str] = []
+    base_items: List[str] = []
     for key in cats:
         for tok in OSM_FILTERS[key]:
             flt = _ovf(tok)
-            parts += [
-                f"node{flt}(around:{q.radius_m},{q.lat},{q.lon});",
-                f"way{flt}(around:{q.radius_m},{q.lat},{q.lon});",
-                f"relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
+            base_items += [
+                f"  node{flt}(around:{q.radius_m},{q.lat},{q.lon});",
+                f"  way{flt}(around:{q.radius_m},{q.lat},{q.lon});",
+                f"  relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
             ]
-    body = "\n".join(parts)
-    return "[out:json][timeout:180];\n(\n" + body + "\n);\n" "out body center geom;\n"
 
+    base_block = "
+".join(base_items)
+
+    petrol_filters = OSM_FILTERS.get("petrol_stations", [])
+    petrol_items: List[str] = []
+    for tok in petrol_filters:
+        flt = _ovf(tok)
+        petrol_items += [
+            f"  node{flt}(around:{q.radius_m},{q.lat},{q.lon});",
+            f"  way{flt}(around:{q.radius_m},{q.lat},{q.lon});",
+            f"  relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
+        ]
+    petrol_block = "
+".join(petrol_items)
+
+    lines: List[str] = ["[out:json][timeout:180];"]
+    lines.append('(
+' + base_block + '
+);->.base;')
+
+    if petrol_block:
+        lines.extend([
+            '(
+' + petrol_block,
+            ');->.fuel;',
+            '(',
+            '  rel(pivot.fuel);',
+            '  convert rel ::=::, ::id, ::type, ::geom, "geoprox:boundary"="fuel";',
+            '  way(pivot.fuel);',
+            '  convert way ::=::, ::id, ::type, ::geom, "geoprox:boundary"="fuel";',
+            ');->.fuel_boundaries;',
+            '(.base;',
+            ' .fuel_boundaries;);',
+        ])
+    else:
+        lines.append('(.base;);')
+
+    lines.append('out body center geom;')
+    lines.append('')
+    return "
+".join(lines)
 
 def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
     import requests
@@ -386,13 +426,20 @@ def run_overpass_resilient(qi: QueryInput, abort_cb: Optional[callable] = None) 
     raise RuntimeError(f"Overpass request failed: {last_err}")
 
 
+
 def osm_elements_to_df(data: Dict[str, Any]) -> pd.DataFrame:
-    rows: List[Dict[str, Any]] = []
+    rows_by_key: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
     for el in data.get("elements", []):
         el_type = el.get("type")
+        el_id = int(el.get("id")) if el.get("id") is not None else None
+        if el_type is None or el_id is None:
+            continue
+
         tags = el.get("tags", {}) or {}
         name = tags.get("name") or "(unnamed)"
         geom = _geometry_from_osm_element(el)
+
         lat_val: Optional[float] = None
         lon_val: Optional[float] = None
         lat_raw = el.get("lat")
@@ -407,16 +454,138 @@ def osm_elements_to_df(data: Dict[str, Any]) -> pd.DataFrame:
                 lon_val = float(lon_raw)
         except Exception:
             lon_val = None
+
         if geom is not None:
             c_lat, c_lon = _geom_centroid_latlon(geom)
             if c_lat is not None and c_lon is not None:
                 lat_val = c_lat
                 lon_val = c_lon
-        rows.append({"type": el_type, "name": name, "lat": lat_val, "lon": lon_val, "tags": tags, "geom": geom})
-    df = pd.DataFrame(rows)
-    if df.empty:
-        df = pd.DataFrame(columns=["type", "name", "lat", "lon", "tags", "geom"])
-    return df
+
+        key = (el_type, el_id)
+        existing = rows_by_key.get(key)
+
+        boundary_tag = tags.get("geoprox:boundary")
+        new_row = {
+            "type": el_type,
+            "id": el_id,
+            "name": name,
+            "lat": lat_val,
+            "lon": lon_val,
+            "tags": dict(tags),
+            "geom": geom,
+            "boundary": boundary_tag,
+        }
+
+        if existing is None:
+            rows_by_key[key] = new_row
+            continue
+
+        # merge tags, prefer boundary geometries
+        merged_tags = existing["tags"].copy()
+        merged_tags.update(tags)
+        existing["tags"] = merged_tags
+
+        prefer_new_geom = False
+        if boundary_tag:
+            prefer_new_geom = True
+        elif existing.get("geom") is None and geom is not None:
+            prefer_new_geom = True
+
+        if prefer_new_geom and geom is not None:
+            existing["geom"] = geom
+            existing["lat"] = lat_val
+            existing["lon"] = lon_val
+            existing["boundary"] = boundary_tag
+
+    rows = list(rows_by_key.values())
+    if not rows:
+        return pd.DataFrame(columns=["type", "id", "name", "lat", "lon", "tags", "geom", "boundary"])
+    return pd.DataFrame(rows)
+
+def _apply_petrol_land_parcel_boundaries(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure amenity=fuel rows use enclosing parcel polygons when available."""
+    if df.empty or "boundary" not in df.columns or "tags" not in df.columns:
+        return df
+
+    out = df.copy()
+
+    boundary_df = out[out["boundary"] == "fuel"]
+    if boundary_df.empty:
+        return out[out["boundary"] != "fuel"].copy()
+
+    boundary_geoms: List[BaseGeometry] = []
+    for geom in boundary_df["geom"]:
+        if isinstance(geom, BaseGeometry):
+            boundary_geoms.append(geom)
+    if not boundary_geoms:
+        return out[out["boundary"] != "fuel"].copy()
+
+    try:
+        petrol_indices = [idx for idx, tags in out["tags"].items() if isinstance(tags, dict) and tags.get("amenity") == "fuel"]
+    except Exception:
+        petrol_indices = []
+
+    if not petrol_indices:
+        return out[out["boundary"] != "fuel"].copy()
+
+    for idx in petrol_indices:
+        row_geom = out.at[idx, "geom"]
+        probe = None
+        if isinstance(row_geom, BaseGeometry):
+            if row_geom.geom_type == "Point":
+                probe = row_geom
+            else:
+                try:
+                    probe = row_geom.representative_point()
+                except Exception:
+                    probe = None
+        if probe is None:
+            lat = out.at[idx, "lat"]
+            lon = out.at[idx, "lon"]
+            if lat is not None and lon is not None and not pd.isna(lat) and not pd.isna(lon):
+                try:
+                    probe = ShapelyPoint(float(lon), float(lat))
+                except Exception:
+                    probe = None
+
+        best_geom = None
+        best_distance = float("inf")
+        for b_geom in boundary_geoms:
+            if not isinstance(b_geom, BaseGeometry):
+                continue
+            try:
+                if probe is not None and b_geom.covers(probe):
+                    best_geom = b_geom
+                    best_distance = 0.0
+                    break
+            except Exception:
+                pass
+            if isinstance(row_geom, BaseGeometry):
+                try:
+                    if b_geom.covers(row_geom):
+                        best_geom = b_geom
+                        best_distance = 0.0
+                        break
+                except Exception:
+                    pass
+            if probe is None:
+                continue
+            try:
+                dist_val = b_geom.distance(probe)
+            except Exception:
+                continue
+            if dist_val < best_distance:
+                best_distance = dist_val
+                best_geom = b_geom
+
+        if best_geom is not None:
+            out.at[idx, "geom"] = best_geom
+            lat_c, lon_c = _geom_centroid_latlon(best_geom)
+            if lat_c is not None and lon_c is not None:
+                out.at[idx, "lat"] = lat_c
+                out.at[idx, "lon"] = lon_c
+
+    return out[out["boundary"] != "fuel"].copy()
 
 
 def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str, Dict[str, int]]:
@@ -781,6 +950,7 @@ def run_geoprox_search(
     qi = QueryInput(lat=lat, lon=lon, radius_m=radius_m, selected_categories=categories)
     data = run_overpass_resilient(qi)
     df = osm_elements_to_df(data)
+    df = _apply_petrol_land_parcel_boundaries(df)
     df = _annotate_distances(df, (lat, lon))
 
     # 3) Summaries
