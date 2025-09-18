@@ -774,6 +774,7 @@ async def admin_create_company_form(request: Request):
 async def admin_update_company_form(request: Request, company_id: int):
     _require_admin(request)
     form = await request.form()
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     company = user_store.get_company_by_id(company_id)
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     if not company:
@@ -905,7 +906,6 @@ async def api_admin_reset_password(request: Request, user_id: int, payload: Admi
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     user_store.set_password(user_id, new_password, require_change=True)
     return AdminActionResult(status="ok", message=f"Password updated for '{user['username']}'.")
 

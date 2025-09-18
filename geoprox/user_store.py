@@ -256,7 +256,7 @@ def create_company(
         cursor = conn.execute(
             """
             INSERT INTO companies (name, company_number, phone, email, notes, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 cleaned,
