@@ -30,6 +30,8 @@ TEMPLATES_DIR = (REPO_ROOT / "templates").resolve()
 ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts")).resolve()
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
+DEFAULT_W3W_KEY = "OXT6XQ19"
+
 # Ensure templates directory exists
 if not TEMPLATES_DIR.exists():
     TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,6 +106,8 @@ def _load_w3w_key() -> Optional[str]:
             key = ""
         if key:
             return key
+    if DEFAULT_W3W_KEY:
+        return DEFAULT_W3W_KEY
     return None
 
 
@@ -270,4 +274,3 @@ def api_search(request: Request, req: SearchReq):
         tb = traceback.format_exc(limit=6)
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
-
