@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GeoProx - User Management</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:#0b1724; color:#e6f1ff; margin:0; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#12263a; }
+    header h1 { margin:0; font-size:1.2rem; }
+    main { padding:2rem; display:flex; flex-direction:column; gap:1.5rem; }
+    .card { background:#12263a; border-radius:12px; padding:1.5rem; }
+    label { display:block; font-size:0.82rem; color:#9fb3c7; margin-bottom:0.25rem; }
+    input[type=text], input[type=password], input[type=email] {
+      width:100%; padding:0.55rem 0.65rem; border-radius:8px; border:1px solid rgba(255,255,255,0.08);
+      background:#0f1f31; color:#e6f1ff; margin-bottom:0.7rem;
+    }
+    .flex { display:flex; gap:1rem; flex-wrap:wrap; }
+    .flex > div { flex:1; min-width:180px; }
+    .actions { display:flex; gap:0.6rem; align-items:center; }
+    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; }
+    .btn.primary { background:#2b7cff; border-color:#2b7cff; color:#fff; }
+    .btn.danger { border-color:rgba(255,120,120,0.6); color:#ff9e9e; }
+    .btn.success { border-color:rgba(83,232,139,0.4); color:#7ff0c0; }
+    .btn:hover { background:rgba(255,255,255,0.08); }
+    .flash { padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; }
+    .flash.success { background:rgba(46,204,113,0.12); border:1px solid rgba(46,204,113,0.4); }
+    .flash.error { background:rgba(231,76,60,0.12); border:1px solid rgba(231,76,60,0.4); }
+    table { width:100%; border-collapse:collapse; margin-top:1rem; }
+    th, td { padding:0.65rem 0.75rem; border-bottom:1px solid rgba(255,255,255,0.06); text-align:left; }
+    th { background:#18344d; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; }
+    tr:last-child td { border-bottom:none; }
+    .status-chip { display:inline-block; padding:0.2rem 0.6rem; border-radius:999px; font-size:0.7rem; text-transform:uppercase; }
+    .status-active { background:#0b4d27; color:#a3f5cb; }
+    .status-disabled { background:#602020; color:#ff9e9e; }
+    form.inline { display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; margin-top:0.75rem; }
+    form.inline > div { min-width:160px; flex:1; }
+    form.inline label { margin-bottom:0.35rem; }
+    .checkbox { display:flex; align-items:center; gap:0.4rem; color:#9fb3c7; font-size:0.82rem; }
+    .small-note { font-size:0.78rem; color:#9fb3c7; margin-top:-0.4rem; margin-bottom:0.6rem; }
+    .muted { color:#9fb3c7; font-size:0.82rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>User Management</h1>
+    <div class="actions">
+      <a class="btn" href="/app">Back to app</a>
+      <a class="btn" href="/history">History</a>
+      <form method="post" action="/logout" style="margin:0;">
+        <button class="btn" type="submit">Sign out</button>
+      </form>
+    </div>
+  </header>
+  <main>
+    {% if flashes %}
+      {% for flash in flashes %}
+        <div class="flash {{ flash.category }}">{{ flash.message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="muted">Signed in as {{ current_user }}</div>
+
+    <section class="card">
+      <h2 style="margin-top:0;">Add user</h2>
+      <form method="post" action="/admin/users/create">
+        <div class="flex">
+          <div>
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" required>
+          </div>
+          <div>
+            <label for="name">Name</label>
+            <input id="name" name="name" type="text" required>
+          </div>
+          <div>
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" placeholder="user@example.com">
+          </div>
+        </div>
+        <div class="flex">
+          <div>
+            <label for="company">Company</label>
+            <input id="company" name="company" type="text">
+          </div>
+          <div>
+            <label for="company_number">Company number</label>
+            <input id="company_number" name="company_number" type="text">
+          </div>
+          <div>
+            <label for="phone">Phone number</label>
+            <input id="phone" name="phone" type="text">
+          </div>
+        </div>
+        <div class="flex">
+          <div>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" required autocomplete="new-password">
+          </div>
+          <div class="checkbox" style="margin-bottom:0.7rem;">
+            <input id="is_admin" name="is_admin" type="checkbox">
+            <label for="is_admin" style="margin-bottom:0;">Administrator</label>
+          </div>
+        </div>
+        <button class="btn primary" type="submit">Create user</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0;">Existing users</h2>
+      {% if users %}
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Company</th>
+            <th>Phone</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td>{{ user.username }}</td>
+            <td>{{ user.name }}</td>
+            <td>{{ user.email or '-' }}</td>
+            <td>{{ user.company or '-' }}</td>
+            <td>{{ user.phone or '-' }}</td>
+            <td>{{ 'Admin' if user.is_admin else 'User' }}</td>
+            <td>
+              <span class="status-chip {{ 'status-active' if user.is_active else 'status-disabled' }}">{{ 'Active' if user.is_active else 'Disabled' }}</span>
+            </td>
+            <td>
+              <form method="post" action="/admin/users/{{ user.id }}/toggle" style="display:inline;">
+                <input type="hidden" name="action" value="{{ 'disable' if user.is_active else 'enable' }}">
+                <button class="btn {{ 'danger' if user.is_active else 'success' }}" type="submit">
+                  {{ 'Disable' if user.is_active else 'Enable' }}
+                </button>
+              </form>
+              <form method="post" action="/admin/users/{{ user.id }}/reset-password" style="display:inline; margin-left:0.4rem;">
+                <input type="password" name="new_password" placeholder="New password" style="width:160px;" autocomplete="new-password">
+                <button class="btn" type="submit">Reset</button>
+              </form>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="8">
+              <form class="inline" method="post" action="/admin/users/{{ user.id }}/update">
+                <div>
+                  <label>Name</label>
+                  <input name="name" type="text" value="{{ user.name }}">
+                </div>
+                <div>
+                  <label>Email</label>
+                  <input name="email" type="email" value="{{ user.email }}">
+                </div>
+                <div>
+                  <label>Company</label>
+                  <input name="company" type="text" value="{{ user.company }}">
+                </div>
+                <div>
+                  <label>Company number</label>
+                  <input name="company_number" type="text" value="{{ user.company_number }}">
+                </div>
+                <div>
+                  <label>Phone</label>
+                  <input name="phone" type="text" value="{{ user.phone }}">
+                </div>
+                <div class="checkbox">
+                  <input type="checkbox" id="admin_{{ user.id }}" name="is_admin" {% if user.is_admin %}checked{% endif %}>
+                  <label for="admin_{{ user.id }}" style="margin-bottom:0;">Administrator</label>
+                </div>
+                <button class="btn" type="submit">Save changes</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="small-note">No user accounts found.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

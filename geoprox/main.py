@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import os
 import logging
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,10 +16,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
 
-from geoprox import history_store
+from geoprox import history_store, user_store
 from geoprox.core import run_geoprox_search
-from geoprox.auth import load_users, verify_user
-
 log = logging.getLogger("uvicorn.error")
 
 # ---------------------------------------------------------------------------
@@ -166,6 +165,69 @@ def _require_user(request: Request) -> str:
     return user
 
 
+def _require_admin(request: Request) -> str:
+    user = _require_user(request)
+    if not request.session.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user
+
+
+
+def _ensure_can_change_admin_flag(request: Request, user: Dict[str, Any], new_is_admin: bool) -> None:
+    current_user_id = request.session.get("user_id")
+    if user["id"] == current_user_id and not new_is_admin:
+        raise HTTPException(status_code=400, detail="You cannot remove administrator rights from your own account.")
+    if user["is_admin"] and not new_is_admin:
+        others = [u for u in user_store.list_users(include_disabled=False) if u["is_admin"] and u["id"] != user["id"]]
+        if not others:
+            raise HTTPException(status_code=400, detail="At least one active administrator is required.")
+
+
+def _ensure_can_change_active_status(
+    request: Request,
+    user: Dict[str, Any],
+    *,
+    enable: bool,
+    target_is_admin: Optional[bool] = None,
+) -> None:
+    is_admin = user["is_admin"] if target_is_admin is None else bool(target_is_admin)
+    current_user_id = request.session.get("user_id")
+    if user["id"] == current_user_id and not enable:
+        raise HTTPException(status_code=400, detail="You cannot disable your own account.")
+    if not enable and is_admin:
+        others = [u for u in user_store.list_users(include_disabled=False) if u["is_admin"] and u["id"] != user["id"]]
+        if not others:
+            raise HTTPException(status_code=400, detail="At least one active administrator is required.")
+
+def _add_flash(request: Request, message: str, category: str = "info") -> None:
+    flashes = request.session.get("_flashes") or []
+    flashes.append({"message": message, "category": category})
+    request.session["_flashes"] = flashes
+
+
+def _consume_flashes(request: Request) -> List[Dict[str, str]]:
+    flashes = request.session.get("_flashes") or []
+    if flashes:
+        request.session["_flashes"] = []
+    return flashes
+
+
+def _user_to_out(user: Dict[str, Any]) -> AdminUserOut:
+    return AdminUserOut(
+        id=user["id"],
+        username=user["username"],
+        name=user["name"],
+        email=user["email"] or "",
+        company=user["company"] or "",
+        company_number=user["company_number"] or "",
+        phone=user["phone"] or "",
+        is_admin=bool(user["is_admin"]),
+        is_active=bool(user["is_active"]),
+        created_at=user["created_at"],
+        updated_at=user["updated_at"],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Auth views
 # ---------------------------------------------------------------------------
@@ -178,14 +240,20 @@ async def login_page(request: Request) -> HTMLResponse:
 
 @app.post("/login", response_class=HTMLResponse)
 async def login_action(request: Request, username: str = Form(...), password: str = Form(...)) -> HTMLResponse:
-    users = load_users()
-    if verify_user(users, username, password):
+    user = user_store.verify_credentials(username, password, include_disabled=True)
+    if user and not user["is_active"]:
+        error = "Account disabled. Please contact your administrator."
+    elif user:
         request.session["user"] = username
+        request.session["user_id"] = user["id"]
+        request.session["is_admin"] = bool(user["is_admin"])
+        request.session["display_name"] = user["name"]
         if request.session.get("history") is None:
             request.session["history"] = []
         log.info("User %s logged in", username)
         return RedirectResponse(url="/app", status_code=303)
-    error = "Invalid username or password."
+    else:
+        error = "Invalid username or password."
     return templates.TemplateResponse(
         "login.html",
         {"request": request, "error": error, "username": username},
@@ -202,6 +270,51 @@ async def logout(request: Request):
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    name: str
+    email: str
+    company: str
+    company_number: str
+    phone: str
+    is_admin: bool
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(..., min_length=1, max_length=128)
+    email: Optional[str] = Field(default="", max_length=256)
+    company: Optional[str] = Field(default="", max_length=256)
+    company_number: Optional[str] = Field(default="", max_length=64)
+    phone: Optional[str] = Field(default="", max_length=64)
+    is_admin: bool = False
+    is_active: bool = True
+
+
+class AdminUserUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=128)
+    email: Optional[str] = Field(default=None, max_length=256)
+    company: Optional[str] = Field(default=None, max_length=256)
+    company_number: Optional[str] = Field(default=None, max_length=64)
+    phone: Optional[str] = Field(default=None, max_length=64)
+    is_admin: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class AdminPasswordReset(BaseModel):
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class AdminActionResult(BaseModel):
+    status: str = "ok"
+    message: Optional[str] = None
+
+
 class SearchReq(BaseModel):
     location: str = Field(..., description="lat,lon or ///what.three.words")
     radius_m: int = Field(..., ge=10, le=20000, examples=[2000])
@@ -273,7 +386,207 @@ def get_artifact(request: Request, path: str):
 def history_page(request: Request) -> HTMLResponse:
     user = _require_user(request)
     items = history_store.get_history(user, limit=200)
-    return templates.TemplateResponse("history.html", {"request": request, "user": user, "items": items})
+    return templates.TemplateResponse("history.html", {
+        "request": request,
+        "user": user,
+        "items": items,
+        "is_admin": bool(request.session.get("is_admin")),
+    })
+
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request) -> HTMLResponse:
+    _require_admin(request)
+    users = user_store.list_users(include_disabled=True)
+    flashes = _consume_flashes(request)
+    return templates.TemplateResponse(
+        "admin_users.html",
+        {
+            "request": request,
+            "users": users,
+            "flashes": flashes,
+            "current_user": request.session.get("user"),
+        },
+    )
+
+
+@app.post("/admin/users/create")
+async def admin_create_user(request: Request):
+    _require_admin(request)
+    form = await request.form()
+    username = (form.get("username") or "").strip()
+    password = (form.get("password") or "").strip()
+    name = (form.get("name") or "").strip()
+    email = (form.get("email") or "").strip()
+    company = (form.get("company") or "").strip()
+    company_number = (form.get("company_number") or "").strip()
+    phone = (form.get("phone") or "").strip()
+    is_admin = form.get("is_admin") == "on"
+    if not username or not password or not name:
+        _add_flash(request, "Username, name, and password are required.", "error")
+    else:
+        try:
+            user_store.create_user(
+                username=username,
+                password=password,
+                name=name,
+                email=email,
+                company=company,
+                company_number=company_number,
+                phone=phone,
+                is_admin=is_admin,
+            )
+            _add_flash(request, f"User '{username}' created.", "success")
+        except sqlite3.IntegrityError:
+            _add_flash(request, "Username or email already exists.", "error")
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/update")
+async def admin_update_user(request: Request, user_id: int):
+    _require_admin(request)
+    form = await request.form()
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    updates = {}
+    for field in ("name", "email", "company", "company_number", "phone"):
+        value = form.get(field)
+        if value is not None:
+            updates[field] = value.strip()
+    is_admin_flag = form.get("is_admin") == "on"
+    updates["is_admin"] = is_admin_flag
+    try:
+        _ensure_can_change_admin_flag(request, user, is_admin_flag)
+    except HTTPException as exc:
+        _add_flash(request, exc.detail, "error")
+        return RedirectResponse(url="/admin/users", status_code=303)
+    user_store.update_user(user["id"], **updates)
+    _add_flash(request, f"Updated profile for '{user['username']}'.", "success")
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/toggle")
+async def admin_toggle_user(request: Request, user_id: int):
+    _require_admin(request)
+    form = await request.form()
+    action = form.get("action", "disable")
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    enable = action != "disable"
+    try:
+        _ensure_can_change_active_status(request, user, enable=enable)
+    except HTTPException as exc:
+        _add_flash(request, exc.detail, "error")
+        return RedirectResponse(url="/admin/users", status_code=303)
+    if enable:
+        user_store.enable_user(user["id"])
+        _add_flash(request, f"Enabled '{user['username']}'.", "success")
+    else:
+        user_store.disable_user(user["id"])
+        _add_flash(request, f"Disabled '{user['username']}'.", "success")
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_password(request: Request, user_id: int):
+    _require_admin(request)
+    form = await request.form()
+    new_password = (form.get("new_password") or "").strip()
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not new_password:
+        _add_flash(request, "Password cannot be empty.", "error")
+    else:
+        user_store.set_password(user["id"], new_password)
+        _add_flash(request, f"Password updated for '{user['username']}'.", "success")
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+# ---------------------------------------------------------------------------
+# Admin API
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/admin/users", response_model=List[AdminUserOut])
+async def api_admin_list_users(request: Request) -> List[AdminUserOut]:
+    _require_admin(request)
+    records = user_store.list_users(include_disabled=True)
+    return [_user_to_out(record) for record in records]
+
+
+@app.get("/api/admin/users/{user_id}", response_model=AdminUserOut)
+async def api_admin_get_user(request: Request, user_id: int) -> AdminUserOut:
+    _require_admin(request)
+    record = user_store.get_user_by_id(user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _user_to_out(record)
+
+
+@app.post("/api/admin/users", response_model=AdminUserOut, status_code=201)
+async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> AdminUserOut:
+    _require_admin(request)
+    username = payload.username.strip()
+    name = payload.name.strip()
+    if not username or not name:
+        raise HTTPException(status_code=400, detail="Username and name are required.")
+    try:
+        record = user_store.create_user(
+            username=username,
+            password=payload.password,
+            name=name,
+            email=(payload.email or "").strip(),
+            company=(payload.company or "").strip(),
+            company_number=(payload.company_number or "").strip(),
+            phone=(payload.phone or "").strip(),
+            is_admin=payload.is_admin,
+            is_active=payload.is_active,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="Username already exists.")
+    return _user_to_out(record)
+
+
+@app.patch("/api/admin/users/{user_id}", response_model=AdminUserOut)
+async def api_admin_update_user(request: Request, user_id: int, payload: AdminUserUpdate) -> AdminUserOut:
+    _require_admin(request)
+    record = user_store.get_user_by_id(user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+    updates: Dict[str, Any] = {}
+    for field in ("name", "email", "company", "company_number", "phone"):
+        value = getattr(payload, field)
+        if value is not None:
+            updates[field] = value.strip()
+    if payload.is_admin is not None:
+        _ensure_can_change_admin_flag(request, record, payload.is_admin)
+        updates["is_admin"] = payload.is_admin
+    target_is_admin = updates.get("is_admin", record["is_admin"])
+    if payload.is_active is not None:
+        _ensure_can_change_active_status(request, record, enable=payload.is_active, target_is_admin=target_is_admin)
+        updates["is_active"] = payload.is_active
+    if not updates:
+        return _user_to_out(record)
+    user_store.update_user(record["id"], **updates)
+    updated = user_store.get_user_by_id(record["id"])
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _user_to_out(updated)
+
+
+@app.post("/api/admin/users/{user_id}/reset-password", response_model=AdminActionResult)
+async def api_admin_reset_password(request: Request, user_id: int, payload: AdminPasswordReset) -> AdminActionResult:
+    _require_admin(request)
+    new_password = payload.new_password.strip()
+    if not new_password:
+        raise HTTPException(status_code=400, detail="Password cannot be empty.")
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_store.set_password(user_id, new_password)
+    return AdminActionResult(status="ok", message=f"Password updated for '{user['username']}'.")
+
 
 @app.post("/api/search", response_model=SearchResp)
 def api_search(request: Request, req: SearchReq):
@@ -364,3 +677,8 @@ def api_search(request: Request, req: SearchReq):
         tb = traceback.format_exc(limit=6)
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
+
+
+
+
+

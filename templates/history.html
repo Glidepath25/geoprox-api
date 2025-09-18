@@ -32,6 +32,7 @@
     <h1>Search History</h1>
     <div class="actions">
       <a class="btn" href="/app">Back to app</a>
+      {% if is_admin %}<a class="btn" href="/admin/users">Manage users</a>{% endif %}
       <form method="post" action="/logout">
         <button class="btn" type="submit">Sign out</button>
       </form>
