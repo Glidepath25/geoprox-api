@@ -5,7 +5,7 @@ import os
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -95,6 +95,43 @@ def _normalise_location(s: str) -> str:
 
 
 
+def _validate_polygon_coords(raw: List[List[float]]) -> Tuple[List[Tuple[float, float]], Tuple[float, float]]:
+    if not raw or len(raw) < 3:
+        raise HTTPException(status_code=400, detail="Polygon must contain at least three vertices.")
+    cleaned: List[Tuple[float, float]] = []
+    for point in raw:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            raise HTTPException(status_code=400, detail="Polygon vertices must be [lat, lon].")
+        try:
+            lat = float(point[0])
+            lon = float(point[1])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Polygon vertices must be numeric lat/lon values.")
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise HTTPException(status_code=400, detail="Polygon vertices must be valid lat/lon values.")
+        cleaned.append((lat, lon))
+    twice_area = 0.0
+    cx = 0.0
+    cy = 0.0
+    for idx, (lat1, lon1) in enumerate(cleaned):
+        lat2, lon2 = cleaned[(idx + 1) % len(cleaned)]
+        x1, y1 = lon1, lat1
+        x2, y2 = lon2, lat2
+        cross = x1 * y2 - x2 * y1
+        twice_area += cross
+        cx += (x1 + x2) * cross
+        cy += (y1 + y2) * cross
+    if abs(twice_area) < 1e-9:
+        avg_lat = sum(lat for lat, _ in cleaned) / len(cleaned)
+        avg_lon = sum(lon for _, lon in cleaned) / len(cleaned)
+        centroid = (avg_lat, avg_lon)
+    else:
+        area = twice_area * 0.5
+        centroid = (cy / (6.0 * area), cx / (6.0 * area))
+    return cleaned, centroid
+
+
+
 def _load_w3w_key() -> Optional[str]:
     key = (os.environ.get("WHAT3WORDS_API_KEY") or "").strip()
     if key:
@@ -171,6 +208,8 @@ class SearchReq(BaseModel):
     categories: List[str] = Field(default_factory=list)
     permit: Optional[str] = None
     max_results: Optional[int] = Field(default=None, ge=1, le=10000)
+    selection_mode: str = Field(default="point", description="Search selection mode (point or polygon)")
+    polygon: Optional[List[List[float]]] = Field(default=None, description="Polygon vertices as [lat, lon] pairs")
 
 
 class SearchResp(BaseModel):
@@ -243,7 +282,18 @@ def api_search(request: Request, req: SearchReq):
         w3w_key = _load_w3w_key()
         log.info(f"Incoming request: {req.dict()}")
 
-        safe_location = _normalise_location(req.location)
+        selection_mode = (req.selection_mode or "point").lower()
+        if selection_mode not in {"point", "polygon"}:
+            raise HTTPException(status_code=400, detail="Invalid selection mode.")
+
+        polygon_vertices: Optional[List[Tuple[float, float]]] = None
+        if selection_mode == "polygon":
+            polygon_vertices, centroid = _validate_polygon_coords(req.polygon or [])
+            location_value = f"{centroid[0]},{centroid[1]}"
+        else:
+            location_value = req.location
+
+        safe_location = _normalise_location(location_value)
 
         result = run_geoprox_search(
             location=safe_location,
@@ -269,6 +319,11 @@ def api_search(request: Request, req: SearchReq):
 
         result["artifacts"] = arts
 
+        selection_info = {"mode": selection_mode}
+        if polygon_vertices:
+            selection_info["polygon"] = polygon_vertices
+        result["selection"] = selection_info
+
         timestamp = datetime.utcnow().isoformat() + "Z"
         outcome = result.get("summary", {}).get("outcome")
         pdf_name = Path(arts["pdf_path"]).name if arts.get("pdf_path") else None
@@ -290,7 +345,8 @@ def api_search(request: Request, req: SearchReq):
                  "location": safe_location,
                  "radius_m": req.radius_m,
                  "outcome": outcome,
-                 "permit": req.permit}
+                 "permit": req.permit,
+                 "mode": selection_mode}
         history = request.session.get("history") or []
         history.append(entry)
         request.session["history"] = history[-20:]
