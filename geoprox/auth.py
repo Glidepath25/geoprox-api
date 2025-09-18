@@ -10,13 +10,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from geoprox import user_store
-from geoprox.user_store import hash_password_hex
+from geoprox.user_store import hash_password_hex, PBKDF_ITERATIONS
 
 USERS_DIR = Path(__file__).resolve().parents[1] / "users"
 DEFAULT_REALM = "GeoProx"
-PBKDF_ITERATIONS = 120_000
-
-
 def create_user_record(username: str, password: str, *, salt: Optional[bytes] = None) -> Dict[str, str]:
     salt = salt or secrets.token_bytes(16)
     return {
@@ -78,3 +75,4 @@ __all__ = [
     "hash_password_hex",
     "PBKDF_ITERATIONS",
 ]
+
