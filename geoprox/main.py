@@ -686,8 +686,9 @@ async def admin_update_user(request: Request, user_id: int):
             updates["company"] = ""
     is_admin_flag = form.get("is_admin") == "on"
     updates["is_admin"] = is_admin_flag
-    if form.get("require_password_change_present") is not None:
-        updates["require_password_change"] = form.get("require_password_change") == "on"
+    require_values = form.getlist("require_password_change")
+    if require_values:
+        updates["require_password_change"] = require_values[-1] == "on"
     try:
         _ensure_can_change_admin_flag(request, user, is_admin_flag)
     except HTTPException as exc:
@@ -1049,6 +1050,7 @@ def api_search(request: Request, req: SearchReq):
         tb = traceback.format_exc(limit=6)
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
+
 
 
 

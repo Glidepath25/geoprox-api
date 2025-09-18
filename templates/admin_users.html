@@ -298,7 +298,6 @@
             <td colspan="8">
               <form class="inline" method="post" action="/admin/users/{{ user.id }}/update">
                 <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
-                <input type="hidden" name="require_password_change_present" value="1">
                 <div>
                   <label>Name</label>
                   <input name="name" type="text" value="{{ user.name }}">
@@ -332,7 +331,8 @@
                   <label for="admin_{{ user.id }}" style="margin-bottom:0;">Administrator</label>
                 </div>
                 <div class="checkbox">
-                  <input type="checkbox" id="pwreset_{{ user.id }}" name="require_password_change" {% if user.require_password_change %}checked{% endif %}>
+                  <input type="hidden" name="require_password_change" value="off">
+                  <input type="checkbox" id="pwreset_{{ user.id }}" name="require_password_change" value="on" {% if user.require_password_change %}checked{% endif %}>
                   <label for="pwreset_{{ user.id }}" style="margin-bottom:0;">Require password change</label>
                 </div>
                 <button class="btn" type="submit">Save changes</button>

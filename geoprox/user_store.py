@@ -190,7 +190,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "password_hash": row["password_hash"],
         "is_admin": bool(row["is_admin"]),
         "is_active": bool(row["is_active"]),
-        "require_password_change": bool(row["require_password_change"]),
+        "require_password_change": bool(row["require_password_change"]) if "require_password_change" in row.keys() else False,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
