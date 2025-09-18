@@ -91,6 +91,22 @@ def _normalise_location(s: str) -> str:
         )
 
 
+
+def _load_w3w_key() -> Optional[str]:
+    key = (os.environ.get("WHAT3WORDS_API_KEY") or "").strip()
+    if key:
+        return key
+    key_file = (REPO_ROOT / "config" / "what3words_key.txt")
+    if key_file.exists():
+        try:
+            key = key_file.read_text(encoding="utf-8").strip()
+        except Exception:
+            key = ""
+        if key:
+            return key
+    return None
+
+
 def _safe_artifact(path: str, request: Request) -> Path:
     _require_user(request)
     full = (ARTIFACTS_DIR / path).resolve()
@@ -211,7 +227,7 @@ def get_artifact(request: Request, path: str):
 def api_search(request: Request, req: SearchReq):
     _require_user(request)
     try:
-        w3w_key = os.environ.get("WHAT3WORDS_API_KEY")
+        w3w_key = _load_w3w_key()
         log.info(f"Incoming request: {req.dict()}")
 
         safe_location = _normalise_location(req.location)
