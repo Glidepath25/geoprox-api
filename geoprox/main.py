@@ -253,6 +253,7 @@ def api_search(request: Request, req: SearchReq):
             out_dir=ARTIFACTS_DIR,
             w3w_key=w3w_key,
             max_results=req.max_results,
+            user_name=username,
         )
 
         log.info(f"Search result: {result}")

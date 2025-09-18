@@ -771,6 +771,7 @@ def run_geoprox_search(
     out_dir: Path,
     w3w_key: Optional[str] = None,
     max_results: int = 500,
+    user_name: str = DEFAULT_USER,
 ) -> dict:
     # filter/normalise categories
     valid = set(OSM_FILTERS.keys())
@@ -818,6 +819,7 @@ def run_geoprox_search(
         lat=lat,
         lon=lon,
     )
+    summary_payload["user"] = user_name
     generate_pdf_summary(
         display_center=disp,
         summary_bins=summary,
@@ -826,7 +828,7 @@ def run_geoprox_search(
         details_rows=details,
         map_html=str(map_html),
         permit=_permit,
-        user_name=DEFAULT_USER,
+        user_name=user_name,
         search_dt=_now,
         outcome=_outcome,
     )
