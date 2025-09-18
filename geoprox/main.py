@@ -172,6 +172,38 @@ def _require_admin(request: Request) -> str:
     return user
 
 
+def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
+    request.session.clear()
+    request.session["user"] = user["username"]
+    request.session["user_id"] = user["id"]
+    request.session["is_admin"] = bool(user["is_admin"])
+    request.session["display_name"] = user["name"]
+    history_rows = history_store.get_history(user["username"], limit=20)
+    session_history = []
+    for row in reversed(history_rows):
+        session_history.append({
+            "timestamp": row["timestamp"],
+            "location": row["location"],
+            "radius_m": int(row.get("radius_m", 0)),
+            "outcome": row.get("outcome"),
+            "permit": row.get("permit"),
+            "mode": "point",
+        })
+    request.session["history"] = session_history
+
+
+def _parse_optional_int(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    if not stripped:
+        return None
+    try:
+        return int(stripped)
+    except (TypeError, ValueError):
+        return None
+
+
 
 def _ensure_can_change_admin_flag(request: Request, user: Dict[str, Any], new_is_admin: bool) -> None:
     current_user_id = request.session.get("user_id")
@@ -205,6 +237,13 @@ def _add_flash(request: Request, message: str, category: str = "info") -> None:
     request.session["_flashes"] = flashes
 
 
+def _redirect_admin_users(company_id: Optional[int] = None) -> RedirectResponse:
+    url = "/admin/users"
+    if company_id:
+        url = f"{url}?company_id={company_id}"
+    return RedirectResponse(url=url, status_code=303)
+
+
 def _consume_flashes(request: Request) -> List[Dict[str, str]]:
     flashes = request.session.get("_flashes") or []
     if flashes:
@@ -219,13 +258,29 @@ def _user_to_out(user: Dict[str, Any]) -> AdminUserOut:
         name=user["name"],
         email=user["email"] or "",
         company=user["company"] or "",
+        company_id=user.get("company_id"),
         company_number=user["company_number"] or "",
         phone=user["phone"] or "",
         is_admin=bool(user["is_admin"]),
         is_active=bool(user["is_active"]),
+        require_password_change=bool(user.get("require_password_change")),
         created_at=user["created_at"],
         updated_at=user["updated_at"],
     )
+
+def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
+    return AdminCompanyOut(
+        id=company["id"],
+        name=company["name"],
+        company_number=company["company_number"] or "",
+        phone=company["phone"] or "",
+        email=company["email"] or "",
+        notes=company["notes"] or "",
+        is_active=bool(company["is_active"]),
+        created_at=company["created_at"],
+        updated_at=company["updated_at"],
+    )
+
 
 
 # ---------------------------------------------------------------------------
@@ -244,12 +299,13 @@ async def login_action(request: Request, username: str = Form(...), password: st
     if user and not user["is_active"]:
         error = "Account disabled. Please contact your administrator."
     elif user:
-        request.session["user"] = username
-        request.session["user_id"] = user["id"]
-        request.session["is_admin"] = bool(user["is_admin"])
-        request.session["display_name"] = user["name"]
-        if request.session.get("history") is None:
-            request.session["history"] = []
+        if user.get("require_password_change"):
+            request.session.clear()
+            request.session["pending_user_id"] = user["id"]
+            request.session["pending_username"] = username
+            log.info("User %s must change password on next login", username)
+            return RedirectResponse(url="/change-password", status_code=303)
+        _start_session_for_user(request, user)
         log.info("User %s logged in", username)
         return RedirectResponse(url="/app", status_code=303)
     else:
@@ -267,6 +323,127 @@ async def logout(request: Request):
     return RedirectResponse(url="/", status_code=303)
 
 
+
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(request: Request) -> HTMLResponse:
+    pending_user_id = request.session.get("pending_user_id")
+    current_username = request.session.get("user")
+    if not pending_user_id and not current_username:
+        return RedirectResponse(url="/", status_code=303)
+    username = request.session.get("pending_username") or current_username
+    return templates.TemplateResponse(
+        "change_password.html",
+        {"request": request, "username": username or "", "error": None, "success": False},
+    )
+
+
+@app.post("/change-password", response_class=HTMLResponse)
+async def change_password_action(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+) -> HTMLResponse:
+    pending_user_id = request.session.get("pending_user_id")
+    current_user_id = request.session.get("user_id")
+    if not pending_user_id and not current_user_id:
+        return RedirectResponse(url="/", status_code=303)
+    user_id = pending_user_id or current_user_id
+    user_record = user_store.get_user_by_id(int(user_id))
+    if not user_record:
+        request.session.clear()
+        return RedirectResponse(url="/", status_code=303)
+    username = user_record["username"]
+    if new_password != confirm_password:
+        error = "Passwords do not match."
+        return templates.TemplateResponse(
+            "change_password.html",
+            {"request": request, "username": username, "error": error, "success": False},
+            status_code=400,
+        )
+    if len(new_password) < 8:
+        error = "Password must be at least 8 characters long."
+        return templates.TemplateResponse(
+            "change_password.html",
+            {"request": request, "username": username, "error": error, "success": False},
+            status_code=400,
+        )
+    if user_store.verify_credentials(username, current_password, include_disabled=True) is None:
+        error = "Current password is incorrect."
+        return templates.TemplateResponse(
+            "change_password.html",
+            {"request": request, "username": username, "error": error, "success": False},
+            status_code=400,
+        )
+    user_store.set_password(user_record["id"], new_password, require_change=False)
+    updated = user_store.get_user_by_id(user_record["id"])
+    if not updated:
+        request.session.clear()
+        return RedirectResponse(url="/", status_code=303)
+    _start_session_for_user(request, updated)
+    log.info("User %s changed password", username)
+    request.session.pop("pending_user_id", None)
+    request.session.pop("pending_username", None)
+    return RedirectResponse(url="/app", status_code=303)
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request) -> HTMLResponse:
+    if request.session.get("user"):
+        return RedirectResponse(url="/app", status_code=303)
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {"request": request, "error": None, "username": "", "company_number": "", "email": ""},
+    )
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_action(
+    request: Request,
+    username: str = Form(...),
+    company_number: str = Form(...),
+    email: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+) -> HTMLResponse:
+    user = user_store.get_user_by_username(username.strip())
+    if not user:
+        error = "Account not found."
+    elif not user["is_active"]:
+        error = "Account is disabled."
+    elif new_password != confirm_password:
+        error = "Passwords do not match."
+    elif len(new_password) < 8:
+        error = "Password must be at least 8 characters long."
+    else:
+        stored_company_number = (user.get("company_number") or "").strip()
+        if stored_company_number and stored_company_number.lower() != company_number.strip().lower():
+            error = "Company number does not match our records."
+        else:
+            stored_email = (user.get("email") or "").strip()
+            if stored_email and stored_email.lower() != email.strip().lower():
+                error = "Email does not match our records."
+            else:
+                user_store.set_password(user["id"], new_password, require_change=False)
+                updated = user_store.get_user_by_id(user["id"])
+                if updated:
+                    _start_session_for_user(request, updated)
+                    log.info("User %s reset password via self-service", username)
+                    return RedirectResponse(url="/app", status_code=303)
+                error = "Unable to update password. Please contact support."
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {
+            "request": request,
+            "error": error,
+            "username": username,
+            "company_number": company_number,
+            "email": email,
+        },
+        status_code=400,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -276,10 +453,12 @@ class AdminUserOut(BaseModel):
     name: str
     email: str
     company: str
+    company_id: Optional[int]
     company_number: str
     phone: str
     is_admin: bool
     is_active: bool
+    require_password_change: bool
     created_at: str
     updated_at: str
 
@@ -290,20 +469,24 @@ class AdminUserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     email: Optional[str] = Field(default="", max_length=256)
     company: Optional[str] = Field(default="", max_length=256)
+    company_id: Optional[int] = None
     company_number: Optional[str] = Field(default="", max_length=64)
     phone: Optional[str] = Field(default="", max_length=64)
     is_admin: bool = False
     is_active: bool = True
+    require_password_change: bool = True
 
 
 class AdminUserUpdate(BaseModel):
     name: Optional[str] = Field(default=None, max_length=128)
     email: Optional[str] = Field(default=None, max_length=256)
     company: Optional[str] = Field(default=None, max_length=256)
+    company_id: Optional[int] = None
     company_number: Optional[str] = Field(default=None, max_length=64)
     phone: Optional[str] = Field(default=None, max_length=64)
     is_admin: Optional[bool] = None
     is_active: Optional[bool] = None
+    require_password_change: Optional[bool] = None
 
 
 class AdminPasswordReset(BaseModel):
@@ -313,6 +496,36 @@ class AdminPasswordReset(BaseModel):
 class AdminActionResult(BaseModel):
     status: str = "ok"
     message: Optional[str] = None
+
+
+class AdminCompanyOut(BaseModel):
+    id: int
+    name: str
+    company_number: str
+    phone: str
+    email: str
+    notes: str
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class AdminCompanyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    company_number: Optional[str] = Field(default="", max_length=128)
+    phone: Optional[str] = Field(default="", max_length=64)
+    email: Optional[str] = Field(default="", max_length=256)
+    notes: Optional[str] = Field(default="", max_length=1024)
+    is_active: bool = True
+
+
+class AdminCompanyUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=256)
+    company_number: Optional[str] = Field(default=None, max_length=128)
+    phone: Optional[str] = Field(default=None, max_length=64)
+    email: Optional[str] = Field(default=None, max_length=256)
+    notes: Optional[str] = Field(default=None, max_length=1024)
+    is_active: Optional[bool] = None
 
 
 class SearchReq(BaseModel):
@@ -394,15 +607,18 @@ def history_page(request: Request) -> HTMLResponse:
     })
 
 @app.get("/admin/users", response_class=HTMLResponse)
-async def admin_users_page(request: Request) -> HTMLResponse:
+async def admin_users_page(request: Request, company_id: Optional[int] = None) -> HTMLResponse:
     _require_admin(request)
-    users = user_store.list_users(include_disabled=True)
+    companies = user_store.list_companies(include_inactive=False)
+    users = user_store.list_users(include_disabled=True, company_id=company_id)
     flashes = _consume_flashes(request)
     return templates.TemplateResponse(
         "admin_users.html",
         {
             "request": request,
             "users": users,
+            "companies": companies,
+            "selected_company": company_id,
             "flashes": flashes,
             "current_user": request.session.get("user"),
         },
@@ -418,9 +634,11 @@ async def admin_create_user(request: Request):
     name = (form.get("name") or "").strip()
     email = (form.get("email") or "").strip()
     company = (form.get("company") or "").strip()
+    company_id = _parse_optional_int(form.get("company_id"))
     company_number = (form.get("company_number") or "").strip()
     phone = (form.get("phone") or "").strip()
     is_admin = form.get("is_admin") == "on"
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     if not username or not password or not name:
         _add_flash(request, "Username, name, and password are required.", "error")
     else:
@@ -433,12 +651,15 @@ async def admin_create_user(request: Request):
                 company=company,
                 company_number=company_number,
                 phone=phone,
+                company_id=company_id,
                 is_admin=is_admin,
             )
             _add_flash(request, f"User '{username}' created.", "success")
         except sqlite3.IntegrityError:
             _add_flash(request, "Username or email already exists.", "error")
-    return RedirectResponse(url="/admin/users", status_code=303)
+        except ValueError as exc:
+            _add_flash(request, str(exc) or "Invalid company selection.", "error")
+    return _redirect_admin_users(redirect_company_id)
 
 
 @app.post("/admin/users/{user_id}/update")
@@ -448,21 +669,37 @@ async def admin_update_user(request: Request, user_id: int):
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    updates = {}
-    for field in ("name", "email", "company", "company_number", "phone"):
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    updates: Dict[str, Any] = {}
+    for field in ("name", "email", "company_number", "phone"):
         value = form.get(field)
         if value is not None:
             updates[field] = value.strip()
+    company_name = (form.get("company") or "").strip()
+    company_id_value = _parse_optional_int(form.get("company_id"))
+    if company_name:
+        updates["company"] = company_name
+        updates["company_id"] = company_id_value
+    elif form.get("company_id") is not None:
+        updates["company_id"] = company_id_value
+        if company_id_value is None:
+            updates["company"] = ""
     is_admin_flag = form.get("is_admin") == "on"
     updates["is_admin"] = is_admin_flag
+    if form.get("require_password_change_present") is not None:
+        updates["require_password_change"] = form.get("require_password_change") == "on"
     try:
         _ensure_can_change_admin_flag(request, user, is_admin_flag)
     except HTTPException as exc:
         _add_flash(request, exc.detail, "error")
-        return RedirectResponse(url="/admin/users", status_code=303)
-    user_store.update_user(user["id"], **updates)
+        return _redirect_admin_users(redirect_company_id)
+    try:
+        user_store.update_user(user["id"], **updates)
+    except ValueError as exc:
+        _add_flash(request, str(exc) or "Invalid company selection.", "error")
+        return _redirect_admin_users(redirect_company_id)
     _add_flash(request, f"Updated profile for '{user['username']}'.", "success")
-    return RedirectResponse(url="/admin/users", status_code=303)
+    return _redirect_admin_users(redirect_company_id)
 
 
 @app.post("/admin/users/{user_id}/toggle")
@@ -470,6 +707,7 @@ async def admin_toggle_user(request: Request, user_id: int):
     _require_admin(request)
     form = await request.form()
     action = form.get("action", "disable")
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -478,14 +716,14 @@ async def admin_toggle_user(request: Request, user_id: int):
         _ensure_can_change_active_status(request, user, enable=enable)
     except HTTPException as exc:
         _add_flash(request, exc.detail, "error")
-        return RedirectResponse(url="/admin/users", status_code=303)
+        return _redirect_admin_users(redirect_company_id)
     if enable:
         user_store.enable_user(user["id"])
         _add_flash(request, f"Enabled '{user['username']}'.", "success")
     else:
         user_store.disable_user(user["id"])
         _add_flash(request, f"Disabled '{user['username']}'.", "success")
-    return RedirectResponse(url="/admin/users", status_code=303)
+    return _redirect_admin_users(redirect_company_id)
 
 
 @app.post("/admin/users/{user_id}/reset-password")
@@ -494,14 +732,73 @@ async def admin_reset_password(request: Request, user_id: int):
     form = await request.form()
     new_password = (form.get("new_password") or "").strip()
     user = user_store.get_user_by_id(user_id)
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not new_password:
         _add_flash(request, "Password cannot be empty.", "error")
     else:
-        user_store.set_password(user["id"], new_password)
+        user_store.set_password(user["id"], new_password, require_change=True)
         _add_flash(request, f"Password updated for '{user['username']}'.", "success")
-    return RedirectResponse(url="/admin/users", status_code=303)
+    return _redirect_admin_users(redirect_company_id)
+
+
+@app.post("/admin/companies/create")
+async def admin_create_company_form(request: Request):
+    _require_admin(request)
+    form = await request.form()
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    name = (form.get("name") or "").strip()
+    company_number = (form.get("company_number") or "").strip()
+    phone = (form.get("phone") or "").strip()
+    email = (form.get("email") or "").strip()
+    notes = (form.get("notes") or "").strip()
+    if not name:
+        _add_flash(request, "Company name is required.", "error")
+    else:
+        try:
+            user_store.create_company(
+                name=name,
+                company_number=company_number,
+                phone=phone,
+                email=email,
+                notes=notes,
+            )
+            _add_flash(request, f"Company '{name}' created.", "success")
+        except sqlite3.IntegrityError:
+            _add_flash(request, "Company name already exists.", "error")
+    return _redirect_admin_users(redirect_company_id)
+
+
+@app.post("/admin/companies/{company_id}/update")
+async def admin_update_company_form(request: Request, company_id: int):
+    _require_admin(request)
+    form = await request.form()
+    company = user_store.get_company_by_id(company_id)
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    action = (form.get("action") or "update").lower()
+    if action == "activate":
+        user_store.update_company(company_id, is_active=True)
+        _add_flash(request, f"Company '{company['name']}' activated.", "success")
+        return _redirect_admin_users(redirect_company_id)
+    if action == "deactivate":
+        user_store.update_company(company_id, is_active=False)
+        _add_flash(request, f"Company '{company['name']}' deactivated.", "success")
+        return _redirect_admin_users(redirect_company_id)
+    updates = {}
+    for field in ("name", "company_number", "phone", "email", "notes"):
+        value = form.get(field)
+        if value is not None:
+            updates[field] = value.strip()
+    if updates:
+        user_store.update_company(company_id, **updates)
+        _add_flash(request, "Company details updated.", "success")
+    else:
+        _add_flash(request, "Nothing to update.", "info")
+    return _redirect_admin_users(redirect_company_id)
+
 
 # ---------------------------------------------------------------------------
 # Admin API
@@ -509,9 +806,13 @@ async def admin_reset_password(request: Request, user_id: int):
 
 
 @app.get("/api/admin/users", response_model=List[AdminUserOut])
-async def api_admin_list_users(request: Request) -> List[AdminUserOut]:
+async def api_admin_list_users(
+    request: Request,
+    company_id: Optional[int] = None,
+    include_disabled: bool = True,
+) -> List[AdminUserOut]:
     _require_admin(request)
-    records = user_store.list_users(include_disabled=True)
+    records = user_store.list_users(include_disabled=include_disabled, company_id=company_id)
     return [_user_to_out(record) for record in records]
 
 
@@ -540,11 +841,15 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
             company=(payload.company or "").strip(),
             company_number=(payload.company_number or "").strip(),
             phone=(payload.phone or "").strip(),
+            company_id=payload.company_id,
             is_admin=payload.is_admin,
             is_active=payload.is_active,
+            require_password_change=payload.require_password_change,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="Username already exists.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc) or "Invalid company selection.")
     return _user_to_out(record)
 
 
@@ -554,21 +859,37 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
     record = user_store.get_user_by_id(user_id)
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
+    data = payload.model_dump(exclude_unset=True)
     updates: Dict[str, Any] = {}
-    for field in ("name", "email", "company", "company_number", "phone"):
-        value = getattr(payload, field)
-        if value is not None:
-            updates[field] = value.strip()
-    if payload.is_admin is not None:
-        _ensure_can_change_admin_flag(request, record, payload.is_admin)
-        updates["is_admin"] = payload.is_admin
+    for field in ("name", "email", "company_number", "phone"):
+        if field in data and data[field] is not None:
+            updates[field] = data[field].strip()
+    if "company" in data:
+        updates["company"] = (data["company"] or "").strip()
+    if "company_id" in data:
+        updates["company_id"] = data["company_id"]
+        if data["company_id"] is None and "company" not in updates:
+            updates["company"] = ""
+    if "is_admin" in data:
+        _ensure_can_change_admin_flag(request, record, data["is_admin"])
+        updates["is_admin"] = data["is_admin"]
+    if "require_password_change" in data:
+        updates["require_password_change"] = data["require_password_change"]
     target_is_admin = updates.get("is_admin", record["is_admin"])
-    if payload.is_active is not None:
-        _ensure_can_change_active_status(request, record, enable=payload.is_active, target_is_admin=target_is_admin)
-        updates["is_active"] = payload.is_active
+    if "is_active" in data:
+        _ensure_can_change_active_status(
+            request,
+            record,
+            enable=data["is_active"],
+            target_is_admin=target_is_admin,
+        )
+        updates["is_active"] = data["is_active"]
     if not updates:
         return _user_to_out(record)
-    user_store.update_user(record["id"], **updates)
+    try:
+        user_store.update_user(record["id"], **updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc) or "Invalid company selection.")
     updated = user_store.get_user_by_id(record["id"])
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
@@ -584,8 +905,59 @@ async def api_admin_reset_password(request: Request, user_id: int, payload: Admi
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user_store.set_password(user_id, new_password)
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    user_store.set_password(user_id, new_password, require_change=True)
     return AdminActionResult(status="ok", message=f"Password updated for '{user['username']}'.")
+
+
+
+@app.get("/api/admin/companies", response_model=List[AdminCompanyOut])
+async def api_admin_list_companies(request: Request, include_inactive: bool = True) -> List[AdminCompanyOut]:
+    _require_admin(request)
+    records = user_store.list_companies(include_inactive=include_inactive)
+    return [_company_to_out(record) for record in records]
+
+
+@app.get("/api/admin/companies/{company_id}", response_model=AdminCompanyOut)
+async def api_admin_get_company(request: Request, company_id: int) -> AdminCompanyOut:
+    _require_admin(request)
+    record = user_store.get_company_by_id(company_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return _company_to_out(record)
+
+
+@app.post("/api/admin/companies", response_model=AdminCompanyOut, status_code=201)
+async def api_admin_create_company(request: Request, payload: AdminCompanyCreate) -> AdminCompanyOut:
+    _require_admin(request)
+    try:
+        record = user_store.create_company(
+            name=payload.name,
+            company_number=(payload.company_number or "").strip(),
+            phone=(payload.phone or "").strip(),
+            email=(payload.email or "").strip(),
+            notes=(payload.notes or "").strip(),
+            is_active=payload.is_active,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="Company name already exists.")
+    return _company_to_out(record)
+
+
+@app.patch("/api/admin/companies/{company_id}", response_model=AdminCompanyOut)
+async def api_admin_update_company(request: Request, company_id: int, payload: AdminCompanyUpdate) -> AdminCompanyOut:
+    _require_admin(request)
+    record = user_store.get_company_by_id(company_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Company not found")
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        return _company_to_out(record)
+    user_store.update_company(company_id, **data)
+    updated = user_store.get_company_by_id(company_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return _company_to_out(updated)
 
 
 @app.post("/api/search", response_model=SearchResp)

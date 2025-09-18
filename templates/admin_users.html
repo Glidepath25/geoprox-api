@@ -11,23 +11,27 @@
     main { padding:2rem; display:flex; flex-direction:column; gap:1.5rem; }
     .card { background:#12263a; border-radius:12px; padding:1.5rem; }
     label { display:block; font-size:0.82rem; color:#9fb3c7; margin-bottom:0.25rem; }
-    input[type=text], input[type=password], input[type=email] {
+    input[type=text], input[type=password], input[type=email], select, textarea {
       width:100%; padding:0.55rem 0.65rem; border-radius:8px; border:1px solid rgba(255,255,255,0.08);
       background:#0f1f31; color:#e6f1ff; margin-bottom:0.7rem;
     }
+    select { min-width:160px; }
+    textarea { min-height:72px; resize:vertical; }
     .flex { display:flex; gap:1rem; flex-wrap:wrap; }
-    .flex > div { flex:1; min-width:180px; }
+    .flex > div { flex:1; min-width:200px; }
     .actions { display:flex; gap:0.6rem; align-items:center; }
-    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; }
+    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; display:inline-block; }
     .btn.primary { background:#2b7cff; border-color:#2b7cff; color:#fff; }
     .btn.danger { border-color:rgba(255,120,120,0.6); color:#ff9e9e; }
     .btn.success { border-color:rgba(83,232,139,0.4); color:#7ff0c0; }
+    .btn.small { padding:0.3rem 0.7rem; font-size:0.82rem; }
     .btn:hover { background:rgba(255,255,255,0.08); }
     .flash { padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; }
     .flash.success { background:rgba(46,204,113,0.12); border:1px solid rgba(46,204,113,0.4); }
     .flash.error { background:rgba(231,76,60,0.12); border:1px solid rgba(231,76,60,0.4); }
+    .flash.info { background:rgba(52,152,219,0.12); border:1px solid rgba(52,152,219,0.4); }
     table { width:100%; border-collapse:collapse; margin-top:1rem; }
-    th, td { padding:0.65rem 0.75rem; border-bottom:1px solid rgba(255,255,255,0.06); text-align:left; }
+    th, td { padding:0.65rem 0.75rem; border-bottom:1px solid rgba(255,255,255,0.06); text-align:left; vertical-align:top; }
     th { background:#18344d; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; }
     tr:last-child td { border-bottom:none; }
     .status-chip { display:inline-block; padding:0.2rem 0.6rem; border-radius:999px; font-size:0.7rem; text-transform:uppercase; }
@@ -37,8 +41,11 @@
     form.inline > div { min-width:160px; flex:1; }
     form.inline label { margin-bottom:0.35rem; }
     .checkbox { display:flex; align-items:center; gap:0.4rem; color:#9fb3c7; font-size:0.82rem; }
-    .small-note { font-size:0.78rem; color:#9fb3c7; margin-top:-0.4rem; margin-bottom:0.6rem; }
+    .small-note { font-size:0.78rem; color:#9fb3c7; margin-top:-0.3rem; margin-bottom:0.6rem; }
     .muted { color:#9fb3c7; font-size:0.82rem; }
+    .filter-form { display:flex; gap:1rem; align-items:flex-end; margin-bottom:0.75rem; }
+    .filter-form select { min-width:220px; }
+    .table-note { font-size:0.78rem; color:#9fb3c7; }
   </style>
 </head>
 <body>
@@ -62,8 +69,111 @@
     <div class="muted">Signed in as {{ current_user }}</div>
 
     <section class="card">
+      <h2 style="margin-top:0;">Companies</h2>
+      <form method="post" action="/admin/companies/create" style="margin-bottom:1.2rem;">
+        <h3 style="margin:0 0 0.8rem 0; font-size:1rem;">Create a company</h3>
+        <div class="flex">
+          <div>
+            <label for="company_name">Name</label>
+            <input id="company_name" name="name" type="text" required placeholder="Acme Utilities">
+          </div>
+          <div>
+            <label for="company_number">Company number</label>
+            <input id="company_number" name="company_number" type="text" placeholder="NI123456">
+          </div>
+          <div>
+            <label for="company_phone">Phone</label>
+            <input id="company_phone" name="phone" type="text" placeholder="+44...">
+          </div>
+        </div>
+        <div class="flex">
+          <div>
+            <label for="company_email">Email</label>
+            <input id="company_email" name="email" type="email" placeholder="contact@example.com">
+          </div>
+          <div>
+            <label for="company_notes">Notes</label>
+            <textarea id="company_notes" name="notes" placeholder="Licensing scope, primary contacts..."></textarea>
+          </div>
+        </div>
+        <button class="btn primary" type="submit">Create company</button>
+      </form>
+
+      {% if companies %}
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Company #</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Notes</th>
+            <th style="width:220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for company in companies %}
+          <tr>
+            <td>{{ company.name }}</td>
+            <td>{{ company.company_number or '-' }}</td>
+            <td>{{ company.phone or '-' }}</td>
+            <td>{{ company.email or '-' }}</td>
+            <td>
+              <span class="status-chip {{ 'status-active' if company.is_active else 'status-disabled' }}">
+                {{ 'Active' if company.is_active else 'Inactive' }}
+              </span>
+            </td>
+            <td>{{ company.notes or '-' }}</td>
+            <td>
+              <form method="post" action="/admin/companies/{{ company.id }}/update" style="display:inline;">
+                <input type="hidden" name="action" value="{{ 'deactivate' if company.is_active else 'activate' }}">
+                <button class="btn {{ 'danger' if company.is_active else 'success' }} small" type="submit">
+                  {{ 'Deactivate' if company.is_active else 'Activate' }}
+                </button>
+              </form>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="7">
+              <form class="inline" method="post" action="/admin/companies/{{ company.id }}/update">
+                <input type="hidden" name="action" value="update">
+                <div>
+                  <label>Name</label>
+                  <input name="name" type="text" value="{{ company.name }}">
+                </div>
+                <div>
+                  <label>Company number</label>
+                  <input name="company_number" type="text" value="{{ company.company_number }}">
+                </div>
+                <div>
+                  <label>Phone</label>
+                  <input name="phone" type="text" value="{{ company.phone }}">
+                </div>
+                <div>
+                  <label>Email</label>
+                  <input name="email" type="email" value="{{ company.email }}">
+                </div>
+                <div style="flex:1; min-width:220px;">
+                  <label>Notes</label>
+                  <textarea name="notes">{{ company.notes }}</textarea>
+                </div>
+                <button class="btn" type="submit">Save changes</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="table-note">No companies recorded yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
       <h2 style="margin-top:0;">Add user</h2>
       <form method="post" action="/admin/users/create">
+        <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
         <div class="flex">
           <div>
             <label for="username">Username</label>
@@ -80,27 +190,39 @@
         </div>
         <div class="flex">
           <div>
-            <label for="company">Company</label>
-            <input id="company" name="company" type="text">
+            <label for="company_id">Assign to company</label>
+            <select id="company_id" name="company_id">
+              <option value="">Unassigned</option>
+              {% for company in companies %}
+                <option value="{{ company.id }}" {% if selected_company == company.id %}selected{% endif %}>
+                  {{ company.name }}{% if not company.is_active %} (inactive){% endif %}
+                </option>
+              {% endfor %}
+            </select>
           </div>
           <div>
-            <label for="company_number">Company number</label>
-            <input id="company_number" name="company_number" type="text">
+            <label for="company">New company name (optional)</label>
+            <input id="company" name="company" type="text" placeholder="Only if creating a new company">
+            <p class="small-note">If provided, a new company will be created and assigned.</p>
+          </div>
+        </div>
+        <div class="flex">
+          <div>
+            <label for="company_number_new">Company number</label>
+            <input id="company_number_new" name="company_number" type="text">
           </div>
           <div>
             <label for="phone">Phone number</label>
             <input id="phone" name="phone" type="text">
           </div>
-        </div>
-        <div class="flex">
           <div>
             <label for="password">Password</label>
             <input id="password" name="password" type="password" required autocomplete="new-password">
           </div>
-          <div class="checkbox" style="margin-bottom:0.7rem;">
-            <input id="is_admin" name="is_admin" type="checkbox">
-            <label for="is_admin" style="margin-bottom:0;">Administrator</label>
-          </div>
+        </div>
+        <div class="checkbox" style="margin-bottom:0.7rem;">
+          <input id="is_admin" name="is_admin" type="checkbox">
+          <label for="is_admin" style="margin-bottom:0;">Administrator</label>
         </div>
         <button class="btn primary" type="submit">Create user</button>
       </form>
@@ -108,6 +230,22 @@
 
     <section class="card">
       <h2 style="margin-top:0;">Existing users</h2>
+      <form class="filter-form" method="get" action="/admin/users">
+        <div>
+          <label for="company_filter">Filter by company</label>
+          <select id="company_filter" name="company_id" onchange="this.form.submit()">
+            <option value="">All companies</option>
+            {% for company in companies %}
+              <option value="{{ company.id }}" {% if selected_company == company.id %}selected{% endif %}>
+                {{ company.name }}{% if not company.is_active %} (inactive){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if selected_company %}
+        <a class="btn small" href="/admin/users">Clear filter</a>
+        {% endif %}
+      </form>
       {% if users %}
       <table>
         <thead>
@@ -128,28 +266,36 @@
             <td>{{ user.username }}</td>
             <td>{{ user.name }}</td>
             <td>{{ user.email or '-' }}</td>
-            <td>{{ user.company or '-' }}</td>
+            <td>
+              {{ user.company or '-' }}
+              {% if user.company_id %}<span class="table-note">(ID {{ user.company_id }})</span>{% endif %}
+            </td>
             <td>{{ user.phone or '-' }}</td>
             <td>{{ 'Admin' if user.is_admin else 'User' }}</td>
             <td>
               <span class="status-chip {{ 'status-active' if user.is_active else 'status-disabled' }}">{{ 'Active' if user.is_active else 'Disabled' }}</span>
+              {% if user.require_password_change %}<div class="table-note">Password change required</div>{% endif %}
             </td>
             <td>
               <form method="post" action="/admin/users/{{ user.id }}/toggle" style="display:inline;">
                 <input type="hidden" name="action" value="{{ 'disable' if user.is_active else 'enable' }}">
-                <button class="btn {{ 'danger' if user.is_active else 'success' }}" type="submit">
+                <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
+                <button class="btn {{ 'danger' if user.is_active else 'success' }} small" type="submit">
                   {{ 'Disable' if user.is_active else 'Enable' }}
                 </button>
               </form>
               <form method="post" action="/admin/users/{{ user.id }}/reset-password" style="display:inline; margin-left:0.4rem;">
+                <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                 <input type="password" name="new_password" placeholder="New password" style="width:160px;" autocomplete="new-password">
-                <button class="btn" type="submit">Reset</button>
+                <button class="btn small" type="submit">Reset</button>
               </form>
             </td>
           </tr>
           <tr>
             <td colspan="8">
               <form class="inline" method="post" action="/admin/users/{{ user.id }}/update">
+                <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
+                <input type="hidden" name="require_password_change_present" value="1">
                 <div>
                   <label>Name</label>
                   <input name="name" type="text" value="{{ user.name }}">
@@ -160,7 +306,15 @@
                 </div>
                 <div>
                   <label>Company</label>
-                  <input name="company" type="text" value="{{ user.company }}">
+                  <select name="company_id">
+                    <option value="">Unassigned</option>
+                    {% for company in companies %}
+                      <option value="{{ company.id }}" {% if user.company_id == company.id %}selected{% endif %}>
+                        {{ company.name }}{% if not company.is_active %} (inactive){% endif %}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <input name="company" type="text" placeholder="New company name">
                 </div>
                 <div>
                   <label>Company number</label>
@@ -174,6 +328,10 @@
                   <input type="checkbox" id="admin_{{ user.id }}" name="is_admin" {% if user.is_admin %}checked{% endif %}>
                   <label for="admin_{{ user.id }}" style="margin-bottom:0;">Administrator</label>
                 </div>
+                <div class="checkbox">
+                  <input type="checkbox" id="pwreset_{{ user.id }}" name="require_password_change" {% if user.require_password_change %}checked{% endif %}>
+                  <label for="pwreset_{{ user.id }}" style="margin-bottom:0;">Require password change</label>
+                </div>
                 <button class="btn" type="submit">Save changes</button>
               </form>
             </td>
@@ -182,7 +340,7 @@
         </tbody>
       </table>
       {% else %}
-        <p class="small-note">No user accounts found.</p>
+        <p class="table-note">No user accounts found for this filter.</p>
       {% endif %}
     </section>
   </main>
