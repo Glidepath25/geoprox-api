@@ -318,6 +318,8 @@ def api_search(request: Request, req: SearchReq):
             arts["pdf_url"] = f"/artifacts/{Path(arts['pdf_path']).name}"
         if arts.get("map_html_path") and not arts.get("map_url"):
             arts["map_url"] = f"/artifacts/{Path(arts['map_html_path']).name}"
+        if arts.get("map_image_path") and not arts.get("map_image_url"):
+            arts["map_image_url"] = f"/artifacts/{Path(arts['map_image_path']).name}"
 
         result["artifacts"] = arts
 

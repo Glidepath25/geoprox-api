@@ -20,6 +20,8 @@ import folium
 from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform, nearest_points
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 import pyproj
 from pyproj.enums import TransformDirection
 
@@ -27,7 +29,7 @@ from pyproj.enums import TransformDirection
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 
 
@@ -247,7 +249,7 @@ def _annotate_distances(
     lat0, lon0 = origin
     transformer = _utm_transformer(lat0, lon0)
     ref_geom = reference_geom or ShapelyPoint(lon0, lat0)
-    reference_projected = None
+    reference_projected: Optional[BaseGeometry] = None
     inverse_func = None
     if transformer is not None:
         try:
@@ -258,64 +260,88 @@ def _annotate_distances(
 
             inverse_func = _inverse
         except Exception:
-            reference_projected = None
-            inverse_func = None
+            reference_projected = ref_geom
+            transformer = None
+    if reference_projected is None:
+        reference_projected = ref_geom
+
     distances: List[float] = []
-    nearest_lats: List[Optional[float]] = []
-    nearest_lons: List[Optional[float]] = []
+    ref_lats: List[Optional[float]] = []
+    ref_lons: List[Optional[float]] = []
+    feature_edge_lats: List[Optional[float]] = []
+    feature_edge_lons: List[Optional[float]] = []
+
     for _, row in df.iterrows():
         dist: Optional[float] = None
-        nearest_lat: Optional[float] = None
-        nearest_lon: Optional[float] = None
+        ref_lat: Optional[float] = None
+        ref_lon: Optional[float] = None
+        feat_lat: Optional[float] = None
+        feat_lon: Optional[float] = None
         geom = row.get("geom")
-        if isinstance(geom, BaseGeometry) and transformer is not None and reference_projected is not None:
+        if isinstance(geom, BaseGeometry):
+            geom_projected = shapely_transform(transformer.transform, geom) if transformer is not None else geom
             try:
-                projected_geom = shapely_transform(transformer.transform, geom)
-                dist = float(projected_geom.distance(reference_projected))
+                dist = float(geom_projected.distance(reference_projected))
+                closest_geom, closest_ref = nearest_points(geom_projected, reference_projected)
                 if inverse_func is not None:
-                    closest_geom, closest_ref = nearest_points(projected_geom, reference_projected)
-                    target_point = closest_ref if isinstance(ref_geom, BaseGeometry) and not isinstance(ref_geom, ShapelyPoint) else closest_geom
-                    nearest_point = shapely_transform(inverse_func, target_point)
-                    nearest_lon = float(nearest_point.x)
-                    nearest_lat = float(nearest_point.y)
+                    ref_point = shapely_transform(inverse_func, closest_ref)
+                    feat_point = shapely_transform(inverse_func, closest_geom)
+                else:
+                    ref_point = closest_ref
+                    feat_point = closest_geom
+                ref_lon = float(ref_point.x)
+                ref_lat = float(ref_point.y)
+                feat_lon = float(feat_point.x)
+                feat_lat = float(feat_point.y)
             except Exception:
                 dist = None
-                nearest_lat = None
-                nearest_lon = None
+
         if dist is None:
             lat = row.get("lat")
             lon = row.get("lon")
             if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
                 distances.append(float("inf"))
-                nearest_lats.append(None)
-                nearest_lons.append(None)
+                ref_lats.append(None)
+                ref_lons.append(None)
+                feature_edge_lats.append(None)
+                feature_edge_lons.append(None)
                 continue
             lat_f = float(lat)
             lon_f = float(lon)
             if isinstance(ref_geom, ShapelyPoint):
                 dist = float(_haversine_m(lat0, lon0, lat_f, lon_f))
-                nearest_lat = lat_f
-                nearest_lon = lon_f
+                ref_lat = lat0
+                ref_lon = lon0
+                feat_lat = lat_f
+                feat_lon = lon_f
             else:
                 try:
                     candidate_point = ShapelyPoint(lon_f, lat_f)
-                    closest_ref, _ = nearest_points(ref_geom, candidate_point)
-                    boundary_lon = float(closest_ref.x)
-                    boundary_lat = float(closest_ref.y)
-                    dist = float(_haversine_m(lat_f, lon_f, boundary_lat, boundary_lon))
-                    nearest_lat = boundary_lat
-                    nearest_lon = boundary_lon
+                    closest_ref, closest_geom = nearest_points(ref_geom, candidate_point)
+                    ref_lon = float(closest_ref.x)
+                    ref_lat = float(closest_ref.y)
+                    dist = float(_haversine_m(lat_f, lon_f, ref_lat, ref_lon))
+                    feat_lat = float(closest_geom.y) if hasattr(closest_geom, 'y') else lat_f
+                    feat_lon = float(closest_geom.x) if hasattr(closest_geom, 'x') else lon_f
                 except Exception:
                     dist = float(_haversine_m(lat0, lon0, lat_f, lon_f))
-                    nearest_lat = lat_f
-                    nearest_lon = lon_f
+                    ref_lat = lat0
+                    ref_lon = lon0
+                    feat_lat = lat_f
+                    feat_lon = lon_f
+
         distances.append(dist if dist is not None else float("inf"))
-        nearest_lats.append(nearest_lat)
-        nearest_lons.append(nearest_lon)
+        ref_lats.append(ref_lat)
+        ref_lons.append(ref_lon)
+        feature_edge_lats.append(feat_lat)
+        feature_edge_lons.append(feat_lon)
+
     out = df.copy()
     out["distance_m"] = distances
-    out["nearest_lat"] = nearest_lats
-    out["nearest_lon"] = nearest_lons
+    out["nearest_lat"] = ref_lats
+    out["nearest_lon"] = ref_lons
+    out["feature_edge_lat"] = feature_edge_lats
+    out["feature_edge_lon"] = feature_edge_lons
     return out
 
 
@@ -614,6 +640,15 @@ def make_map(
             icon=folium.Icon(color="blue", icon="info-sign"),
         ).add_to(m)
 
+        edge_lat = r.get("feature_edge_lat")
+        edge_lon = r.get("feature_edge_lon")
+        if edge_lat is None or edge_lon is None or pd.isna(edge_lat) or pd.isna(edge_lon):
+            edge_lat = lat_f
+            edge_lon = lon_f
+        else:
+            edge_lat = float(edge_lat)
+            edge_lon = float(edge_lon)
+
         nearest_lat = r.get("nearest_lat")
         nearest_lon = r.get("nearest_lon")
         dist_val = r.get("distance_m")
@@ -625,10 +660,10 @@ def make_map(
             distance_float = None
 
         if is_polygon_mode:
-            line_points = [(lat_f, lon_f), (float(nearest_lat), float(nearest_lon))]
+            line_points = [(edge_lat, edge_lon), (float(nearest_lat), float(nearest_lon))]
             tooltip_text = 'Nearest polygon boundary'
         else:
-            line_points = [(center_lat, center_lon), (float(nearest_lat), float(nearest_lon))]
+            line_points = [(center_lat, center_lon), (edge_lat, edge_lon)]
             tooltip_text = 'Nearest boundary'
 
         folium.PolyLine(line_points, color="#ff9800", weight=2.5, opacity=0.8).add_to(m)
@@ -644,6 +679,133 @@ def make_map(
             tooltip=tooltip_text,
         ).add_to(m)
     m.save(out_html)
+
+
+
+def _render_static_map_image(
+    df: pd.DataFrame,
+    *,
+    center: Tuple[float, float],
+    radius_m: int,
+    out_path: Path,
+    selection_mode: str,
+    selection_geom: Optional[BaseGeometry],
+) -> Optional[Path]:
+    try:
+        lat0, lon0 = center
+        transformer = _utm_transformer(lat0, lon0)
+
+        def to_xy(lat_val: float, lon_val: float) -> Tuple[float, float]:
+            if transformer is not None:
+                x, y = transformer.transform(lon_val, lat_val)
+                return float(x), float(y)
+            return float(lon_val), float(lat_val)
+
+        is_polygon_mode = selection_mode == "polygon" and isinstance(selection_geom, BaseGeometry)
+        center_xy = ShapelyPoint(*to_xy(lat0, lon0))
+        if is_polygon_mode and isinstance(selection_geom, BaseGeometry):
+            try:
+                reference_geom_xy: BaseGeometry = shapely_transform(transformer.transform, selection_geom) if transformer else selection_geom
+            except Exception:
+                reference_geom_xy = selection_geom
+        else:
+            reference_geom_xy = center_xy.buffer(radius_m) if transformer else center_xy
+
+        fig = Figure(figsize=(6, 6), dpi=150)
+        ax = fig.add_subplot(111)
+        fig.patch.set_facecolor('#09121d')
+        ax.set_facecolor('#09121d')
+
+        xs: List[float] = []
+        ys: List[float] = []
+
+        if is_polygon_mode and isinstance(reference_geom_xy, BaseGeometry) and not isinstance(reference_geom_xy, ShapelyPoint):
+            try:
+                if isinstance(reference_geom_xy, Polygon):
+                    polygons = [reference_geom_xy]
+                else:
+                    polygons = [geom for geom in getattr(reference_geom_xy, 'geoms', []) if isinstance(geom, Polygon)]
+                for geom in polygons:
+                    x_coords, y_coords = geom.exterior.xy
+                    ax.plot(x_coords, y_coords, color='#1F6FEB', linewidth=2.2)
+                    xs.extend(x_coords)
+                    ys.extend(y_coords)
+            except Exception:
+                pass
+        else:
+            buffer_geom = center_xy.buffer(radius_m if transformer is not None else radius_m / 111_000.0)
+            x_coords, y_coords = buffer_geom.exterior.xy
+            ax.plot(x_coords, y_coords, color='#1F6FEB', linewidth=2.2)
+            xs.extend(x_coords)
+            ys.extend(y_coords)
+
+        feature_pts: List[Tuple[float, float]] = []
+        edge_pts: List[Tuple[float, float]] = []
+        boundary_pts: List[Tuple[float, float]] = []
+        for _, row in df.iterrows():
+            lat = row.get('lat')
+            lon = row.get('lon')
+            if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
+                continue
+            fx, fy = to_xy(float(lat), float(lon))
+            feature_pts.append((fx, fy))
+            xs.append(fx)
+            ys.append(fy)
+
+            edge_lat = row.get('feature_edge_lat')
+            edge_lon = row.get('feature_edge_lon')
+            if edge_lat is None or edge_lon is None or pd.isna(edge_lat) or pd.isna(edge_lon):
+                edge_lat = float(lat)
+                edge_lon = float(lon)
+            edge_x, edge_y = to_xy(float(edge_lat), float(edge_lon))
+            edge_pts.append((edge_x, edge_y))
+            xs.append(edge_x)
+            ys.append(edge_y)
+
+            nearest_lat = row.get('nearest_lat')
+            nearest_lon = row.get('nearest_lon')
+            if nearest_lat is None or nearest_lon is None or pd.isna(nearest_lat) or pd.isna(nearest_lon):
+                continue
+            bx, by = to_xy(float(nearest_lat), float(nearest_lon))
+            boundary_pts.append((bx, by))
+            xs.append(bx)
+            ys.append(by)
+
+            if is_polygon_mode:
+                start_x, start_y = edge_x, edge_y
+                end_x, end_y = bx, by
+            else:
+                start_x, start_y = center_xy.x, center_xy.y
+                end_x, end_y = edge_x, edge_y
+            ax.plot([start_x, end_x], [start_y, end_y], color='#ff9800', linewidth=1.6, alpha=0.9)
+
+        if feature_pts:
+            ax.scatter([p[0] for p in feature_pts], [p[1] for p in feature_pts], color='#4fb3ff', s=16, zorder=5)
+        if edge_pts:
+            ax.scatter([p[0] for p in edge_pts], [p[1] for p in edge_pts], color='#4fb3ff', s=10, zorder=5, alpha=0.6)
+        if boundary_pts:
+            ax.scatter([p[0] for p in boundary_pts], [p[1] for p in boundary_pts], color='#ff9800', s=20, zorder=6)
+
+        ax.scatter([center_xy.x], [center_xy.y], color='#ff5252', s=24, zorder=7)
+
+        if xs and ys:
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            span_x = max(max_x - min_x, 1.0)
+            span_y = max(max_y - min_y, 1.0)
+            pad = max(span_x, span_y) * 0.15
+            ax.set_xlim(min_x - pad, max_x + pad)
+            ax.set_ylim(min_y - pad, max_y + pad)
+
+        ax.set_aspect('equal', 'box')
+        ax.axis('off')
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        FigureCanvasAgg(fig).print_png(str(out_path))
+        return out_path
+    except Exception as exc:
+        log.warning('Failed to render static map image: %s', exc)
+        return None
 
 
 
@@ -763,6 +925,10 @@ def generate_pdf_summary(
     )
     flow.append(sum_tbl)
     flow.append(Spacer(1, 6 * mm))
+
+    if map_image and Path(map_image).exists():
+        flow.append(Image(str(map_image), width=170 * mm, height=170 * mm))
+        flow.append(Spacer(1, 6 * mm))
 
     # Details table (<=100 m)
     flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
@@ -904,6 +1070,15 @@ def run_geoprox_search(
     safe_permit = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _permit)[:60] or "no_permit"
     map_html = out_dir / f"proximity_map_{safe_permit}.html"
     make_map(df, (lat, lon), radius_m, str(map_html), selection_mode=effective_mode, selection_geom=selection_polygon)
+    map_image_path = out_dir / f"proximity_static_{safe_permit}.png"
+    map_image_file = _render_static_map_image(
+        df,
+        center=(lat, lon),
+        radius_m=radius_m,
+        out_path=map_image_path,
+        selection_mode=effective_mode,
+        selection_geom=selection_polygon,
+    )
 
     safe_name = safe_permit or "no_permit"
     pdf_path = out_dir / f"GeoProx - {safe_name}.pdf"
@@ -926,7 +1101,7 @@ def run_geoprox_search(
         display_center=disp,
         summary_bins=summary,
         pdf_path=str(pdf_path),
-        map_image=None,
+        map_image=str(map_image_file) if map_image_file else None,
         details_rows=details,
         map_html=str(map_html),
         permit=_permit,
@@ -946,6 +1121,8 @@ def run_geoprox_search(
         selection_payload["query_radius_m"] = query_radius
     if polygon_latlon:
         selection_payload["polygon"] = polygon_latlon
+    if map_image_file:
+        selection_payload["map_image_path"] = str(map_image_file)
 
 
 
@@ -982,7 +1159,7 @@ def run_geoprox_search(
                 "summary": summary_payload,
                 "summary_bins": summary,
                 "details_100m": details_rows_json,
-                "artifacts": {"pdf_url": pdf_url, "map_html_url": html_url},
+                "artifacts": {"pdf_url": pdf_url, "map_html_url": html_url, "map_image_path": str(map_image_file) if map_image_file else None},
                 "selection": selection_payload,
             }
         except Exception as e:
@@ -994,7 +1171,7 @@ def run_geoprox_search(
                 "summary": summary_payload,
                 "summary_bins": summary,
                 "details_100m": details_rows_json,
-                "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
+                "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html), "map_image_path": str(map_image_file) if map_image_file else None},
                 "warning": f"S3 upload failed: {e}",
                 "selection": selection_payload,
             }
@@ -1007,7 +1184,7 @@ def run_geoprox_search(
         "summary": summary_payload,
         "summary_bins": summary,
         "details_100m": details_rows_json,
-        "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
+        "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html), "map_image_path": str(map_image_file) if map_image_file else None},
         "selection": selection_payload,
     }
 
