@@ -304,6 +304,8 @@ def api_search(request: Request, req: SearchReq):
             w3w_key=w3w_key,
             max_results=req.max_results,
             user_name=username,
+            selection_mode=selection_mode,
+            polygon=polygon_vertices,
         )
 
         log.info(f"Search result: {result}")
@@ -319,9 +321,11 @@ def api_search(request: Request, req: SearchReq):
 
         result["artifacts"] = arts
 
-        selection_info = {"mode": selection_mode}
-        if polygon_vertices:
-            selection_info["polygon"] = polygon_vertices
+        selection_info = result.get("selection") or {}
+        if "mode" not in selection_info:
+            selection_info["mode"] = selection_mode
+        if polygon_vertices and not selection_info.get("polygon"):
+            selection_info["polygon"] = [[float(lat), float(lon)] for lat, lon in polygon_vertices]
         result["selection"] = selection_info
 
         timestamp = datetime.utcnow().isoformat() + "Z"
@@ -346,7 +350,7 @@ def api_search(request: Request, req: SearchReq):
                  "radius_m": req.radius_m,
                  "outcome": outcome,
                  "permit": req.permit,
-                 "mode": selection_mode}
+                 "mode": selection_info.get("mode", selection_mode)}
         history = request.session.get("history") or []
         history.append(entry)
         request.session["history"] = history[-20:]

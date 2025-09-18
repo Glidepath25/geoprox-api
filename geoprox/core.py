@@ -236,22 +236,29 @@ def _utm_transformer(lat: float, lon: float) -> Optional[pyproj.Transformer]:
         return None
 
 
-def _annotate_distances(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.DataFrame:
+def _annotate_distances(
+    df: pd.DataFrame,
+    origin: Tuple[float, float],
+    *,
+    reference_geom: Optional[BaseGeometry] = None,
+) -> pd.DataFrame:
     if df.empty:
         return df
     lat0, lon0 = origin
     transformer = _utm_transformer(lat0, lon0)
-    origin_point = ShapelyPoint(lon0, lat0)
-    origin_projected = None
+    ref_geom = reference_geom or ShapelyPoint(lon0, lat0)
+    reference_projected = None
     inverse_func = None
     if transformer is not None:
         try:
-            origin_projected = shapely_transform(transformer.transform, origin_point)
+            reference_projected = shapely_transform(transformer.transform, ref_geom)
+
             def _inverse(x, y, z=None, _transform=transformer):
                 return _transform.transform(x, y, z, direction=TransformDirection.INVERSE)
+
             inverse_func = _inverse
         except Exception:
-            origin_projected = None
+            reference_projected = None
             inverse_func = None
     distances: List[float] = []
     nearest_lats: List[Optional[float]] = []
@@ -261,13 +268,14 @@ def _annotate_distances(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.Dat
         nearest_lat: Optional[float] = None
         nearest_lon: Optional[float] = None
         geom = row.get("geom")
-        if geom is not None and transformer is not None and origin_projected is not None:
+        if isinstance(geom, BaseGeometry) and transformer is not None and reference_projected is not None:
             try:
                 projected_geom = shapely_transform(transformer.transform, geom)
-                dist = float(origin_projected.distance(projected_geom))
+                dist = float(projected_geom.distance(reference_projected))
                 if inverse_func is not None:
-                    _, closest = nearest_points(origin_projected, projected_geom)
-                    nearest_point = shapely_transform(inverse_func, closest)
+                    closest_geom, closest_ref = nearest_points(projected_geom, reference_projected)
+                    target_point = closest_ref if isinstance(ref_geom, BaseGeometry) and not isinstance(ref_geom, ShapelyPoint) else closest_geom
+                    nearest_point = shapely_transform(inverse_func, target_point)
                     nearest_lon = float(nearest_point.x)
                     nearest_lat = float(nearest_point.y)
             except Exception:
@@ -282,10 +290,26 @@ def _annotate_distances(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.Dat
                 nearest_lats.append(None)
                 nearest_lons.append(None)
                 continue
-            dist = float(_haversine_m(lat0, lon0, float(lat), float(lon)))
-            nearest_lat = float(lat)
-            nearest_lon = float(lon)
-        distances.append(dist)
+            lat_f = float(lat)
+            lon_f = float(lon)
+            if isinstance(ref_geom, ShapelyPoint):
+                dist = float(_haversine_m(lat0, lon0, lat_f, lon_f))
+                nearest_lat = lat_f
+                nearest_lon = lon_f
+            else:
+                try:
+                    candidate_point = ShapelyPoint(lon_f, lat_f)
+                    closest_ref, _ = nearest_points(ref_geom, candidate_point)
+                    boundary_lon = float(closest_ref.x)
+                    boundary_lat = float(closest_ref.y)
+                    dist = float(_haversine_m(lat_f, lon_f, boundary_lat, boundary_lon))
+                    nearest_lat = boundary_lat
+                    nearest_lon = boundary_lon
+                except Exception:
+                    dist = float(_haversine_m(lat0, lon0, lat_f, lon_f))
+                    nearest_lat = lat_f
+                    nearest_lon = lon_f
+        distances.append(dist if dist is not None else float("inf"))
         nearest_lats.append(nearest_lat)
         nearest_lons.append(nearest_lon)
     out = df.copy()
@@ -295,10 +319,12 @@ def _annotate_distances(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.Dat
     return out
 
 
-def _ensure_distance_column(df: pd.DataFrame, origin: Tuple[float, float]) -> pd.DataFrame:
+def _ensure_distance_column(
+    df: pd.DataFrame, origin: Tuple[float, float], reference_geom: Optional[BaseGeometry] = None
+) -> pd.DataFrame:
     if df.empty or "distance_m" in df.columns:
         return df
-    return _annotate_distances(df, origin)
+    return _annotate_distances(df, origin, reference_geom=reference_geom)
 
 
 def _build_summary_payload(
@@ -419,7 +445,9 @@ def osm_elements_to_df(data: Dict[str, Any]) -> pd.DataFrame:
     return df
 
 
-def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str, Dict[str, int]]:
+def summarise_by_bins(
+    df: pd.DataFrame, origin: Tuple[float, float], reference_geom: Optional[BaseGeometry] = None
+) -> Dict[str, Dict[str, int]]:
     out: Dict[str, Dict[str, int]] = {}
 
     bins_template = {"<10m": 0, "10-25m": 0, "25-100m": 0, ">100m / not found": 0}
@@ -440,7 +468,7 @@ def summarise_by_bins(df: pd.DataFrame, origin: Tuple[float, float]) -> Dict[str
             out[label] = dict(bins_template)
         return out
 
-    dfe = _ensure_distance_column(df, origin).copy()
+    dfe = _ensure_distance_column(df, origin, reference_geom=reference_geom).copy()
     if "distance_m" not in dfe.columns:
         dfe["distance_m"] = float("inf")
     dfe["distance_m"] = pd.to_numeric(dfe["distance_m"], errors="coerce").fillna(float("inf"))
@@ -511,12 +539,14 @@ def _display_category(tags: Dict[str, Any]) -> str:
     return "Other"
 
 
-def build_details_rows(df: pd.DataFrame, origin: Tuple[float, float]) -> List[Tuple[Any, ...]]:
+def build_details_rows(
+    df: pd.DataFrame, origin: Tuple[float, float], reference_geom: Optional[BaseGeometry] = None
+) -> List[Tuple[Any, ...]]:
     """Return rows for the <=100 m table, nearest -> farthest."""
     if df.empty:
         return []
 
-    dfe = _ensure_distance_column(df, origin).copy()
+    dfe = _ensure_distance_column(df, origin, reference_geom=reference_geom).copy()
     if "distance_m" not in dfe.columns:
         dfe["distance_m"] = float("inf")
     dfe["distance_m"] = pd.to_numeric(dfe["distance_m"], errors="coerce").fillna(float("inf"))
@@ -538,19 +568,48 @@ def build_details_rows(df: pd.DataFrame, origin: Tuple[float, float]) -> List[Tu
     return rows
 
 
-def make_map(df: pd.DataFrame, center: Tuple[float, float], radius_m: int, out_html: str) -> None:
+def make_map(
+    df: pd.DataFrame,
+    center: Tuple[float, float],
+    radius_m: int,
+    out_html: str,
+    *,
+    selection_mode: str = "point",
+    selection_geom: Optional[BaseGeometry] = None,
+) -> None:
     m = folium.Map(location=center, zoom_start=15, control_scale=True)
-    folium.Marker(center, tooltip="Search origin", icon=folium.Icon(color="red")).add_to(m)
-    folium.Circle(center, radius=radius_m, color="#1F6FEB", fill=False).add_to(m)
-
     center_lat, center_lon = float(center[0]), float(center[1])
+    is_polygon_mode = selection_mode == "polygon" and isinstance(selection_geom, BaseGeometry)
+
+    if is_polygon_mode:
+        try:
+            polygons: List[List[Tuple[float, float]]] = []
+            if isinstance(selection_geom, Polygon):
+                polygons.append(list(selection_geom.exterior.coords))
+            elif hasattr(selection_geom, "geoms"):
+                for geom in selection_geom.geoms:  # type: ignore[attr-defined]
+                    if isinstance(geom, Polygon):
+                        polygons.append(list(geom.exterior.coords))
+            for ring in polygons:
+                latlngs = [(float(y), float(x)) for x, y in ring]
+                if len(latlngs) >= 3:
+                    folium.Polygon(latlngs, color="#1F6FEB", weight=2.5, fill=False, tooltip="Search polygon").add_to(m)
+        except Exception:
+            pass
+        folium.Marker((center_lat, center_lon), tooltip="Polygon centroid", icon=folium.Icon(color="red")).add_to(m)
+    else:
+        folium.Marker(center, tooltip="Search origin", icon=folium.Icon(color="red")).add_to(m)
+        folium.Circle(center, radius=radius_m, color="#1F6FEB", fill=False).add_to(m)
+
     for _, r in df.iterrows():
         lat = r.get("lat")
         lon = r.get("lon")
         if pd.isna(lat) or pd.isna(lon):
             continue
+        lat_f = float(lat)
+        lon_f = float(lon)
         folium.Marker(
-            (float(lat), float(lon)),
+            (lat_f, lon_f),
             tooltip=f"{r.get('name') or '(unnamed)'}",
             icon=folium.Icon(color="blue", icon="info-sign"),
         ).add_to(m)
@@ -565,15 +624,16 @@ def make_map(df: pd.DataFrame, center: Tuple[float, float], radius_m: int, out_h
         except Exception:
             distance_float = None
 
-        folium.PolyLine(
-            [(center_lat, center_lon), (float(nearest_lat), float(nearest_lon))],
-            color="#ff9800",
-            weight=2.5,
-            opacity=0.8,
-        ).add_to(m)
-        tooltip_text = 'Nearest boundary'
+        if is_polygon_mode:
+            line_points = [(lat_f, lon_f), (float(nearest_lat), float(nearest_lon))]
+            tooltip_text = 'Nearest polygon boundary'
+        else:
+            line_points = [(center_lat, center_lon), (float(nearest_lat), float(nearest_lon))]
+            tooltip_text = 'Nearest boundary'
+
+        folium.PolyLine(line_points, color="#ff9800", weight=2.5, opacity=0.8).add_to(m)
         if distance_float is not None and distance_float != float('inf'):
-            tooltip_text = f"Nearest boundary (distance: {distance_float:.1f} m)"
+            tooltip_text = f"{tooltip_text} (distance: {distance_float:.1f} m)"
         folium.CircleMarker(
             (float(nearest_lat), float(nearest_lon)),
             radius=4,
@@ -584,6 +644,7 @@ def make_map(df: pd.DataFrame, center: Tuple[float, float], radius_m: int, out_h
             tooltip=tooltip_text,
         ).add_to(m)
     m.save(out_html)
+
 
 
 def generate_pdf_summary(
@@ -597,6 +658,7 @@ def generate_pdf_summary(
     user_name: str = DEFAULT_USER,
     search_dt: Optional[datetime] = None,
     outcome: Optional[str] = None,
+    selection_mode: str = "point",
 ) -> None:
     styles = getSampleStyleSheet()
     body = styles["BodyText"]
@@ -605,6 +667,7 @@ def generate_pdf_summary(
 
     when = search_dt or datetime.now()
     outcome_label = (outcome or compute_outcome(summary_bins)).upper()
+    selection_label = "Polygon" if (selection_mode or "point").lower() == "polygon" else "Point"
 
     color_map = {
         "HIGH": colors.HexColor("#c62828"),
@@ -649,7 +712,7 @@ def generate_pdf_summary(
         ],
         [
             Paragraph(f"<b>Search center:</b> {display_center}", body),
-            Paragraph("", body),
+            Paragraph(f"<b>Selection mode:</b> {selection_label}", body),
         ],
     ]
     info_tbl = Table(info_data, colWidths=[95 * mm, 95 * mm])
@@ -772,6 +835,8 @@ def run_geoprox_search(
     w3w_key: Optional[str] = None,
     max_results: int = 500,
     user_name: str = DEFAULT_USER,
+    selection_mode: str = "point",
+    polygon: Optional[List[Tuple[float, float]]] = None,
 ) -> dict:
     # filter/normalise categories
     valid = set(OSM_FILTERS.keys())
@@ -782,15 +847,49 @@ def run_geoprox_search(
     # 1) Geocode
     lat, lon, disp = geocode_location_flex(location, w3w_key)
 
+    effective_mode = (selection_mode or "point").lower()
+    selection_polygon: Optional[Polygon] = None
+    polygon_latlon: Optional[List[List[float]]] = None
+    extra_radius = 0.0
+    if effective_mode == "polygon" and polygon:
+        try:
+            vertices_lonlat: List[Tuple[float, float]] = []
+            for pt in polygon:
+                if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+                    continue
+                v_lat = float(pt[0])
+                v_lon = float(pt[1])
+                vertices_lonlat.append((v_lon, v_lat))
+                extra_radius = max(extra_radius, _haversine_m(lat, lon, v_lat, v_lon))
+            if len(vertices_lonlat) >= 3:
+                candidate_poly = Polygon(vertices_lonlat)
+                if not candidate_poly.is_valid:
+                    candidate_poly = candidate_poly.buffer(0)
+                if candidate_poly and not candidate_poly.is_empty:
+                    selection_polygon = candidate_poly
+                    polygon_latlon = [[float(lat_val), float(lon_val)] for lon_val, lat_val in vertices_lonlat]
+            if selection_polygon is None:
+                effective_mode = "point"
+        except Exception as exc:
+            log.warning("Failed to build selection polygon: %s", exc)
+            selection_polygon = None
+            effective_mode = "point"
+    else:
+        effective_mode = "point"
+
+    reference_geom: BaseGeometry = selection_polygon if selection_polygon is not None else ShapelyPoint(lon, lat)
+    query_radius = radius_m + int(math.ceil(extra_radius)) if effective_mode == "polygon" else radius_m
+
     # 2) Query Overpass
-    qi = QueryInput(lat=lat, lon=lon, radius_m=radius_m, selected_categories=categories)
+    qi = QueryInput(lat=lat, lon=lon, radius_m=query_radius, selected_categories=categories)
     data = run_overpass_resilient(qi)
     df = osm_elements_to_df(data)
-    df = _annotate_distances(df, (lat, lon))
+    df = _annotate_distances(df, (lat, lon), reference_geom=reference_geom)
+
 
     # 3) Summaries
-    summary = summarise_by_bins(df, (lat, lon))
-    details = build_details_rows(df, (lat, lon))
+    summary = summarise_by_bins(df, (lat, lon), reference_geom=reference_geom)
+    details = build_details_rows(df, (lat, lon), reference_geom=reference_geom)
     details = sorted(details, key=lambda row: row[0])
     log.info('Detail rows for PDF: %s', len(details))
 
@@ -804,7 +903,7 @@ def run_geoprox_search(
     _permit = permit or ""
     safe_permit = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _permit)[:60] or "no_permit"
     map_html = out_dir / f"proximity_map_{safe_permit}.html"
-    make_map(df, (lat, lon), radius_m, str(map_html))
+    make_map(df, (lat, lon), radius_m, str(map_html), selection_mode=effective_mode, selection_geom=selection_polygon)
 
     safe_name = safe_permit or "no_permit"
     pdf_path = out_dir / f"GeoProx - {safe_name}.pdf"
@@ -820,6 +919,9 @@ def run_geoprox_search(
         lon=lon,
     )
     summary_payload["user"] = user_name
+    summary_payload["selection_mode"] = effective_mode
+    if polygon_latlon:
+        summary_payload["polygon"] = polygon_latlon
     generate_pdf_summary(
         display_center=disp,
         summary_bins=summary,
@@ -831,6 +933,7 @@ def run_geoprox_search(
         user_name=user_name,
         search_dt=_now,
         outcome=_outcome,
+        selection_mode=effective_mode,
     )
 
     # 5) JSON details for API
@@ -838,6 +941,13 @@ def run_geoprox_search(
         {"distance_m": int(r[0]), "category": r[1], "name": r[2], "lat": float(r[3]), "lon": float(r[4]), "address": r[5]}
         for r in details
     ]
+    selection_payload = {"mode": effective_mode, "centroid": {"lat": lat, "lon": lon}, "radius_m": radius_m}
+    if effective_mode == "polygon":
+        selection_payload["query_radius_m"] = query_radius
+    if polygon_latlon:
+        selection_payload["polygon"] = polygon_latlon
+
+
 
     # 6) Optional S3 upload
     bucket = os.environ.get("GEOPROX_BUCKET", "").strip()
@@ -873,6 +983,7 @@ def run_geoprox_search(
                 "summary_bins": summary,
                 "details_100m": details_rows_json,
                 "artifacts": {"pdf_url": pdf_url, "map_html_url": html_url},
+                "selection": selection_payload,
             }
         except Exception as e:
             # Fall through to local paths with a warning
@@ -885,6 +996,7 @@ def run_geoprox_search(
                 "details_100m": details_rows_json,
                 "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
                 "warning": f"S3 upload failed: {e}",
+                "selection": selection_payload,
             }
 
     # 7) No S3 configured â†’ local paths
@@ -896,5 +1008,6 @@ def run_geoprox_search(
         "summary_bins": summary,
         "details_100m": details_rows_json,
         "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html)},
+        "selection": selection_payload,
     }
 
