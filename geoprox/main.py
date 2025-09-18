@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
 
+from geoprox import history_store
 from geoprox.core import run_geoprox_search
 from geoprox.auth import load_users, verify_user
 
@@ -196,8 +197,9 @@ def auth_status(request: Request):
 
 @app.get("/api/history")
 def api_history(request: Request):
-    _require_user(request)
-    return {"history": request.session.get("history") or []}
+    username = _require_user(request)
+    items = history_store.get_history(username, limit=20)
+    return {"history": items}
 
 
 @app.get("/app")
@@ -227,9 +229,16 @@ def get_artifact(request: Request, path: str):
     return FileResponse(str(full), media_type=media)
 
 
+
+@app.get("/history", response_class=HTMLResponse)
+def history_page(request: Request) -> HTMLResponse:
+    user = _require_user(request)
+    items = history_store.get_history(user, limit=200)
+    return templates.TemplateResponse("history.html", {"request": request, "user": user, "items": items})
+
 @app.post("/api/search", response_model=SearchResp)
 def api_search(request: Request, req: SearchReq):
-    _require_user(request)
+    username = _require_user(request)
     try:
         w3w_key = _load_w3w_key()
         log.info(f"Incoming request: {req.dict()}")
@@ -259,10 +268,28 @@ def api_search(request: Request, req: SearchReq):
 
         result["artifacts"] = arts
 
-        entry = {"timestamp": datetime.utcnow().isoformat() + "Z",
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        outcome = result.get("summary", {}).get("outcome")
+        pdf_name = Path(arts["pdf_path"]).name if arts.get("pdf_path") else None
+        map_name = Path(arts["map_html_path"]).name if arts.get("map_html_path") else None
+
+        history_store.record_search(
+            username=username,
+            timestamp=timestamp,
+            location=safe_location,
+            radius_m=req.radius_m,
+            outcome=outcome,
+            permit=req.permit,
+            pdf_path=pdf_name,
+            map_path=map_name,
+            result=result,
+        )
+
+        entry = {"timestamp": timestamp,
                  "location": safe_location,
                  "radius_m": req.radius_m,
-                 "outcome": result.get("summary", {}).get("outcome")}
+                 "outcome": outcome,
+                 "permit": req.permit}
         history = request.session.get("history") or []
         history.append(entry)
         request.session["history"] = history[-20:]

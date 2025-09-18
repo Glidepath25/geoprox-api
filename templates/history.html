@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GeoProx - History</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background:#0b1724; color:#e6f1ff; margin:0; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#12263a; }
+    header h1 { margin:0; font-size:1.2rem; }
+    main { padding:2rem; }
+    a { color:#2b7cff; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    table { width:100%; border-collapse:collapse; margin-top:1.5rem; background:#12263a; border-radius:12px; overflow:hidden; }
+    th, td { padding:0.75rem 1rem; border-bottom:1px solid rgba(255,255,255,0.05); text-align:left; }
+    th { background:#18344d; text-transform:uppercase; font-size:0.8rem; letter-spacing:0.05em; }
+    tr:last-child td { border-bottom:none; }
+    .muted { color:#9fb3c7; }
+    .empty { margin-top:2rem; color:#9fb3c7; }
+    .chip { display:inline-block; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.75rem; font-weight:600; }
+    .chip-high { background:#6b1111; color:#fff; }
+    .chip-medium { background:#614a00; color:#fff; }
+    .chip-low { background:#0b4d27; color:#fff; }
+    .actions { display:flex; gap:0.6rem; align-items:center; }
+    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; display:inline-block; }
+    .btn:hover { background:rgba(255,255,255,0.08); }
+    form { margin:0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Search History</h1>
+    <div class="actions">
+      <a class="btn" href="/app">Back to app</a>
+      <form method="post" action="/logout">
+        <button class="btn" type="submit">Sign out</button>
+      </form>
+    </div>
+  </header>
+  <main>
+    <div class="muted">Signed in as {{ user }}</div>
+    {% if items %}
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Location</th>
+          <th>Radius (m)</th>
+          <th>Outcome</th>
+          <th>Permit</th>
+          <th>Artifacts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in items %}
+        <tr>
+          <td>{{ row.timestamp }}</td>
+          <td>{{ row.location }}</td>
+          <td>{{ row.radius_m }}</td>
+          <td>
+            {% if row.outcome %}
+              {% set status = row.outcome|upper %}
+              <span class="chip chip-{{ status|lower }}">{{ status }}</span>
+            {% else %}
+              <span class="muted">-</span>
+            {% endif %}
+          </td>
+          <td>{{ row.permit or '-' }}</td>
+          <td>
+            {% set pdf = row.pdf_path %}
+            {% set map = row.map_path %}
+            {% if pdf %}
+              <a href="/artifacts/{{ pdf | urlencode }}" target="_blank" rel="noopener">PDF</a>
+            {% endif %}
+            {% if pdf and map %}
+              <span class="muted">|</span>
+            {% endif %}
+            {% if map %}
+              <a href="/artifacts/{{ map | urlencode }}" target="_blank" rel="noopener">Map</a>
+            {% endif %}
+            {% if not pdf and not map %}
+              <span class="muted">None</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No searches recorded yet.</div>
+    {% endif %}
+  </main>
+</body>
+</html>
