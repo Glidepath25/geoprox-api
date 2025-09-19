@@ -36,7 +36,7 @@ ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts")).resolve()
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 PROMO_PDF_URL = os.environ.get("LOGIN_PROMO_PDF", "/static/geoprox-intro.pdf")
-SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@glidepathsolutions.co.uk")
+SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@geoprox.co.uk")
 
 DEFAULT_W3W_KEY = "OXT6XQ19"
 
@@ -555,7 +555,7 @@ async def request_upgrade(
         return _render_login(
             request,
             status=500,
-            upgrade_error="We couldn't send your enquiry right now. Please email useradmin@glidepathsolutions.co.uk instead.",
+            upgrade_error="We couldn't send your enquiry right now. Please email useradmin@geoprox.co.uk instead.",
             upgrade_data=data,
             open_modal="upgrade",
         )
