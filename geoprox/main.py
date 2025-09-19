@@ -5,6 +5,9 @@ import os
 import logging
 import sqlite3
 import csv
+import smtplib
+import ssl
+from email.message import EmailMessage
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -31,6 +34,9 @@ STATIC_DIR = (REPO_ROOT / "static").resolve()
 TEMPLATES_DIR = (REPO_ROOT / "templates").resolve()
 ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts")).resolve()
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+PROMO_PDF_URL = os.environ.get("LOGIN_PROMO_PDF", "/static/geoprox-brochure.pdf")
+SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@glidepathsolutions.co.uk")
 
 DEFAULT_W3W_KEY = "OXT6XQ19"
 
@@ -194,6 +200,102 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
     request.session["history"] = session_history
 
 
+def _render_login(
+    request: Request,
+    *,
+    status: int = 200,
+    login_error: Optional[str] = None,
+    username: str = "",
+    signup_error: Optional[str] = None,
+    signup_success: Optional[str] = None,
+    signup_data: Optional[Dict[str, str]] = None,
+    upgrade_error: Optional[str] = None,
+    upgrade_success: Optional[str] = None,
+    upgrade_data: Optional[Dict[str, str]] = None,
+    open_modal: Optional[str] = None,
+) -> HTMLResponse:
+    upgrade_options = [
+        (key, meta["label"])
+        for key, meta in user_store.LICENSE_TIERS.items()
+        if key != "free_trial"
+    ]
+    context = {
+        "request": request,
+        "error": login_error,
+        "username": username,
+        "signup_error": signup_error,
+        "signup_success": signup_success,
+        "signup_data": signup_data or {},
+        "upgrade_error": upgrade_error,
+        "upgrade_success": upgrade_success,
+        "upgrade_data": upgrade_data or {},
+        "open_modal": open_modal or "",
+        "promo_pdf_url": PROMO_PDF_URL,
+        "upgrade_options": upgrade_options,
+    }
+    return templates.TemplateResponse("login.html", context, status_code=status)
+
+
+
+def _send_upgrade_email(
+    *,
+    name: str,
+    email: str,
+    company: str,
+    current_tier: str,
+    desired_tier: str,
+    notes: str,
+) -> bool:
+    host = os.environ.get("SMTP_HOST")
+    if not host:
+        log.warning("SMTP_HOST not configured; unable to send upgrade enquiry email")
+        return False
+    try:
+        port = int(os.environ.get("SMTP_PORT", "587"))
+    except ValueError:
+        port = 587
+    username = os.environ.get("SMTP_USERNAME")
+    password = os.environ.get("SMTP_PASSWORD")
+    use_tls = os.environ.get("SMTP_USE_TLS", "true").lower() not in {"false", "0", "no"}
+    from_address = os.environ.get("SMTP_FROM") or username or SUPPORT_EMAIL
+
+    message = EmailMessage()
+    message["Subject"] = "new user enquiry"
+    message["From"] = from_address
+    message["To"] = SUPPORT_EMAIL
+    if email:
+        message["Reply-To"] = email
+    body = (
+        "New GeoProx upgrade enquiry\n\n"
+        f"Name: {name or 'N/A'}\n"
+        f"Email: {email or 'N/A'}\n"
+        f"Company: {company or 'N/A'}\n"
+        f"Current tier: {current_tier or 'Free Trial'}\n"
+        f"Requested tier: {desired_tier or 'N/A'}\n\n"
+        "Additional information:\n"
+        f"{notes or 'N/A'}\n"
+    )
+    message.set_content(body)
+
+    try:
+        if use_tls:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(host, port, timeout=15) as server:
+                server.starttls(context=context)
+                if username and password:
+                    server.login(username, password)
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(host, port, timeout=15) as server:
+                if username and password:
+                    server.login(username, password)
+                server.send_message(message)
+    except Exception:
+        log.exception("Failed to send upgrade enquiry email")
+        return False
+    return True
+
+
 def _parse_optional_int(value: Optional[str]) -> Optional[int]:
     if value is None:
         return None
@@ -311,7 +413,7 @@ def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
 async def login_page(request: Request) -> HTMLResponse:
     if request.session.get("user"):
         return RedirectResponse(url="/app", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None, "username": ""})
+    return _render_login(request)
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -331,10 +433,137 @@ async def login_action(request: Request, username: str = Form(...), password: st
         return RedirectResponse(url="/app", status_code=303)
     else:
         error = "Invalid username or password."
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": error, "username": username},
-        status_code=401,
+    return _render_login(request, status=401, login_error=error, username=username)
+
+
+@app.post("/signup/free-trial", response_class=HTMLResponse)
+async def signup_free_trial(
+    request: Request,
+    full_name: str = Form(...),
+    email: str = Form(""),
+    phone: str = Form(""),
+    company_name: str = Form(...),
+    company_number: str = Form(""),
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+) -> Response:
+    data = {
+        "full_name": full_name.strip(),
+        "email": email.strip(),
+        "phone": phone.strip(),
+        "company_name": company_name.strip(),
+        "company_number": company_number.strip(),
+        "username": username.strip(),
+    }
+
+    def render_error(message: str, *, status: int = 400) -> HTMLResponse:
+        return _render_login(
+            request,
+            status=status,
+            signup_error=message,
+            signup_data=data,
+            open_modal="signup",
+        )
+
+    if len(data["username"]) < 3:
+        return render_error("Username must be at least 3 characters long.")
+    if " " in data["username"]:
+        return render_error("Username cannot contain spaces.")
+    if len(password) < 8:
+        return render_error("Password must be at least 8 characters long.")
+    if password != confirm_password:
+        return render_error("Passwords do not match.")
+    if user_store.get_user_by_username(data["username"]):
+        return render_error("That username is already in use. Please choose a different one.")
+
+    try:
+        user_store.create_user(
+            username=data["username"],
+            password=password,
+            name=data["full_name"],
+            email=data["email"],
+            phone=data["phone"],
+            company=data["company_name"],
+            company_number=data["company_number"],
+            company_id=None,
+            is_admin=False,
+            is_active=True,
+            require_password_change=False,
+            license_tier="free_trial",
+        )
+    except sqlite3.IntegrityError:
+        return render_error("That username is already in use. Please choose a different one.")
+    except ValueError as exc:
+        return render_error(str(exc) or "Unable to create account with the provided details.")
+
+    user_record = user_store.get_user_by_username(data["username"])
+    if not user_record:
+        return render_error("Something went wrong creating your account. Please try again.")
+
+    _start_session_for_user(request, user_record)
+    log.info("Created free trial account for %s", data["username"])
+    return RedirectResponse(url="/app", status_code=303)
+
+
+@app.post("/request-upgrade", response_class=HTMLResponse)
+async def request_upgrade(
+    request: Request,
+    contact_name: str = Form(...),
+    contact_email: str = Form(...),
+    company: str = Form(""),
+    current_tier: str = Form("Free Trial"),
+    desired_tier: str = Form(...),
+    notes: str = Form(""),
+) -> HTMLResponse:
+    data = {
+        "contact_name": contact_name.strip(),
+        "contact_email": contact_email.strip(),
+        "company": company.strip(),
+        "current_tier": current_tier.strip() or "Free Trial",
+        "desired_tier": desired_tier.strip().lower(),
+        "notes": notes.strip(),
+    }
+
+    if not data["desired_tier"]:
+        return _render_login(
+            request,
+            status=400,
+            upgrade_error="Please select the licence tier you're interested in.",
+            upgrade_data=data,
+            open_modal="upgrade",
+        )
+
+    if data["desired_tier"] not in user_store.LICENSE_TIERS:
+        return _render_login(
+            request,
+            status=400,
+            upgrade_error="Please choose a valid licence tier option.",
+            upgrade_data=data,
+            open_modal="upgrade",
+        )
+
+    sent = _send_upgrade_email(
+        name=data["contact_name"],
+        email=data["contact_email"],
+        company=data["company"],
+        current_tier=data["current_tier"],
+        desired_tier=user_store.LICENSE_TIERS[data["desired_tier"]]["label"],
+        notes=data["notes"],
+    )
+    if not sent:
+        return _render_login(
+            request,
+            status=500,
+            upgrade_error="We couldn't send your enquiry right now. Please email useradmin@glidepathsolutions.co.uk instead.",
+            upgrade_data=data,
+            open_modal="upgrade",
+        )
+
+    log.info("Upgrade enquiry submitted for %s (%s)", data["contact_name"], data["contact_email"])
+    return _render_login(
+        request,
+        upgrade_success="Thanks! We've received your enquiry and will be in touch soon.",
     )
 
 

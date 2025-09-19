@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 PBKDF_ITERATIONS = 120_000
 
 LICENSE_TIERS: Dict[str, Dict[str, Optional[int]]] = {
+    "free_trial": {"label": "Free Trial", "monthly_limit": 10},
     "basic": {"label": "Basic", "monthly_limit": 100},
     "standard": {"label": "Standard", "monthly_limit": 200},
     "pro": {"label": "Pro", "monthly_limit": None},
