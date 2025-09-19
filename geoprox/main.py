@@ -1041,6 +1041,10 @@ def api_search(request: Request, req: SearchReq):
         arts = result.get("artifacts", {}) or {}
         if arts.get("pdf_path") and not arts.get("pdf_url"):
             arts["pdf_url"] = f"/artifacts/{Path(arts['pdf_path']).name}"
+        if arts.get("map_html_url") and not arts.get("map_url"):
+            arts["map_url"] = arts["map_html_url"]
+        if arts.get("map_html_url") and not arts.get("map_embed_url"):
+            arts["map_embed_url"] = arts["map_html_url"]
         if arts.get("map_html_path") and not arts.get("map_url"):
             arts["map_url"] = f"/artifacts/{Path(arts['map_html_path']).name}"
         if arts.get("map_image_path") and not arts.get("map_image_url"):

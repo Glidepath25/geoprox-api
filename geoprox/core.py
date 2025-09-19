@@ -1162,6 +1162,20 @@ def run_geoprox_search(
             pdf_url = s3.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": pdf_key}, ExpiresIn=86400)
             html_url = s3.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": html_key}, ExpiresIn=86400)
 
+            artifacts = {
+                "pdf_url": pdf_url,
+                "pdf_download_url": pdf_url,
+                "pdf_path": str(pdf_path),
+                "pdf_key": pdf_key,
+                "map_url": html_url,
+                "map_embed_url": html_url,
+                "map_html_url": html_url,
+                "map_html_path": str(map_html),
+                "map_key": html_key,
+                "map_image_path": str(map_image_file) if map_image_file else None,
+            }
+            artifacts = {k: v for k, v in artifacts.items() if v}
+
             return {
                 "center": {"lat": lat, "lon": lon, "display": disp},
                 "radius_m": radius_m,
@@ -1169,7 +1183,7 @@ def run_geoprox_search(
                 "summary": summary_payload,
                 "summary_bins": summary,
                 "details_100m": details_rows_json,
-                "artifacts": {"pdf_url": pdf_url, "map_html_url": html_url, "map_image_path": str(map_image_file) if map_image_file else None},
+                "artifacts": artifacts,
                 "selection": selection_payload,
             }
         except Exception as e:
