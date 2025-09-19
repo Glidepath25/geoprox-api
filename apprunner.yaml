@@ -9,5 +9,5 @@ run:
   command: python -m uvicorn geoprox.main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
-  environment:
+  env:
     GEOPROX_BUCKET: geoprox-artifacts-uk
