@@ -35,7 +35,7 @@ TEMPLATES_DIR = (REPO_ROOT / "templates").resolve()
 ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts")).resolve()
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-PROMO_PDF_URL = os.environ.get("LOGIN_PROMO_PDF", "/static/geoprox-brochure.pdf")
+PROMO_PDF_URL = os.environ.get("LOGIN_PROMO_PDF", "/static/geoprox-intro.pdf")
 SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@glidepathsolutions.co.uk")
 
 DEFAULT_W3W_KEY = "OXT6XQ19"

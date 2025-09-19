@@ -475,6 +475,20 @@
       openModal(modals[openModalName]);
     }
 
+    const signupEmail = document.getElementById('signup_email');
+    const signupUsername = document.getElementById('signup_username');
+    if (signupEmail && signupUsername) {
+      const markManual = () => { signupUsername.dataset.manual = 'true'; };
+      signupUsername.addEventListener('input', markManual, { once: true });
+      signupEmail.addEventListener('input', () => {
+        if (signupUsername.dataset.manual !== 'true') {
+          signupUsername.value = signupEmail.value.trim();
+        }
+      });
+      if (!signupUsername.value) {
+        signupUsername.value = signupEmail.value.trim();
+      }
+    }
     const form = document.getElementById('loginForm');
     const termsCheckbox = document.getElementById('terms');
     form?.addEventListener('submit', (event) => {
