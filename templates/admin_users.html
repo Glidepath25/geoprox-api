@@ -71,7 +71,7 @@
     <section class="card">
       <h2 style="margin-top:0;">Companies</h2>
       <form method="post" action="/admin/companies/create" style="margin-bottom:1.2rem;">
-        <input type="hidden" name="redirect_company_id" value="{{ selected_company or  }}">
+        <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
         <h3 style="margin:0 0 0.8rem 0; font-size:1rem;">Create a company</h3>
         <div class="flex">
           <div>
@@ -128,7 +128,7 @@
             <td>{{ company.notes or '-' }}</td>
             <td>
               <form method="post" action="/admin/companies/{{ company.id }}/update" style="display:inline;">
-                <input type="hidden" name="redirect_company_id" value="{{ selected_company or  }}">
+                <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                 <input type="hidden" name="action" value="{{ 'deactivate' if company.is_active else 'activate' }}">
                 <button class="btn {{ 'danger' if company.is_active else 'success' }} small" type="submit">
                   {{ 'Deactivate' if company.is_active else 'Activate' }}
@@ -139,7 +139,7 @@
           <tr>
             <td colspan="7">
               <form class="inline" method="post" action="/admin/companies/{{ company.id }}/update">
-                <input type="hidden" name="redirect_company_id" value="{{ selected_company or  }}">
+                <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                 <input type="hidden" name="action" value="update">
                 <div>
                   <label>Name</label>
@@ -349,3 +349,4 @@
   </main>
 </body>
 </html>
+
