@@ -3,12 +3,23 @@ runtime: python3
 build:
   commands:
     build:
-      - pip install -r requirements.txt
-
+    - pip install -r requirements.txt
 run:
   command: python -m uvicorn geoprox.main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
   env:
-    - name: GEOPROX_BUCKET
-      value: geoprox-artifacts-uk
+  - name: GEOPROX_BUCKET
+    value: geoprox-artifacts-uk
+  - name: GEOPROX_SUPPORT_EMAIL
+    value: useradmin@geoprox.co.uk
+  - name: SMTP_HOST
+    value: smtp.office365.com
+  - name: SMTP_PORT
+    value: '587'
+  - name: SMTP_USERNAME
+    value: useradmin@geoprox.co.uk
+  - name: SMTP_PASSWORD
+    value: Glidepath25!
+  - name: SMTP_USE_TLS
+    value: 'true'
