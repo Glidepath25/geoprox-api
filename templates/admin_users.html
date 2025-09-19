@@ -248,6 +248,7 @@
         {% if selected_company %}
         <a class="btn small" href="/admin/users">Clear filter</a>
         {% endif %}
+              <a class="btn small" href="/admin/users/export.csv">Download CSV</a>
       </form>
       {% if users %}
       <table>
@@ -260,6 +261,7 @@
             <th>Phone</th>
             <th>Role</th>
             <th>Status</th>
+            <th>Searches</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -279,6 +281,7 @@
               <span class="status-chip {{ 'status-active' if user.is_active else 'status-disabled' }}">{{ 'Active' if user.is_active else 'Disabled' }}</span>
               {% if user.require_password_change %}<div class="table-note">Password change required</div>{% endif %}
             </td>
+            <td>{{ search_counts.get(user.username, 0) }}</td>
             <td>
               <form method="post" action="/admin/users/{{ user.id }}/toggle" style="display:inline;">
                 <input type="hidden" name="action" value="{{ 'disable' if user.is_active else 'enable' }}">
@@ -295,7 +298,7 @@
             </td>
           </tr>
           <tr>
-            <td colspan="8">
+            <td colspan="9">
               <form class="inline" method="post" action="/admin/users/{{ user.id }}/update">
                 <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                 <div>

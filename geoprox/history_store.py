@@ -83,4 +83,11 @@ def get_history(username: str, limit: Optional[int] = 100) -> List[Dict[str, Any
     return [dict(row) for row in rows]
 
 
+def get_user_search_counts() -> Dict[str, int]:
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT username, COUNT(*) AS total FROM search_history GROUP BY username").fetchall()
+    return {row['username']: int(row['total']) for row in rows}
+
+
 init_db()
+

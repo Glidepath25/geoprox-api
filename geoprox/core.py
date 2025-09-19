@@ -35,6 +35,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 log = logging.getLogger("uvicorn.error")
 
+DEFAULT_LOGO_PATH = Path(__file__).resolve().parents[1] / 'static' / 'geoprox-logo.png'
+
 # ---------- Defaults / constants ----------
 DEFAULT_USER = "Contractor A - Streetworks coordinator"
 
@@ -821,11 +823,20 @@ def generate_pdf_summary(
     search_dt: Optional[datetime] = None,
     outcome: Optional[str] = None,
     selection_mode: str = "point",
+    logo_path: Optional[str] = None,
 ) -> None:
     styles = getSampleStyleSheet()
     body = styles["BodyText"]
     body.leading = 12
     title = styles["Title"]
+
+    resolved_logo: Optional[Path] = None
+    if logo_path:
+        candidate_path = Path(logo_path)
+        if candidate_path.exists():
+            resolved_logo = candidate_path
+    if resolved_logo is None and DEFAULT_LOGO_PATH.exists():
+        resolved_logo = DEFAULT_LOGO_PATH
 
     when = search_dt or datetime.now()
     outcome_label = (outcome or compute_outcome(summary_bins)).upper()
@@ -857,6 +868,9 @@ def generate_pdf_summary(
         canvas_obj.setKeywords(keywords)
 
     flow: List[Any] = []
+    if resolved_logo:
+        flow.append(Image(str(resolved_logo), width=35 * mm, height=35 * mm, hAlign='LEFT'))
+        flow.append(Spacer(1, 4 * mm))
 
     # Title
     flow.append(Paragraph("GeoProx - Proximity Summary", title))

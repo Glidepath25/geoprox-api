@@ -4,13 +4,15 @@ from __future__ import annotations
 import os
 import logging
 import sqlite3
+import csv
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -251,7 +253,8 @@ def _consume_flashes(request: Request) -> List[Dict[str, str]]:
     return flashes
 
 
-def _user_to_out(user: Dict[str, Any]) -> AdminUserOut:
+def _user_to_out(user: Dict[str, Any], counts: Optional[Dict[str, int]] = None) -> AdminUserOut:
+    search_counts = counts or {}
     return AdminUserOut(
         id=user["id"],
         username=user["username"],
@@ -264,6 +267,7 @@ def _user_to_out(user: Dict[str, Any]) -> AdminUserOut:
         is_admin=bool(user["is_admin"]),
         is_active=bool(user["is_active"]),
         require_password_change=bool(user.get("require_password_change")),
+        search_count=int(search_counts.get(user["username"], 0)),
         created_at=user["created_at"],
         updated_at=user["updated_at"],
     )
@@ -459,6 +463,7 @@ class AdminUserOut(BaseModel):
     is_admin: bool
     is_active: bool
     require_password_change: bool
+    search_count: int
     created_at: str
     updated_at: str
 
@@ -611,6 +616,7 @@ async def admin_users_page(request: Request, company_id: Optional[int] = None) -
     _require_admin(request)
     companies = user_store.list_companies(include_inactive=False)
     users = user_store.list_users(include_disabled=True, company_id=company_id)
+    search_counts = history_store.get_user_search_counts()
     flashes = _consume_flashes(request)
     return templates.TemplateResponse(
         "admin_users.html",
@@ -621,8 +627,38 @@ async def admin_users_page(request: Request, company_id: Optional[int] = None) -
             "selected_company": company_id,
             "flashes": flashes,
             "current_user": request.session.get("user"),
+            "search_counts": search_counts,
         },
     )
+
+
+@app.get("/admin/users/export.csv")
+async def admin_export_users(request: Request) -> Response:
+    _require_admin(request)
+    users = user_store.list_users(include_disabled=True)
+    counts = history_store.get_user_search_counts()
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Username", "Name", "Email", "Company", "Company Number", "Phone", "Is Admin", "Is Active", "Require Password Change", "Searches", "Created At", "Updated At"])
+    for user in users:
+        writer.writerow([
+            user.get("username"),
+            user.get("name"),
+            user.get("email"),
+            user.get("company"),
+            user.get("company_number"),
+            user.get("phone"),
+            int(bool(user.get("is_admin"))),
+            int(bool(user.get("is_active"))),
+            int(bool(user.get("require_password_change"))),
+            int(counts.get(user.get("username"), 0)),
+            user.get("created_at"),
+            user.get("updated_at"),
+        ])
+    csv_content = buffer.getvalue()
+    buffer.close()
+    filename = f"geoprox-users-{datetime.utcnow().strftime('%Y%m%d')}.csv"
+    return Response(csv_content, media_type='text/csv', headers={'Content-Disposition': f'attachment; filename={filename}'})
 
 
 @app.post("/admin/users/create")
@@ -815,7 +851,8 @@ async def api_admin_list_users(
 ) -> List[AdminUserOut]:
     _require_admin(request)
     records = user_store.list_users(include_disabled=include_disabled, company_id=company_id)
-    return [_user_to_out(record) for record in records]
+    counts = history_store.get_user_search_counts()
+    return [_user_to_out(record, counts) for record in records]
 
 
 @app.get("/api/admin/users/{user_id}", response_model=AdminUserOut)
@@ -824,7 +861,8 @@ async def api_admin_get_user(request: Request, user_id: int) -> AdminUserOut:
     record = user_store.get_user_by_id(user_id)
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
-    return _user_to_out(record)
+    counts = history_store.get_user_search_counts()
+    return _user_to_out(record, counts)
 
 
 @app.post("/api/admin/users", response_model=AdminUserOut, status_code=201)
@@ -887,7 +925,7 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         )
         updates["is_active"] = data["is_active"]
     if not updates:
-        return _user_to_out(record)
+        return _user_to_out(record, history_store.get_user_search_counts())
     try:
         user_store.update_user(record["id"], **updates)
     except ValueError as exc:
@@ -895,7 +933,8 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
     updated = user_store.get_user_by_id(record["id"])
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
-    return _user_to_out(updated)
+    counts = history_store.get_user_search_counts()
+    return _user_to_out(updated, counts)
 
 
 @app.post("/api/admin/users/{user_id}/reset-password", response_model=AdminActionResult)
