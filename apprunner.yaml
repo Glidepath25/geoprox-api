@@ -19,9 +19,10 @@ run:
     value: '587'
   - name: SMTP_USERNAME
     value: useradmin@geoprox.co.uk
-  - name: SMTP_PASSWORD
-    valueFrom: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::'
   - name: SMTP_USE_TLS
     value: 'true'
+  secrets:
+  - name: SMTP_PASSWORD
+    value: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::'
   - name: WHAT3WORDS_API_KEY
-    valueFrom: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
+    value: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
