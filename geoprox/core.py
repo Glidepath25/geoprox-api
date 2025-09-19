@@ -713,8 +713,8 @@ def _render_static_map_image(
 
         fig = Figure(figsize=(6, 6), dpi=150)
         ax = fig.add_subplot(111)
-        fig.patch.set_facecolor('#09121d')
-        ax.set_facecolor('#09121d')
+        fig.patch.set_facecolor('#ffffff')
+        ax.set_facecolor('#ffffff')
 
         xs: List[float] = []
         ys: List[float] = []
