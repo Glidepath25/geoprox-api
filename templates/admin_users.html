@@ -34,6 +34,9 @@
     th, td { padding:0.65rem 0.75rem; border-bottom:1px solid rgba(255,255,255,0.06); text-align:left; vertical-align:top; }
     th { background:#18344d; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; }
     tr:last-child td { border-bottom:none; }
+    tr.user-summary td { background:#10263b; border-top:1px solid rgba(255,255,255,0.08); }
+    tr.user-detail td { background:#0f2237; border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.04); }
+    tr.user-spacer td { padding:0; border-bottom:none; height:18px; background:transparent; }
     .status-chip { display:inline-block; padding:0.2rem 0.6rem; border-radius:999px; font-size:0.7rem; text-transform:uppercase; }
     .status-active { background:#0b4d27; color:#a3f5cb; }
     .status-disabled { background:#602020; color:#ff9e9e; }
@@ -276,7 +279,7 @@
         </thead>
         <tbody>
           {% for user in users %}
-          <tr>
+          <tr class="user-summary">
             <td>{{ user.username }}</td>
             <td>{{ user.name }}</td>
             <td>{{ user.email or '-' }}</td>
@@ -320,8 +323,8 @@
               </form>
             </td>
           </tr>
-          <tr>
-            <td colspan="9">
+          <tr class="user-detail">
+            <td colspan="10">
               <form class="inline" method="post" action="/admin/users/{{ user.id }}/update">
                 <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                 <div>
@@ -373,6 +376,9 @@
               </form>
             </td>
           </tr>
+          {% if not loop.last %}
+          <tr class="user-spacer"><td colspan="10"></td></tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
