@@ -926,10 +926,6 @@ def generate_pdf_summary(
     flow.append(sum_tbl)
     flow.append(Spacer(1, 6 * mm))
 
-    if map_image and Path(map_image).exists():
-        flow.append(Image(str(map_image), width=170 * mm, height=170 * mm))
-        flow.append(Spacer(1, 6 * mm))
-
     # Details table (<=100 m)
     flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
     det_header = ["Distance (m)", "Category", "Name", "Lat", "Lon", "Address"]
@@ -1187,4 +1183,6 @@ def run_geoprox_search(
         "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html), "map_image_path": str(map_image_file) if map_image_file else None},
         "selection": selection_payload,
     }
+
+
 
