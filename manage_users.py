@@ -12,9 +12,12 @@ def print_user(user: dict[str, object]) -> None:
     company_id = user.get("company_id")
     if company_id:
         company = f"{company} (#{company_id})"
+    tier = (user.get('license_tier') or user_store.DEFAULT_LICENSE_TIER).lower()
+    limit = user_store.get_license_monthly_limit(tier)
+    quota = 'unlimited' if limit is None else f'{limit}/mo'
     print(
         f"{user['id']:>3} {user['username']:<16} {role:<5} {status:<8} "
-        f"{company:<24} {user['email'] or '-'}"
+        f"{company:<24} {user['email'] or '-':<24} {tier:<8} {quota}"
     )
 
 
@@ -50,6 +53,7 @@ def cmd_add(ns: argparse.Namespace) -> None:
         company_id=ns.company_id,
         is_admin=ns.admin,
         is_active=not ns.disabled,
+        license_tier=ns.license_tier,
     )
     print("Created user:")
     print_user(record)
@@ -75,6 +79,8 @@ def cmd_update(ns: argparse.Namespace) -> None:
         updates["is_active"] = not ns.disabled
     if ns.require_change is not None:
         updates["require_password_change"] = ns.require_change
+    if ns.license_tier is not None:
+        updates["license_tier"] = ns.license_tier
     if updates:
         user_store.update_user(user["id"], **updates)
         print("Updated user")
@@ -144,6 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--company-id", dest="company_id", type=int)
     p_add.add_argument("--company-number", dest="company_number", default="")
     p_add.add_argument("--phone", default="")
+    p_add.add_argument("--license-tier", choices=sorted(user_store.LICENSE_TIERS.keys()), default=user_store.DEFAULT_LICENSE_TIER)
     p_add.add_argument("--admin", action="store_true")
     p_add.add_argument("--disabled", action="store_true")
     p_add.set_defaults(func=cmd_add)
@@ -166,9 +173,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--user", dest="admin", action="store_false")
     p_update.add_argument("--disable", dest="disabled", action="store_true")
     p_update.add_argument("--enable", dest="disabled", action="store_false")
+    p_update.add_argument("--license-tier", choices=sorted(user_store.LICENSE_TIERS.keys()))
     p_update.add_argument("--require-password-change", dest="require_change", action="store_true")
     p_update.add_argument("--no-require-password-change", dest="require_change", action="store_false")
-    p_update.set_defaults(func=cmd_update, admin=None, disabled=None, company_id=None, require_change=None)
+    p_update.set_defaults(func=cmd_update, admin=None, disabled=None, company_id=None, require_change=None, license_tier=None)
 
     p_pw = sub.add_parser("set-password", help="Reset a user password")
     p_pw.add_argument("username")

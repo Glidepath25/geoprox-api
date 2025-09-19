@@ -2,12 +2,30 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 _DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
 _DB_PATH = _DATA_DIR / "search_history.db"
+
+
+
+
+def _month_bounds(reference: Optional[datetime] = None) -> Tuple[str, str]:
+    if reference is None:
+        reference = datetime.utcnow()
+    start = reference.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return _to_iso(start), _to_iso(end)
+
+
+def _to_iso(moment: datetime) -> str:
+    return moment.isoformat(timespec="seconds") + "Z"
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -34,6 +52,7 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_search_history_username_timestamp ON search_history(username, timestamp)")
         conn.commit()
 
 
@@ -81,6 +100,21 @@ def get_history(username: str, limit: Optional[int] = 100) -> List[Dict[str, Any
     with _get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_user_monthly_search_counts(reference: Optional[datetime] = None) -> Dict[str, int]:
+    start, end = _month_bounds(reference)
+    with _get_conn() as conn:
+        rows = conn.execute("SELECT username, COUNT(*) AS total FROM search_history WHERE timestamp >= ? AND timestamp < ? GROUP BY username", (start, end)).fetchall()
+    return {row['username']: int(row['total']) for row in rows}
+
+
+
+def get_monthly_search_count(username: str, reference: Optional[datetime] = None) -> int:
+    start, end = _month_bounds(reference)
+    with _get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) AS total FROM search_history WHERE username = ? AND timestamp >= ? AND timestamp < ?", (username, start, end)).fetchone()
+    return int(row['total']) if row else 0
 
 
 def get_user_search_counts() -> Dict[str, int]:

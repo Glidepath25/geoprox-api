@@ -222,7 +222,15 @@
             <label for="password">Password</label>
             <input id="password" name="password" type="password" required autocomplete="new-password">
           </div>
-        </div>
+          <div>
+            <label for="license_tier_new">License tier</label>
+            <select id="license_tier_new" name="license_tier">
+              {% for key, meta in license_tiers.items() %}
+              <option value="{{ key }}"{% if key == 'basic' %} selected{% endif %}>{{ meta['label'] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+</div>
         <div class="checkbox" style="margin-bottom:0.7rem;">
           <input id="is_admin" name="is_admin" type="checkbox">
           <label for="is_admin" style="margin-bottom:0;">Administrator</label>
@@ -259,6 +267,7 @@
             <th>Email</th>
             <th>Company</th>
             <th>Phone</th>
+            <th>License</th>
             <th>Role</th>
             <th>Status</th>
             <th>Searches</th>
@@ -276,6 +285,20 @@
               {% if user.company_id %}<span class="table-note">(ID {{ user.company_id }})</span>{% endif %}
             </td>
             <td>{{ user.phone or '-' }}</td>
+            <td>
+              {% set tier_key = (user.license_tier or 'basic') %}
+              {% set tier_meta = license_tiers.get(tier_key) %}
+              {% set monthly_used = monthly_counts.get(user.username, 0) %}
+              {% set monthly_limit = tier_meta['monthly_limit'] if tier_meta else None %}
+              <span>{{ tier_meta['label'] if tier_meta else tier_key|capitalize }}</span>
+              <div class="table-note">
+                {% if monthly_limit is none %}
+                  {{ monthly_used }} this month
+                {% else %}
+                  {{ monthly_used }} / {{ monthly_limit }} this month
+                {% endif %}
+              </div>
+            </td>
             <td>{{ 'Admin' if user.is_admin else 'User' }}</td>
             <td>
               <span class="status-chip {{ 'status-active' if user.is_active else 'status-disabled' }}">{{ 'Active' if user.is_active else 'Disabled' }}</span>
@@ -328,6 +351,14 @@
                 <div>
                   <label>Phone</label>
                   <input name="phone" type="text" value="{{ user.phone }}">
+                </div>
+                <div>
+                  <label>License tier</label>
+                  <select name="license_tier">
+                    {% for key, meta in license_tiers.items() %}
+                      <option value="{{ key }}" {% if user.license_tier == key %}selected{% endif %}>{{ meta['label'] }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
                 <div class="checkbox">
                   <input type="checkbox" id="admin_{{ user.id }}" name="is_admin" {% if user.is_admin %}checked{% endif %}>

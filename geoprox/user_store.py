@@ -10,6 +10,13 @@ from typing import Any, Dict, List, Optional
 
 PBKDF_ITERATIONS = 120_000
 
+LICENSE_TIERS: Dict[str, Dict[str, Optional[int]]] = {
+    "basic": {"label": "Basic", "monthly_limit": 100},
+    "standard": {"label": "Standard", "monthly_limit": 200},
+    "pro": {"label": "Pro", "monthly_limit": None},
+}
+DEFAULT_LICENSE_TIER = "basic"
+
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "users.db"
@@ -24,6 +31,25 @@ def _get_conn() -> sqlite3.Connection:
 
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+# ---------------------------------------------------------------------------
+# Licensing helpers
+# ---------------------------------------------------------------------------
+
+
+def normalize_license_tier(tier: Optional[str]) -> str:
+    if not tier:
+        return DEFAULT_LICENSE_TIER
+    key = str(tier).strip().lower()
+    if key not in LICENSE_TIERS:
+        raise ValueError(f"Unknown license tier '{tier}'")
+    return key
+
+
+def get_license_monthly_limit(tier: str) -> Optional[int]:
+    key = normalize_license_tier(tier)
+    return LICENSE_TIERS[key]["monthly_limit"]
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +104,7 @@ def init_db() -> None:
                 company_id INTEGER,
                 salt TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
+                license_tier TEXT NOT NULL DEFAULT 'basic',
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
@@ -102,6 +129,8 @@ def _ensure_additional_user_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN company_id INTEGER")
     if "require_password_change" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN require_password_change INTEGER NOT NULL DEFAULT 0")
+    if "license_tier" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN license_tier TEXT NOT NULL DEFAULT 'basic'")
 
 
 def _ensure_company(
@@ -186,6 +215,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "company_number": row["company_number"],
         "phone": row["phone"],
         "company_id": row["company_id"],
+        "license_tier": row["license_tier"] if "license_tier" in row.keys() else DEFAULT_LICENSE_TIER,
         "salt": row["salt"],
         "password_hash": row["password_hash"],
         "is_admin": bool(row["is_admin"]),
@@ -347,16 +377,18 @@ def create_user(
     is_admin: bool = False,
     is_active: bool = True,
     require_password_change: bool = True,
+    license_tier: str = DEFAULT_LICENSE_TIER,
 ) -> Dict[str, Any]:
     resolved_company = _resolve_company(company_id, company)
     salt = secrets.token_bytes(16)
     password_hash = hash_password_hex(password, salt=salt)
     now = _now()
+    normalized_tier = normalize_license_tier(license_tier)
     with _get_conn() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 username,
@@ -371,6 +403,7 @@ def create_user(
                 int(is_admin),
                 int(is_active),
                 int(require_password_change),
+                normalized_tier,
                 now,
                 now,
             ),
@@ -390,6 +423,7 @@ def update_user(user_id: int, **fields: Any) -> None:
         "is_admin",
         "is_active",
         "require_password_change",
+        "license_tier",
     }
     updates: Dict[str, Any] = {}
     company_update_requested = any(key in fields for key in ("company", "company_id"))
@@ -406,7 +440,11 @@ def update_user(user_id: int, **fields: Any) -> None:
     for key, value in fields.items():
         if key not in allowed or key in {"company", "company_id"}:
             continue
-        if key in {"is_admin", "is_active", "require_password_change"}:
+        if key == "license_tier":
+            if value is None:
+                continue
+            updates[key] = normalize_license_tier(value)
+        elif key in {"is_admin", "is_active", "require_password_change"}:
             updates[key] = int(value)
         else:
             updates[key] = value
@@ -491,8 +529,8 @@ def import_legacy_users() -> None:
                     continue
                 conn.execute(
                     """
-                    INSERT OR IGNORE INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at)
-                    VALUES (?, ?, ?, '', '', '', NULL, ?, ?, ?, 1, 0, ?, ?)
+                    INSERT OR IGNORE INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
+                    VALUES (?, ?, ?, '', '', '', NULL, ?, ?, ?, 1, 0, ?, ?, ?)
                     """,
                     (
                         username,
@@ -501,6 +539,7 @@ def import_legacy_users() -> None:
                         salt,
                         pw_hash,
                         1 if not admin_assigned else 0,
+                        DEFAULT_LICENSE_TIER,
                         now,
                         now,
                     ),
@@ -516,6 +555,10 @@ import_legacy_users()
 
 
 __all__ = [
+    "DEFAULT_LICENSE_TIER",
+    "LICENSE_TIERS",
+    "get_license_monthly_limit",
+    "normalize_license_tier",
     "create_company",
     "create_user",
     "disable_user",

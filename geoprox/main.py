@@ -253,8 +253,21 @@ def _consume_flashes(request: Request) -> List[Dict[str, str]]:
     return flashes
 
 
-def _user_to_out(user: Dict[str, Any], counts: Optional[Dict[str, int]] = None) -> AdminUserOut:
+def _user_to_out(
+    user: Dict[str, Any],
+    counts: Optional[Dict[str, int]] = None,
+    monthly_counts: Optional[Dict[str, int]] = None,
+) -> AdminUserOut:
     search_counts = counts or {}
+    monthly = monthly_counts or {}
+    raw_tier = user.get("license_tier") or user_store.DEFAULT_LICENSE_TIER
+    try:
+        normalized_tier = user_store.normalize_license_tier(raw_tier)
+    except ValueError:
+        normalized_tier = user_store.DEFAULT_LICENSE_TIER
+    monthly_limit = user_store.get_license_monthly_limit(normalized_tier)
+    monthly_used = int(monthly.get(user["username"], 0))
+    tier_label = user_store.LICENSE_TIERS[normalized_tier]["label"]
     return AdminUserOut(
         id=user["id"],
         username=user["username"],
@@ -267,6 +280,10 @@ def _user_to_out(user: Dict[str, Any], counts: Optional[Dict[str, int]] = None) 
         is_admin=bool(user["is_admin"]),
         is_active=bool(user["is_active"]),
         require_password_change=bool(user.get("require_password_change")),
+        license_tier=normalized_tier,
+        license_label=tier_label,
+        monthly_search_limit=monthly_limit,
+        monthly_search_count=monthly_used,
         search_count=int(search_counts.get(user["username"], 0)),
         created_at=user["created_at"],
         updated_at=user["updated_at"],
@@ -463,6 +480,10 @@ class AdminUserOut(BaseModel):
     is_admin: bool
     is_active: bool
     require_password_change: bool
+    license_tier: str
+    license_label: str
+    monthly_search_limit: Optional[int]
+    monthly_search_count: int
     search_count: int
     created_at: str
     updated_at: str
@@ -480,6 +501,7 @@ class AdminUserCreate(BaseModel):
     is_admin: bool = False
     is_active: bool = True
     require_password_change: bool = True
+    license_tier: str = Field(default=user_store.DEFAULT_LICENSE_TIER)
 
 
 class AdminUserUpdate(BaseModel):
@@ -492,6 +514,7 @@ class AdminUserUpdate(BaseModel):
     is_admin: Optional[bool] = None
     is_active: Optional[bool] = None
     require_password_change: Optional[bool] = None
+    license_tier: Optional[str] = None
 
 
 class AdminPasswordReset(BaseModel):
@@ -617,6 +640,7 @@ async def admin_users_page(request: Request, company_id: Optional[int] = None) -
     companies = user_store.list_companies(include_inactive=False)
     users = user_store.list_users(include_disabled=True, company_id=company_id)
     search_counts = history_store.get_user_search_counts()
+    monthly_counts = history_store.get_user_monthly_search_counts()
     flashes = _consume_flashes(request)
     return templates.TemplateResponse(
         "admin_users.html",
@@ -628,6 +652,8 @@ async def admin_users_page(request: Request, company_id: Optional[int] = None) -
             "flashes": flashes,
             "current_user": request.session.get("user"),
             "search_counts": search_counts,
+            "monthly_counts": monthly_counts,
+            "license_tiers": user_store.LICENSE_TIERS,
         },
     )
 
@@ -637,10 +663,18 @@ async def admin_export_users(request: Request) -> Response:
     _require_admin(request)
     users = user_store.list_users(include_disabled=True)
     counts = history_store.get_user_search_counts()
+    monthly_counts = history_store.get_user_monthly_search_counts()
     buffer = StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["Username", "Name", "Email", "Company", "Company Number", "Phone", "Is Admin", "Is Active", "Require Password Change", "Searches", "Created At", "Updated At"])
+    writer.writerow(["Username", "Name", "Email", "Company", "Company Number", "Phone", "Is Admin", "Is Active", "Require Password Change", "Total Searches", "Monthly Searches", "Monthly Limit", "License Tier", "Created At", "Updated At"])
     for user in users:
+        tier_key = user.get("license_tier") or user_store.DEFAULT_LICENSE_TIER
+        try:
+            normalized_tier = user_store.normalize_license_tier(tier_key)
+        except ValueError:
+            normalized_tier = user_store.DEFAULT_LICENSE_TIER
+        tier_meta = user_store.LICENSE_TIERS[normalized_tier]
+        monthly_limit = tier_meta.get("monthly_limit")
         writer.writerow([
             user.get("username"),
             user.get("name"),
@@ -652,6 +686,9 @@ async def admin_export_users(request: Request) -> Response:
             int(bool(user.get("is_active"))),
             int(bool(user.get("require_password_change"))),
             int(counts.get(user.get("username"), 0)),
+            int(monthly_counts.get(user.get("username"), 0)),
+            "unlimited" if monthly_limit is None else monthly_limit,
+            tier_meta.get("label", normalized_tier.title()),
             user.get("created_at"),
             user.get("updated_at"),
         ])
@@ -673,28 +710,35 @@ async def admin_create_user(request: Request):
     company_id = _parse_optional_int(form.get("company_id"))
     company_number = (form.get("company_number") or "").strip()
     phone = (form.get("phone") or "").strip()
+    license_tier_raw = (form.get("license_tier") or user_store.DEFAULT_LICENSE_TIER).strip()
     is_admin = form.get("is_admin") == "on"
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     if not username or not password or not name:
         _add_flash(request, "Username, name, and password are required.", "error")
     else:
         try:
-            user_store.create_user(
-                username=username,
-                password=password,
-                name=name,
-                email=email,
-                company=company,
-                company_number=company_number,
-                phone=phone,
-                company_id=company_id,
-                is_admin=is_admin,
-            )
-            _add_flash(request, f"User '{username}' created.", "success")
-        except sqlite3.IntegrityError:
-            _add_flash(request, "Username or email already exists.", "error")
-        except ValueError as exc:
-            _add_flash(request, str(exc) or "Invalid company selection.", "error")
+            license_tier = user_store.normalize_license_tier(license_tier_raw)
+        except ValueError:
+            _add_flash(request, "Select a valid license tier.", "error")
+        else:
+            try:
+                user_store.create_user(
+                    username=username,
+                    password=password,
+                    name=name,
+                    email=email,
+                    company=company,
+                    company_number=company_number,
+                    phone=phone,
+                    company_id=company_id,
+                    is_admin=is_admin,
+                    license_tier=license_tier,
+                )
+                _add_flash(request, f"User '{username}' created.", "success")
+            except sqlite3.IntegrityError:
+                _add_flash(request, "Username or email already exists.", "error")
+            except ValueError as exc:
+                _add_flash(request, str(exc) or "Invalid company selection.", "error")
     return _redirect_admin_users(redirect_company_id)
 
 
@@ -720,6 +764,13 @@ async def admin_update_user(request: Request, user_id: int):
         updates["company_id"] = company_id_value
         if company_id_value is None:
             updates["company"] = ""
+    license_choice = (form.get("license_tier") or "").strip()
+    if license_choice:
+        try:
+            updates["license_tier"] = user_store.normalize_license_tier(license_choice)
+        except ValueError:
+            _add_flash(request, "Select a valid license tier.", "error")
+            return _redirect_admin_users(redirect_company_id)
     is_admin_flag = form.get("is_admin") == "on"
     updates["is_admin"] = is_admin_flag
     require_values = form.getlist("require_password_change")
@@ -852,7 +903,8 @@ async def api_admin_list_users(
     _require_admin(request)
     records = user_store.list_users(include_disabled=include_disabled, company_id=company_id)
     counts = history_store.get_user_search_counts()
-    return [_user_to_out(record, counts) for record in records]
+    monthly_counts = history_store.get_user_monthly_search_counts()
+    return [_user_to_out(record, counts, monthly_counts) for record in records]
 
 
 @app.get("/api/admin/users/{user_id}", response_model=AdminUserOut)
@@ -862,7 +914,8 @@ async def api_admin_get_user(request: Request, user_id: int) -> AdminUserOut:
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
     counts = history_store.get_user_search_counts()
-    return _user_to_out(record, counts)
+    monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+    return _user_to_out(record, counts, monthly_counts)
 
 
 @app.post("/api/admin/users", response_model=AdminUserOut, status_code=201)
@@ -885,12 +938,15 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
             is_admin=payload.is_admin,
             is_active=payload.is_active,
             require_password_change=payload.require_password_change,
+            license_tier=payload.license_tier,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="Username already exists.")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc) or "Invalid company selection.")
-    return _user_to_out(record)
+    counts = history_store.get_user_search_counts()
+    monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+    return _user_to_out(record, counts, monthly_counts)
 
 
 @app.patch("/api/admin/users/{user_id}", response_model=AdminUserOut)
@@ -915,6 +971,8 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         updates["is_admin"] = data["is_admin"]
     if "require_password_change" in data:
         updates["require_password_change"] = data["require_password_change"]
+    if "license_tier" in data:
+        updates["license_tier"] = data["license_tier"]
     target_is_admin = updates.get("is_admin", record["is_admin"])
     if "is_active" in data:
         _ensure_can_change_active_status(
@@ -925,7 +983,9 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         )
         updates["is_active"] = data["is_active"]
     if not updates:
-        return _user_to_out(record, history_store.get_user_search_counts())
+        counts = history_store.get_user_search_counts()
+        monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+        return _user_to_out(record, counts, monthly_counts)
     try:
         user_store.update_user(record["id"], **updates)
     except ValueError as exc:
@@ -934,7 +994,8 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
     counts = history_store.get_user_search_counts()
-    return _user_to_out(updated, counts)
+    monthly_counts = {updated['username']: history_store.get_monthly_search_count(updated['username'])}
+    return _user_to_out(updated, counts, monthly_counts)
 
 
 @app.post("/api/admin/users/{user_id}/reset-password", response_model=AdminActionResult)
@@ -1003,6 +1064,30 @@ async def api_admin_update_company(request: Request, company_id: int, payload: A
 @app.post("/api/search", response_model=SearchResp)
 def api_search(request: Request, req: SearchReq):
     username = _require_user(request)
+    user_record = user_store.get_user_by_username(username)
+    if not user_record:
+        raise HTTPException(status_code=401, detail="User account not found")
+    try:
+        license_tier = user_store.normalize_license_tier(user_record.get("license_tier"))
+    except ValueError:
+        license_tier = user_store.DEFAULT_LICENSE_TIER
+    monthly_limit = user_store.get_license_monthly_limit(license_tier)
+    if monthly_limit is not None:
+        used_this_month = history_store.get_monthly_search_count(username)
+        if used_this_month >= monthly_limit:
+            tier_label = user_store.LICENSE_TIERS[license_tier]["label"]
+            message = (
+                f"You have used all {monthly_limit} searches included in your {tier_label} license this month. "
+                "Please upgrade to continue searching."
+            )
+            log.info(
+                "Monthly search limit reached for %s (tier=%s, used=%s, limit=%s)",
+                username,
+                license_tier,
+                used_this_month,
+                monthly_limit,
+            )
+            return SearchResp(status="error", error=message)
     try:
         w3w_key = _load_w3w_key()
         log.info(f"Incoming request: {req.dict()}")
