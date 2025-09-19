@@ -10,4 +10,5 @@ run:
   network:
     port: 8000
   env:
-    GEOPROX_BUCKET: geoprox-artifacts-uk
+    - name: GEOPROX_BUCKET
+      value: geoprox-artifacts-uk
