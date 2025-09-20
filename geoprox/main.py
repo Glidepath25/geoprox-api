@@ -73,6 +73,53 @@ if STATIC_DIR.exists():
 else:
     log.warning(f"static/ not found at {STATIC_DIR}")
 
+def _bootstrap_admin_from_env() -> None:
+    username = (os.environ.get("BOOTSTRAP_ADMIN_USERNAME") or "").strip()
+    password = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD")
+    if not username or not password:
+        return
+    email = (os.environ.get("BOOTSTRAP_ADMIN_EMAIL") or "").strip()
+    display_name = (os.environ.get("BOOTSTRAP_ADMIN_NAME") or username or "GeoProx Admin").strip()
+    company = (os.environ.get("BOOTSTRAP_ADMIN_COMPANY") or "GeoProx").strip()
+    try:
+        user = user_store.get_user_by_username(username)
+        if user:
+            user_store.set_password(user["id"], password, require_change=False)
+            updates: Dict[str, Any] = {}
+            if not user.get("is_admin"):
+                updates["is_admin"] = True
+            if not user.get("is_active"):
+                updates["is_active"] = True
+            if email and (user.get("email") or "") != email:
+                updates["email"] = email
+            if company and (user.get("company") or "") != company:
+                updates["company"] = company
+            if updates:
+                user_store.update_user(user["id"], **updates)
+            log.warning("Bootstrap admin reset for '%s'. Remove BOOTSTRAP_ADMIN_* env vars after use.", username)
+        else:
+            user_store.create_user(
+                username=username,
+                password=password,
+                name=display_name,
+                email=email,
+                company=company,
+                company_number="",
+                phone="",
+                company_id=None,
+                is_admin=True,
+                is_active=True,
+                require_password_change=False,
+                license_tier="pro",
+            )
+            log.warning("Bootstrap admin created for '%s'. Remove BOOTSTRAP_ADMIN_* env vars after use.", username)
+    except Exception:
+        log.exception("Bootstrap admin routine failed for '%s'.", username)
+
+
+@app.on_event("startup")
+async def _on_startup() -> None:
+    _bootstrap_admin_from_env()
 
 # ---------------------------------------------------------------------------
 # Helpers
