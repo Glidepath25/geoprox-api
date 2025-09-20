@@ -4,6 +4,15 @@ import os
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
+APP_ENV = (os.environ.get("APP_ENV") or os.environ.get("GEOPROX_ENV") or "development").strip().lower()
+ALLOW_SQLITE = os.environ.get("ALLOW_SQLITE", "").strip().lower() in {"1", "true", "yes"}
+
+if not os.environ.get("DB_HOST") and APP_ENV in {"production", "staging"} and not ALLOW_SQLITE:
+    raise RuntimeError(
+        "DB_HOST is required when APP_ENV is set to production or staging. "
+        "Set DB_HOST/DB_* secrets or explicitly opt into SQLite with ALLOW_SQLITE=1 for temporary use."
+    )
+
 USE_POSTGRES = bool(os.environ.get("DB_HOST"))
 
 if USE_POSTGRES:

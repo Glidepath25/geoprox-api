@@ -9,6 +9,8 @@ run:
   network:
     port: 8000
   env:
+  - name: APP_ENV
+    value: production
   - name: GEOPROX_BUCKET
     value: geoprox-artifacts-uk
   - name: GEOPROX_SUPPORT_EMAIL
