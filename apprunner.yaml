@@ -9,16 +9,6 @@ run:
   network:
     port: 8000
   env:
-  - name: BOOTSTRAP_ADMIN_USERNAME
-    value: ADMIN
-  - name: BOOTSTRAP_ADMIN_PASSWORD
-    value: GeoProx25!
-  - name: BOOTSTRAP_ADMIN_EMAIL
-    value: admin@geoprox.co.uk
-  - name: BOOTSTRAP_ADMIN_NAME
-    value: GeoProx Admin
-  - name: BOOTSTRAP_ADMIN_COMPANY
-    value: GeoProx
   - name: APP_ENV
     value: production
   - name: GEOPROX_BUCKET
