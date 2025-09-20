@@ -36,3 +36,4 @@ run:
     value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_PASSWORD::'
   - name: DB_PORT
     value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_PORT::'
+
