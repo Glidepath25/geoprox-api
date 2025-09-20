@@ -26,3 +26,13 @@ run:
     value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::'
   - name: WHAT3WORDS_API_KEY
     value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
+  - name: DB_HOST
+    value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_HOST::'
+  - name: DB_NAME
+    value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_NAME::'
+  - name: DB_USER
+    value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_USER::'
+  - name: DB_PASSWORD
+    value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_PASSWORD::'
+  - name: DB_PORT
+    value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:DB_PORT::'

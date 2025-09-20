@@ -3,6 +3,9 @@ from __future__ import annotations
 import hmac
 import secrets
 import sqlite3
+from contextlib import contextmanager
+
+from geoprox.db import USE_POSTGRES, get_postgres_conn
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -24,10 +27,24 @@ DB_PATH = DATA_DIR / "users.db"
 LEGACY_USERS_DIR = Path(__file__).resolve().parents[1] / "users"
 
 
-def _get_conn() -> sqlite3.Connection:
+@contextmanager
+def _sqlite_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _get_conn():
+    if USE_POSTGRES:
+        return get_postgres_conn()
+    return _sqlite_conn()
 
 
 def _now() -> str:
@@ -74,6 +91,51 @@ def hash_password_hex(password: str, *, salt: bytes) -> str:
 
 
 def init_db() -> None:
+    if USE_POSTGRES:
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS companies (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    company_number TEXT,
+                    phone TEXT,
+                    email TEXT,
+                    notes TEXT,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(name)")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    email TEXT,
+                    company TEXT,
+                    company_number TEXT,
+                    phone TEXT,
+                    company_id INTEGER REFERENCES companies(id),
+                    salt TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    license_tier TEXT NOT NULL DEFAULT 'basic',
+                    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    require_password_change BOOLEAN NOT NULL DEFAULT FALSE
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_users_company ON users(company_id)")
+        return
+
     with _get_conn() as conn:
         conn.execute(
             """
@@ -125,6 +187,8 @@ def init_db() -> None:
 
 
 def _ensure_additional_user_columns(conn: sqlite3.Connection) -> None:
+    if USE_POSTGRES:
+        return
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
     if "company_id" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN company_id INTEGER")
@@ -528,11 +592,14 @@ def import_legacy_users() -> None:
                 pw_hash = data.get("hash")
                 if not username or not salt or not pw_hash:
                     continue
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
+                sql = """
+                    INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
                     VALUES (?, ?, ?, '', '', '', NULL, ?, ?, ?, 1, 0, ?, ?, ?)
-                    """,
+                """
+                if USE_POSTGRES:
+                    sql += " ON CONFLICT (username) DO NOTHING"
+                conn.execute(
+                    sql,
                     (
                         username,
                         username,

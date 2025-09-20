@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
+
+from geoprox.db import USE_POSTGRES, get_postgres_conn
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -28,13 +31,50 @@ def _to_iso(moment: datetime) -> str:
     return moment.isoformat(timespec="seconds") + "Z"
 
 
-def _get_conn() -> sqlite3.Connection:
+@contextmanager
+def _sqlite_conn():
     conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _get_conn():
+    if USE_POSTGRES:
+        return get_postgres_conn()
+    return _sqlite_conn()
 
 
 def init_db() -> None:
+    if USE_POSTGRES:
+        with _get_conn() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    location TEXT NOT NULL,
+                    radius_m INTEGER NOT NULL,
+                    outcome TEXT,
+                    permit TEXT,
+                    pdf_path TEXT,
+                    map_path TEXT,
+                    result_json TEXT
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_search_history_username_timestamp ON search_history(username, timestamp)"
+            )
+        return
+
     with _get_conn() as conn:
         conn.execute(
             """
@@ -52,7 +92,9 @@ def init_db() -> None:
             )
             """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_search_history_username_timestamp ON search_history(username, timestamp)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_search_history_username_timestamp ON search_history(username, timestamp)"
+        )
         conn.commit()
 
 
