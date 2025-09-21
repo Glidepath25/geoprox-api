@@ -371,7 +371,7 @@ def create_company(
                 phone.strip(),
                 email.strip(),
                 notes.strip(),
-                int(is_active),
+                _coerce_bool(is_active),
                 now,
                 now,
             ),
