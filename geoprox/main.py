@@ -998,7 +998,7 @@ async def admin_create_user(request: Request):
             _add_flash(request, "Select a valid license tier.", "error")
         else:
             try:
-                user_store.create_user(
+                created = user_store.create_user(
                     username=username,
                     password=password,
                     name=name,
@@ -1010,6 +1010,15 @@ async def admin_create_user(request: Request):
                     is_admin=is_admin,
                     license_tier=license_tier,
                 )
+                if created:
+                    log.info("Admin created user %s (id=%s, company_id=%s, is_admin=%s, is_active=%s)",
+                             username,
+                             created.get("id"),
+                             created.get("company_id"),
+                             created.get("is_admin"),
+                             created.get("is_active"))
+                else:
+                    log.warning("Admin create user returned no record for %s", username)
                 _add_flash(request, f"User '{username}' created.", "success")
             except sqlite3.IntegrityError:
                 _add_flash(request, "Username or email already exists.", "error")
