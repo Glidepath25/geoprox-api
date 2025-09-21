@@ -315,7 +315,7 @@ def list_companies(*, include_inactive: bool = False) -> List[Dict[str, Any]]:
         if include_inactive:
             rows = conn.execute("SELECT * FROM companies ORDER BY is_active DESC, name ASC").fetchall()
         else:
-            rows = conn.execute("SELECT * FROM companies WHERE is_active = 1 ORDER BY name ASC").fetchall()
+            rows = conn.execute("SELECT * FROM companies WHERE is_active = ? ORDER BY name ASC", (True,)).fetchall()
     return [_company_row_to_dict(row) for row in rows]
 
 
@@ -391,7 +391,8 @@ def list_users(*, include_disabled: bool = True, company_id: Optional[int] = Non
     params: List[Any] = []
     filters: List[str] = []
     if not include_disabled:
-        filters.append("is_active = 1")
+        filters.append("is_active = ?")
+        params.append(True)
     if company_id is not None:
         filters.append("company_id = ?")
         params.append(company_id)
@@ -644,9 +645,4 @@ __all__ = [
     "update_user",
     "verify_credentials",
 ]
-
-
-
-
-
 
