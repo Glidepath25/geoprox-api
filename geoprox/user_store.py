@@ -56,6 +56,18 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 
 
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+    return bool(value)
+
 def normalize_license_tier(tier: Optional[str]) -> str:
     if not tier:
         return DEFAULT_LICENSE_TIER
@@ -370,7 +382,7 @@ def create_company(
 
 def update_company(company_id: int, **fields: Any) -> None:
     allowed = {"name", "company_number", "phone", "email", "notes", "is_active"}
-    updates = {k: (int(v) if k == "is_active" else v) for k, v in fields.items() if k in allowed}
+    updates = {k: (_coerce_bool(v) if k == "is_active" else v) for k, v in fields.items() if k in allowed}
     if not updates:
         return
     updates["updated_at"] = _now()
@@ -466,9 +478,9 @@ def create_user(
                 resolved_company["id"],
                 salt.hex(),
                 password_hash,
-                int(is_admin),
-                int(is_active),
-                int(require_password_change),
+                _coerce_bool(is_admin),
+                _coerce_bool(is_active),
+                _coerce_bool(require_password_change),
                 normalized_tier,
                 now,
                 now,
@@ -511,7 +523,7 @@ def update_user(user_id: int, **fields: Any) -> None:
                 continue
             updates[key] = normalize_license_tier(value)
         elif key in {"is_admin", "is_active", "require_password_change"}:
-            updates[key] = int(value)
+            updates[key] = _coerce_bool(value)
         else:
             updates[key] = value
     if not updates:
@@ -532,7 +544,7 @@ def set_password(user_id: int, password: str, *, require_change: Optional[bool] 
     values: List[Any] = [salt.hex(), password_hash, now]
     if require_change is not None:
         columns.append("require_password_change = ?")
-        values.append(int(require_change))
+        values.append(_coerce_bool(require_change))
     values.append(user_id)
     with _get_conn() as conn:
         conn.execute(
@@ -645,4 +657,5 @@ __all__ = [
     "update_user",
     "verify_credentials",
 ]
+
 
