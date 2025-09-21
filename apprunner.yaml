@@ -3,7 +3,7 @@ runtime: python3
 build:
   commands:
     build:
-    - pip install -r requirements.txt
+      - pip install -r requirements.txt
 run:
   command: python -m uvicorn geoprox.main:app --host 0.0.0.0 --port 8000
   network:
@@ -14,9 +14,9 @@ run:
       GEOPROX_BUCKET: geoprox-artifacts-uk
       GEOPROX_SUPPORT_EMAIL: useradmin@geoprox.co.uk
       SMTP_HOST: smtp.office365.com
-      SMTP_PORT: '587'
+      SMTP_PORT: "587"
       SMTP_USERNAME: useradmin@geoprox.co.uk
-      SMTP_USE_TLS: 'true'
+      SMTP_USE_TLS: "true"
   secrets:
     SMTP_PASSWORD: arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::
     WHAT3WORDS_API_KEY: arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::
