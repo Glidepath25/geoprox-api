@@ -73,6 +73,11 @@ if STATIC_DIR.exists():
 else:
     log.warning(f"static/ not found at {STATIC_DIR}")
 
+if user_store.USE_POSTGRES:
+    log.info("Database backend: Postgres host=%s db=%s user=%s", os.environ.get("DB_HOST"), os.environ.get("DB_NAME"), os.environ.get("DB_USER"))
+else:
+    log.warning("Database backend: SQLite fallback at %s (DB_HOST unset). Set DB_* secrets to use Aurora.", user_store.DB_PATH)
+
 def _bootstrap_admin_from_env() -> None:
     username = (os.environ.get("BOOTSTRAP_ADMIN_USERNAME") or "").strip()
     password = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD")
