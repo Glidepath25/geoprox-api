@@ -8,20 +8,33 @@ run:
   command: python -m uvicorn geoprox.main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
-  environment:
-    variables:
-      APP_ENV: production
-      GEOPROX_BUCKET: geoprox-artifacts-uk
-      GEOPROX_SUPPORT_EMAIL: useradmin@geoprox.co.uk
-      SMTP_HOST: smtp.office365.com
-      SMTP_PORT: "587"
-      SMTP_USERNAME: useradmin@geoprox.co.uk
-      SMTP_USE_TLS: "true"
+  env:
+    - name: APP_ENV
+      value: production
+    - name: GEOPROX_BUCKET
+      value: geoprox-artifacts-uk
+    - name: GEOPROX_SUPPORT_EMAIL
+      value: useradmin@geoprox.co.uk
+    - name: SMTP_HOST
+      value: smtp.office365.com
+    - name: SMTP_PORT
+      value: '587'
+    - name: SMTP_USERNAME
+      value: useradmin@geoprox.co.uk
+    - name: SMTP_USE_TLS
+      value: 'true'
   secrets:
-    SMTP_PASSWORD: arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::
-    WHAT3WORDS_API_KEY: arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::
-    DB_HOST: arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_HOST::
-    DB_NAME: arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_NAME::
-    DB_USER: arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_USER::
-    DB_PASSWORD: arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::
-    DB_PORT: arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PORT::
+    - name: SMTP_PASSWORD
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::'
+    - name: WHAT3WORDS_API_KEY
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
+    - name: DB_HOST
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_HOST::'
+    - name: DB_NAME
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_NAME::'
+    - name: DB_USER
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_USER::'
+    - name: DB_PASSWORD
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::'
+    - name: DB_PORT
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PORT::'
