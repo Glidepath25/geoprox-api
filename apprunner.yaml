@@ -24,7 +24,7 @@ run:
     - name: SMTP_USE_TLS
       value: 'true'
     - name: DB_HOST
-      value: geoprox-serverless.cluster-c3ooeicas6w8.eu-west-1.rds.amazonaws.com
+      value: geoprox-serverless-instance-1.c3ooeicas6w8.eu-west-1.rds.amazonaws.com
     - name: DB_NAME
       value: geoprox
     - name: DB_USER
@@ -38,3 +38,4 @@ run:
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
     - name: DB_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::'
+
