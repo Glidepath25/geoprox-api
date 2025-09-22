@@ -483,6 +483,14 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     with _get_conn() as conn:
         _debug_conn("get_user_by_username", conn)
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        if row is None:
+            log.warning("debug get_user_by_username(%s) -> None", username)
+        else:
+            try:
+                raw = dict(row)
+            except Exception:
+                raw = row
+            log.warning("debug get_user_by_username(%s) raw=%s", username, raw)
     return _row_to_dict(row) if row else None
 
 
@@ -549,13 +557,27 @@ def create_user(
     )
     if USE_POSTGRES:
         sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at"
+        created_row: Optional[Dict[str, Any]] = None
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
             row = cursor.fetchone()
             _debug_conn("create_user", conn)
-        if not row:
+            if row:
+                try:
+                    snapshot = conn.execute("SELECT id, username, is_active, company_id, created_at, updated_at FROM users WHERE username = ?", (username,)).fetchone()
+                    snapshot_data = dict(snapshot) if snapshot else None
+                    log.warning("debug create_user immediate username=%s -> %s", username, snapshot_data)
+                except Exception:
+                    log.exception("debug create_user immediate lookup failed for %s", username)
+                created_row = _row_to_dict(row)
+        if not created_row:
             raise RuntimeError("Failed to create user record")
-        return _row_to_dict(row)
+        try:
+            persisted = get_user_by_username(username)
+            log.warning("debug create_user post_commit username=%s -> %s", username, persisted)
+        except Exception:
+            log.exception("debug create_user post-commit lookup failed for %s", username)
+        return created_row
     with _get_conn() as conn:
         cursor = conn.execute(sql, params)
         user_id = cursor.lastrowid
