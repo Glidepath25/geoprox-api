@@ -115,7 +115,8 @@ if USE_POSTGRES:
         raw = _POOL.getconn()
         conn = PostgresConnection(raw)
         try:
-            yield conn
+            with conn:
+                yield conn
         finally:
             conn.close()
 else:
