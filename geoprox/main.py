@@ -1016,6 +1016,7 @@ async def admin_create_user(request: Request):
                     is_admin=is_admin,
                     license_tier=license_tier,
                 )
+                log.info("admin_create_user result truthy=%s data=%s", bool(created), created)
                 if created:
                     log.info("Admin created user %s (id=%s, company_id=%s, is_admin=%s, is_active=%s)",
                              username,
