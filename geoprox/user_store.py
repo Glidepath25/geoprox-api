@@ -361,25 +361,31 @@ def create_company(
     if not cleaned:
         raise ValueError("Company name is required")
     now = _now()
+    sql = """
+        INSERT INTO companies (name, company_number, phone, email, notes, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    params = (
+        cleaned,
+        company_number.strip(),
+        phone.strip(),
+        email.strip(),
+        notes.strip(),
+        _coerce_bool(is_active),
+        now,
+        now,
+    )
+    if USE_POSTGRES:
+        sql += " RETURNING id, name, company_number, phone, email, notes, is_active, created_at, updated_at"
+        with _get_conn() as conn:
+            cursor = conn.execute(sql, params)
+            row = cursor.fetchone()
+        if not row:
+            raise RuntimeError("Failed to create company record")
+        return _company_row_to_dict(row)
     with _get_conn() as conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO companies (name, company_number, phone, email, notes, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                cleaned,
-                company_number.strip(),
-                phone.strip(),
-                email.strip(),
-                notes.strip(),
-                _coerce_bool(is_active),
-                now,
-                now,
-            ),
-        )
+        cursor = conn.execute(sql, params)
         company_id = cursor.lastrowid
-        log.info("create_company lastrowid=%s", company_id)
     record = None
     try:
         company_id_int = int(company_id)
@@ -477,32 +483,38 @@ def create_user(
     password_hash = hash_password_hex(password, salt=salt)
     now = _now()
     normalized_tier = normalize_license_tier(license_tier)
+    sql = """
+        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    params = (
+        username,
+        name,
+        email,
+        resolved_company["name"] if resolved_company["id"] else company,
+        company_number,
+        phone,
+        resolved_company["id"],
+        salt.hex(),
+        password_hash,
+        _coerce_bool(is_admin),
+        _coerce_bool(is_active),
+        _coerce_bool(require_password_change),
+        normalized_tier,
+        now,
+        now,
+    )
+    if USE_POSTGRES:
+        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at"
+        with _get_conn() as conn:
+            cursor = conn.execute(sql, params)
+            row = cursor.fetchone()
+        if not row:
+            raise RuntimeError("Failed to create user record")
+        return _row_to_dict(row)
     with _get_conn() as conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                username,
-                name,
-                email,
-                resolved_company["name"] if resolved_company["id"] else company,
-                company_number,
-                phone,
-                resolved_company["id"],
-                salt.hex(),
-                password_hash,
-                _coerce_bool(is_admin),
-                _coerce_bool(is_active),
-                _coerce_bool(require_password_change),
-                normalized_tier,
-                now,
-                now,
-            ),
-        )
+        cursor = conn.execute(sql, params)
         user_id = cursor.lastrowid
-        log.info("create_user lastrowid=%s", user_id)
     record = None
     try:
         user_id_int = int(user_id)
