@@ -377,8 +377,19 @@ def create_company(
             ),
         )
         company_id = cursor.lastrowid
-    return get_company_by_id(company_id)  # type: ignore[return-value]
-
+    if not company_id:
+        existing = get_company_by_name(cleaned)
+        if existing:
+            return existing
+        raise RuntimeError("Failed to create company record")
+    try:
+        company_id_int = int(company_id)
+    except (TypeError, ValueError):
+        existing = get_company_by_name(cleaned)
+        if existing:
+            return existing
+        raise RuntimeError("Failed to create company record")
+    return get_company_by_id(company_id_int)  # type: ignore[return-value]
 
 def update_company(company_id: int, **fields: Any) -> None:
     allowed = {"name", "company_number", "phone", "email", "notes", "is_active"}
@@ -487,8 +498,19 @@ def create_user(
             ),
         )
         user_id = cursor.lastrowid
-    return get_user_by_id(user_id)  # type: ignore[return-value]
-
+    if not user_id:
+        existing = get_user_by_username(username)
+        if existing:
+            return existing
+        raise RuntimeError("Failed to create user record")
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        existing = get_user_by_username(username)
+        if existing:
+            return existing
+        raise RuntimeError("Failed to create user record")
+    return get_user_by_id(user_id_int)  # type: ignore[return-value]
 
 def update_user(user_id: int, **fields: Any) -> None:
     allowed = {
@@ -657,5 +679,6 @@ __all__ = [
     "update_user",
     "verify_credentials",
 ]
+
 
 
