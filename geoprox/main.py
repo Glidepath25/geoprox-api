@@ -1003,6 +1003,7 @@ async def admin_create_user(request: Request):
             _add_flash(request, "Select a valid license tier.", "error")
         else:
             try:
+                log.info("admin_create_user debug: USE_POSTGRES=%s DB_HOST=%s", user_store.USE_POSTGRES, os.environ.get("DB_HOST"))
                 created = user_store.create_user(
                     username=username,
                     password=password,
