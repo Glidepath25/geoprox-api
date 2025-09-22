@@ -267,7 +267,6 @@
 
       <div class="cta-group">
         <button type="button" class="cta primary" id="signupTrigger">Sign up for free trial</button>
-        <button type="button" class="cta secondary" id="upgradeTrigger">Request full licence</button>
       </div>
     </section>
 
@@ -446,7 +445,6 @@
     }
 
     document.getElementById('signupTrigger')?.addEventListener('click', () => openModal(signupModal));
-    document.getElementById('upgradeTrigger')?.addEventListener('click', () => openModal(upgradeModal));
 
     document.querySelectorAll('[data-modal-close]').forEach((btn) => {
       btn.addEventListener('click', (event) => {
