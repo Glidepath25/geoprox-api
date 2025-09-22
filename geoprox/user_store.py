@@ -49,6 +49,46 @@ def _get_conn():
     return _sqlite_conn()
 
 
+def _log_conn_details(conn: Any, where: str) -> None:
+    row = conn.execute(
+        '''
+        SELECT
+            current_database() AS db,
+            current_user AS usr,
+            pg_is_in_recovery() AS on_replica,
+            current_setting('transaction_read_only', true) AS tx_ro,
+            inet_server_addr()::text AS server_ip,
+            inet_server_port() AS server_port
+        '''
+    ).fetchone()
+    if not row:
+        log.warning("DB[%s] connection details unavailable", where)
+        return
+    log.warning(
+        "DB[%s] db=%s usr=%s replica=%s ro=%s addr=%s:%s",
+        where,
+        row.get("db"),
+        row.get("usr"),
+        row.get("on_replica"),
+        row.get("tx_ro"),
+        row.get("server_ip"),
+        row.get("server_port"),
+    )
+
+
+def _debug_conn(where: str = "", conn: Optional[Any] = None) -> None:
+    if not USE_POSTGRES:
+        return
+    try:
+        if conn is None:
+            with _get_conn() as inspect_conn:
+                _log_conn_details(inspect_conn, where)
+        else:
+            _log_conn_details(conn, where)
+    except Exception:
+        log.exception("debug conn failed at %s", where)
+
+
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
@@ -441,10 +481,8 @@ def list_users(*, include_disabled: bool = True, company_id: Optional[int] = Non
 
 def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     with _get_conn() as conn:
+        _debug_conn("get_user_by_username", conn)
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        if USE_POSTGRES:
-            db_name = conn.execute("SELECT current_database()").fetchone()["current_database"]
-            log.info("get_user_by_username DB=%s", db_name)
     return _row_to_dict(row) if row else None
 
 
@@ -514,8 +552,7 @@ def create_user(
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
             row = cursor.fetchone()
-            db_name = conn.execute("SELECT current_database()").fetchone()["current_database"]
-            log.info("create_user current_database=%s", db_name)
+            _debug_conn("create_user", conn)
         if not row:
             raise RuntimeError("Failed to create user record")
         return _row_to_dict(row)
