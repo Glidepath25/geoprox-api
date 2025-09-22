@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 
@@ -9,12 +10,84 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+try:
+    import boto3
+except Exception:
+    boto3 = None
+
 _DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
 _DB_PATH = _DATA_DIR / "search_history.db"
 
 
 
+
+
+_S3_BUCKET = os.environ.get("GEOPROX_BUCKET", "").strip()
+_S3_CLIENT = None
+
+
+def _get_s3_client():
+    global _S3_CLIENT
+    if not _S3_BUCKET or boto3 is None:
+        return None
+    if _S3_CLIENT is None:
+        try:
+            _S3_CLIENT = boto3.client("s3")
+        except Exception:
+            _S3_CLIENT = None
+    return _S3_CLIENT
+
+
+def _normalize_artifact(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    trimmed = str(value).strip()
+    if not trimmed:
+        return None
+    lowered = trimmed.lower()
+    if lowered.startswith("http://") or lowered.startswith("https://"):
+        return trimmed
+    if trimmed.startswith("/"):
+        return trimmed
+    name = Path(trimmed).name
+    return f"/artifacts/{name}"
+
+
+def _signed_url(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return None
+    client = _get_s3_client()
+    if not client:
+        return None
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": _S3_BUCKET, "Key": key},
+            ExpiresIn=86400,
+        )
+    except Exception:
+        return None
+
+
+def _resolve_links(data: Dict[str, Any], artifacts: Dict[str, Any]) -> None:
+    pdf_link = artifacts.get("pdf_url") or artifacts.get("pdf_download_url")
+    if not pdf_link:
+        pdf_link = _signed_url(artifacts.get("pdf_key"))
+    if not pdf_link:
+        pdf_link = data.get("pdf_path")
+    data["pdf_path"] = _normalize_artifact(pdf_link)
+
+    map_link = (
+        artifacts.get("map_url")
+        or artifacts.get("map_embed_url")
+        or artifacts.get("map_html_url")
+    )
+    if not map_link:
+        map_link = _signed_url(artifacts.get("map_key"))
+    if not map_link:
+        map_link = data.get("map_path")
+    data["map_path"] = _normalize_artifact(map_link)
 
 def _month_bounds(reference: Optional[datetime] = None) -> Tuple[str, str]:
     if reference is None:
@@ -133,7 +206,10 @@ def record_search(
 
 
 def get_history(username: str, limit: Optional[int] = 100) -> List[Dict[str, Any]]:
-    query = "SELECT username, timestamp, location, radius_m, outcome, permit, pdf_path, map_path FROM search_history WHERE username = ? ORDER BY timestamp DESC"
+    query = (
+        "SELECT username, timestamp, location, radius_m, outcome, permit, pdf_path, map_path, result_json "
+        "FROM search_history WHERE username = ? ORDER BY timestamp DESC"
+    )
     if limit is not None:
         query += " LIMIT ?"
         params: Iterable[Any] = (username, limit)
@@ -141,7 +217,20 @@ def get_history(username: str, limit: Optional[int] = 100) -> List[Dict[str, Any
         params = (username,)
     with _get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [dict(row) for row in rows]
+    items: List[Dict[str, Any]] = []
+    for row in rows:
+        data = dict(row)
+        payload = data.pop("result_json", None)
+        artifacts: Dict[str, Any] = {}
+        if payload:
+            try:
+                parsed = json.loads(payload)
+                artifacts = parsed.get("artifacts") or {}
+            except json.JSONDecodeError:
+                artifacts = {}
+        _resolve_links(data, artifacts)
+        items.append(data)
+    return items
 
 
 def get_user_monthly_search_counts(reference: Optional[datetime] = None) -> Dict[str, int]:
