@@ -1024,6 +1024,7 @@ async def admin_create_user(request: Request):
                              created.get("company_id"),
                              created.get("is_admin"),
                              created.get("is_active"))
+                    log.info("admin_check persisted: %s", user_store.get_user_by_username(username))
                 else:
                     log.warning("Admin create user returned no record for %s", username)
                 _add_flash(request, f"User '{username}' created.", "success")
@@ -1470,6 +1471,7 @@ def api_search(request: Request, req: SearchReq):
         tb = traceback.format_exc(limit=6)
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
+
 
 
 
