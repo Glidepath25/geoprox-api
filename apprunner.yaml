@@ -23,18 +23,18 @@ run:
       value: useradmin@geoprox.co.uk
     - name: SMTP_USE_TLS
       value: 'true'
-    - name: DB_HOST
-      value: geoprox-serverless.cluster-c3ooeicas6w8.eu-west-1.rds.amazonaws.com
-    - name: DB_NAME
-      value: geoprox
-    - name: DB_USER
-      value: GeoProx_V2
-    - name: DB_PORT
-      value: '5432'
   secrets:
     - name: SMTP_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::'
     - name: WHAT3WORDS_API_KEY
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
+    - name: DB_HOST
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_HOST::'
+    - name: DB_NAME
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_NAME::'
+    - name: DB_USER
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_USER::'
     - name: DB_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::'
+    - name: DB_PORT
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PORT::'
