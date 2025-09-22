@@ -377,19 +377,18 @@ def create_company(
             ),
         )
         company_id = cursor.lastrowid
-    if not company_id:
-        existing = get_company_by_name(cleaned)
-        if existing:
-            return existing
-        raise RuntimeError("Failed to create company record")
+    record = None
     try:
         company_id_int = int(company_id)
     except (TypeError, ValueError):
-        existing = get_company_by_name(cleaned)
-        if existing:
-            return existing
+        company_id_int = None
+    if company_id_int is not None:
+        record = get_company_by_id(company_id_int)
+    if not record:
+        record = get_company_by_name(cleaned)
+    if not record:
         raise RuntimeError("Failed to create company record")
-    return get_company_by_id(company_id_int)  # type: ignore[return-value]
+    return record
 
 def update_company(company_id: int, **fields: Any) -> None:
     allowed = {"name", "company_number", "phone", "email", "notes", "is_active"}
@@ -498,19 +497,18 @@ def create_user(
             ),
         )
         user_id = cursor.lastrowid
-    if not user_id:
-        existing = get_user_by_username(username)
-        if existing:
-            return existing
-        raise RuntimeError("Failed to create user record")
+    record = None
     try:
         user_id_int = int(user_id)
     except (TypeError, ValueError):
-        existing = get_user_by_username(username)
-        if existing:
-            return existing
+        user_id_int = None
+    if user_id_int is not None:
+        record = get_user_by_id(user_id_int)
+    if not record:
+        record = get_user_by_username(username)
+    if not record:
         raise RuntimeError("Failed to create user record")
-    return get_user_by_id(user_id_int)  # type: ignore[return-value]
+    return record
 
 def update_user(user_id: int, **fields: Any) -> None:
     allowed = {
