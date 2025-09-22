@@ -212,8 +212,15 @@ def _safe_artifact(path: str, request: Request) -> Path:
     _require_user(request)
     full = (ARTIFACTS_DIR / path).resolve()
     if not str(full).startswith(str(ARTIFACTS_DIR)):
+        log.warning("artifact blocked path=%s base=%s", full, ARTIFACTS_DIR)
         raise HTTPException(status_code=400, detail="Invalid artifact path")
     if not full.exists():
+        available = []
+        try:
+            available = sorted(p.name for p in ARTIFACTS_DIR.glob('*'))[:20]
+        except Exception:
+            available = []
+        log.warning("artifact missing path=%s base=%s available=%s", full, ARTIFACTS_DIR, available)
         raise HTTPException(status_code=404, detail="Not Found")
     return full
 
