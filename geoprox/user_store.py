@@ -380,6 +380,8 @@ def create_company(
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
             row = cursor.fetchone()
+            db_name = conn.execute("SELECT current_database()").fetchone()["current_database"]
+            log.info("create_company current_database=%s", db_name)
         if not row:
             raise RuntimeError("Failed to create company record")
         return _company_row_to_dict(row)
@@ -440,6 +442,9 @@ def list_users(*, include_disabled: bool = True, company_id: Optional[int] = Non
 def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     with _get_conn() as conn:
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        if USE_POSTGRES:
+            db_name = conn.execute("SELECT current_database()").fetchone()["current_database"]
+            log.info("get_user_by_username DB=%s", db_name)
     return _row_to_dict(row) if row else None
 
 
@@ -509,6 +514,8 @@ def create_user(
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
             row = cursor.fetchone()
+            db_name = conn.execute("SELECT current_database()").fetchone()["current_database"]
+            log.info("create_user current_database=%s", db_name)
         if not row:
             raise RuntimeError("Failed to create user record")
         return _row_to_dict(row)
