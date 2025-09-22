@@ -4,6 +4,8 @@ import hmac
 import secrets
 import sqlite3
 from contextlib import contextmanager
+import logging
+log = logging.getLogger("geoprox.user_store")
 
 from geoprox.db import USE_POSTGRES, get_postgres_conn
 from datetime import datetime
