@@ -238,12 +238,12 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
     request.session["user_id"] = user["id"]
     request.session["is_admin"] = bool(user["is_admin"])
     request.session["display_name"] = user["name"]
-    history_rows = history_store.get_history(user["username"], limit=20)
+    history_rows = history_store.get_history(user["username"], limit=5)
     session_history = []
     for row in reversed(history_rows):
         session_history.append({
             "timestamp": row["timestamp"],
-            "location": row["location"],
+            "location": (row.get("location") or "")[:80],
             "radius_m": int(row.get("radius_m", 0)),
             "outcome": row.get("outcome"),
             "permit": row.get("permit"),
