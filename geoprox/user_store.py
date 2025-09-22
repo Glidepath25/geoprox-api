@@ -377,6 +377,7 @@ def create_company(
             ),
         )
         company_id = cursor.lastrowid
+        log.info("create_company lastrowid=%s", company_id)
     record = None
     try:
         company_id_int = int(company_id)
@@ -384,8 +385,10 @@ def create_company(
         company_id_int = None
     if company_id_int is not None:
         record = get_company_by_id(company_id_int)
+        log.info("create_company lookup by id(%s) -> %s", company_id_int, record)
     if not record:
         record = get_company_by_name(cleaned)
+        log.info("create_company lookup by name(%s) -> %s", cleaned, record)
     if not record:
         raise RuntimeError("Failed to create company record")
     return record
@@ -497,6 +500,7 @@ def create_user(
             ),
         )
         user_id = cursor.lastrowid
+        log.info("create_user lastrowid=%s", user_id)
     record = None
     try:
         user_id_int = int(user_id)
@@ -504,8 +508,10 @@ def create_user(
         user_id_int = None
     if user_id_int is not None:
         record = get_user_by_id(user_id_int)
+        log.info("create_user lookup by id(%s) -> %s", user_id_int, record)
     if not record:
         record = get_user_by_username(username)
+        log.info("create_user lookup by username(%s) -> %s", username, record)
     if not record:
         raise RuntimeError("Failed to create user record")
     return record
