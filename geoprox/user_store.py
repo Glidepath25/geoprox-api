@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 from contextlib import contextmanager
 import logging
-log = logging.getLogger("geoprox.user_store")
+log = logging.getLogger("uvicorn.error")
 
 from geoprox.db import USE_POSTGRES, get_postgres_conn
 from datetime import datetime
@@ -685,6 +685,7 @@ __all__ = [
     "update_user",
     "verify_credentials",
 ]
+
 
 
 
