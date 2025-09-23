@@ -71,20 +71,20 @@ def _signed_url(key: Optional[str]) -> Optional[str]:
 
 
 def _resolve_links(data: Dict[str, Any], artifacts: Dict[str, Any]) -> None:
-    pdf_link = artifacts.get("pdf_url") or artifacts.get("pdf_download_url")
+    pdf_link = _signed_url(artifacts.get("pdf_key"))
     if not pdf_link:
-        pdf_link = _signed_url(artifacts.get("pdf_key"))
+        pdf_link = artifacts.get("pdf_url") or artifacts.get("pdf_download_url")
     if not pdf_link:
         pdf_link = data.get("pdf_path")
     data["pdf_path"] = _normalize_artifact(pdf_link)
 
-    map_link = (
-        artifacts.get("map_url")
-        or artifacts.get("map_embed_url")
-        or artifacts.get("map_html_url")
-    )
+    map_link = _signed_url(artifacts.get("map_key"))
     if not map_link:
-        map_link = _signed_url(artifacts.get("map_key"))
+        map_link = (
+            artifacts.get("map_url")
+            or artifacts.get("map_embed_url")
+            or artifacts.get("map_html_url")
+        )
     if not map_link:
         map_link = data.get("map_path")
     data["map_path"] = _normalize_artifact(map_link)
