@@ -72,13 +72,13 @@
             {% set pdf = row.pdf_path %}
             {% set map = row.map_path %}
             {% if pdf %}
-              <a href="/artifacts/{{ pdf | urlencode }}" target="_blank" rel="noopener">PDF</a>
+              <a href="{{ pdf }}" target="_blank" rel="noopener">PDF</a>
             {% endif %}
             {% if pdf and map %}
               <span class="muted">|</span>
             {% endif %}
             {% if map %}
-              <a href="/artifacts/{{ map | urlencode }}" target="_blank" rel="noopener">Map</a>
+              <a href="{{ map }}" target="_blank" rel="noopener">Map</a>
             {% endif %}
             {% if not pdf and not map %}
               <span class="muted">None</span>
