@@ -477,6 +477,9 @@ async def login_page(request: Request) -> HTMLResponse:
 
 @app.post("/login", response_class=HTMLResponse)
 async def login_action(request: Request, username: str = Form(...), password: str = Form(...)) -> HTMLResponse:
+    username = username.strip()
+    if '@' in username:
+        username = username.lower()
     user = user_store.verify_credentials(username, password, include_disabled=True)
     if user and not user["is_active"]:
         error = "Account disabled. Please contact your administrator."
@@ -503,7 +506,6 @@ async def signup_free_trial(
     phone: str = Form(""),
     company_name: str = Form(...),
     company_number: str = Form(""),
-    username: str = Form(...),
     password: str = Form(...),
     confirm_password: str = Form(...),
 ) -> Response:
@@ -513,7 +515,6 @@ async def signup_free_trial(
         "phone": phone.strip(),
         "company_name": company_name.strip(),
         "company_number": company_number.strip(),
-        "username": username.strip(),
     }
 
     def render_error(message: str, *, status: int = 400) -> HTMLResponse:
@@ -525,20 +526,20 @@ async def signup_free_trial(
             open_modal="signup",
         )
 
-    if len(data["username"]) < 3:
-        return render_error("Username must be at least 3 characters long.")
-    if " " in data["username"]:
-        return render_error("Username cannot contain spaces.")
+    email_clean = data["email"].strip().lower()
+    if not email_clean:
+        return render_error("Email address is required.")
+    username = email_clean
+    if user_store.get_user_by_username(username):
+        return render_error("An account with that email already exists.")
     if len(password) < 8:
         return render_error("Password must be at least 8 characters long.")
     if password != confirm_password:
         return render_error("Passwords do not match.")
-    if user_store.get_user_by_username(data["username"]):
-        return render_error("That username is already in use. Please choose a different one.")
 
     try:
         user_store.create_user(
-            username=data["username"],
+            username=username,
             password=password,
             name=data["full_name"],
             email=data["email"],
@@ -552,16 +553,16 @@ async def signup_free_trial(
             license_tier="free_trial",
         )
     except sqlite3.IntegrityError:
-        return render_error("That username is already in use. Please choose a different one.")
+        return render_error("An account with that email already exists.")
     except ValueError as exc:
         return render_error(str(exc) or "Unable to create account with the provided details.")
 
-    user_record = user_store.get_user_by_username(data["username"])
+    user_record = user_store.get_user_by_username(username)
     if not user_record:
         return render_error("Something went wrong creating your account. Please try again.")
 
     _start_session_for_user(request, user_record)
-    log.info("Created free trial account for %s", data["username"])
+    log.info("Created free trial account for %s", username)
     return RedirectResponse(url="/app", status_code=303)
 
 

@@ -327,15 +327,9 @@
             <input id="signup_company" name="company_name" type="text" value="{{ signup_data.get('company_name', '') }}" required>
           </div>
         </div>
-        <div class="dual-column">
-          <div>
-            <label for="signup_company_number">Company number</label>
-            <input id="signup_company_number" name="company_number" type="text" value="{{ signup_data.get('company_number', '') }}">
-          </div>
-          <div>
-            <label for="signup_username">Desired username</label>
-            <input id="signup_username" name="username" type="text" value="{{ signup_data.get('username', '') }}" minlength="3" required>
-          </div>
+        <div>
+          <label for="signup_company_number">Company number</label>
+          <input id="signup_company_number" name="company_number" type="text" value="{{ signup_data.get('company_number', '') }}">
         </div>
         <div class="dual-column">
           <div>
@@ -474,20 +468,6 @@
       openModal(modals[openModalName]);
     }
 
-    const signupEmail = document.getElementById('signup_email');
-    const signupUsername = document.getElementById('signup_username');
-    if (signupEmail && signupUsername) {
-      const markManual = () => { signupUsername.dataset.manual = 'true'; };
-      signupUsername.addEventListener('input', markManual, { once: true });
-      signupEmail.addEventListener('input', () => {
-        if (signupUsername.dataset.manual !== 'true') {
-          signupUsername.value = signupEmail.value.trim();
-        }
-      });
-      if (!signupUsername.value) {
-        signupUsername.value = signupEmail.value.trim();
-      }
-    }
     const form = document.getElementById('loginForm');
     const termsCheckbox = document.getElementById('terms');
     form?.addEventListener('submit', (event) => {
