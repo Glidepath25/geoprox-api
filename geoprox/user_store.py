@@ -596,6 +596,13 @@ def create_user(
         raise RuntimeError("Failed to create user record")
     return record
 
+
+
+def delete_user(user_id: int) -> None:
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def update_user(user_id: int, **fields: Any) -> None:
     allowed = {
         "name",
@@ -748,6 +755,7 @@ __all__ = [
     "normalize_license_tier",
     "create_company",
     "create_user",
+    "delete_user",
     "disable_user",
     "enable_user",
     "get_company_by_id",

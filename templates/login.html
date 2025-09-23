@@ -314,7 +314,7 @@
           </div>
           <div>
             <label for="signup_email">Email</label>
-            <input id="signup_email" name="email" type="email" value="{{ signup_data.get('email', '') }}" required>
+            <input id="signup_email" name="email" type="email" value="" autocomplete="off" required>
           </div>
         </div>
         <div class="dual-column">
@@ -334,11 +334,11 @@
         <div class="dual-column">
           <div>
             <label for="signup_password">Password</label>
-            <input id="signup_password" name="password" type="password" minlength="8" required>
+            <input id="signup_password" name="password" type="password" minlength="8" value="" autocomplete="new-password" required>
           </div>
           <div>
             <label for="signup_confirm">Confirm password</label>
-            <input id="signup_confirm" name="confirm_password" type="password" minlength="8" required>
+            <input id="signup_confirm" name="confirm_password" type="password" minlength="8" value="" autocomplete="new-password" required>
           </div>
         </div>
         <div class="actions">

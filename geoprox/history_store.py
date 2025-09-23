@@ -205,6 +205,12 @@ def record_search(
         conn.commit()
 
 
+
+def delete_history(username: str) -> None:
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM search_history WHERE username = ?", (username,))
+
+
 def get_history(username: str, limit: Optional[int] = 100) -> List[Dict[str, Any]]:
     query = (
         "SELECT username, timestamp, location, radius_m, outcome, permit, pdf_path, map_path, result_json "

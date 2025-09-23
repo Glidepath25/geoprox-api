@@ -1132,6 +1132,29 @@ async def admin_reset_password(request: Request, user_id: int):
     return _redirect_admin_users(redirect_company_id)
 
 
+@app.post("/admin/users/{user_id}/delete")
+async def admin_delete_user(request: Request, user_id: int):
+    _require_admin(request)
+    form = await request.form()
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        _add_flash(request, "User not found.", "error")
+        return _redirect_admin_users(redirect_company_id)
+    current_username = (request.session.get("user") or "").lower()
+    if user["username"].lower() == current_username:
+        _add_flash(request, "You cannot delete your own account.", "error")
+        return _redirect_admin_users(redirect_company_id)
+    if user["is_admin"]:
+        remaining_admins = [u for u in user_store.list_users(include_disabled=True) if u["is_admin"] and u["id"] != user["id"]]
+        if not remaining_admins:
+            _add_flash(request, "At least one administrator must remain.", "error")
+            return _redirect_admin_users(redirect_company_id)
+    history_store.delete_history(user["username"])
+    user_store.delete_user(user["id"])
+    _add_flash(request, f"Deleted '{user['username']}'.", "success")
+    return _redirect_admin_users(redirect_company_id)
+
 @app.post("/admin/companies/create")
 async def admin_create_company_form(request: Request):
     _require_admin(request)
