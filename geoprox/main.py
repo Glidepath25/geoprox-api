@@ -461,6 +461,7 @@ def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
         is_active=bool(company["is_active"]),
         created_at=company["created_at"],
         updated_at=company["updated_at"],
+    )
 
 def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
     location = record.get("location") or {}
