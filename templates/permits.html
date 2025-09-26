@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+ï»¿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Permit Records · GeoProx</title>
+  <title>Permit Records - GeoProx</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
@@ -164,26 +164,26 @@
           <div class="muted" id="summaryLocation"></div>
         </div>
         <div style="display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-start;">
-          <span class="status-chip desktop" id="desktopStatusChip">Desktop • Pending</span>
-          <span class="status-chip site" id="siteStatusChip">Site • Not started</span>
+          <span class="status-chip desktop" id="desktopStatusChip">Desktop â€¢ Pending</span>
+          <span class="status-chip site" id="siteStatusChip">Site â€¢ Not started</span>
         </div>
       </div>
       <dl style="margin-top:1.6rem;">
         <div>
           <dt>Desktop outcome</dt>
-          <dd id="desktopOutcome">—</dd>
+          <dd id="desktopOutcome">-</dd>
         </div>
         <div>
           <dt>Site outcome</dt>
-          <dd id="siteOutcome">—</dd>
+          <dd id="siteOutcome">-</dd>
         </div>
         <div>
           <dt>Last updated</dt>
-          <dd id="updatedAt">—</dd>
+          <dd id="updatedAt">-</dd>
         </div>
         <div>
           <dt>Search radius</dt>
-          <dd id="summaryRadius">—</dd>
+          <dd id="summaryRadius">-</dd>
         </div>
       </dl>
       <div class="artifact-links" id="artifactLinks"></div>
@@ -295,7 +295,7 @@
       };
 
       const formatDate = (iso) => {
-        if (!iso) return '—';
+        if (!iso) return '-';
         const date = new Date(iso);
         if (Number.isNaN(date.getTime())) return iso;
         return date.toLocaleString();
@@ -323,7 +323,7 @@
       const updateChip = (chip, label, status) => {
         if (!chip) return;
         const value = status || 'Not recorded';
-        chip.textContent = `${label} • ${value}`;
+        chip.textContent = `${label} â€¢ ${value}`;
         if (chip === siteChip) {
           chip.classList.toggle('unknown', !status);
         }
@@ -347,19 +347,19 @@
 
         summaryPermit.textContent = permit.permit_ref;
         const location = permit.location || {};
-        const display = location.display || '—';
+        const display = location.display || '-';
         const coords = [];
         if (Number.isFinite(location.lat) && Number.isFinite(location.lon)) {
           coords.push(`${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}`);
         }
-        summaryLocation.textContent = coords.length ? `${display} · ${coords.join(' / ')}` : display;
-        summaryRadius.textContent = location.radius_m ? `${location.radius_m} m` : '—';
+        summaryLocation.textContent = coords.length ? `${display} - ${coords.join(' / ')}` : display;
+        summaryRadius.textContent = location.radius_m ? `${location.radius_m} m` : '-';
         updatedAt.textContent = formatDate(permit.updated_at);
 
         const desktop = permit.desktop || {};
         const site = permit.site || {};
-        desktopOutcome.textContent = desktop.outcome || '—';
-        siteOutcome.textContent = site.outcome || '—';
+        desktopOutcome.textContent = desktop.outcome || '-';
+        siteOutcome.textContent = site.outcome || '-';
 
         updateChip(desktopChip, 'Desktop', desktop.status);
         updateChip(siteChip, 'Site', site.status);
