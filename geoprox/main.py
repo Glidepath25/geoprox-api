@@ -498,8 +498,6 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
         search_result=search_payload,
     )
 
-    )
-
 
 
 # ---------------------------------------------------------------------------
