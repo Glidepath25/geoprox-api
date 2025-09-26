@@ -21,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
 
-from geoprox import history_store, user_store
+from geoprox import history_store, user_store, permit_store
 from geoprox.core import run_geoprox_search
 log = logging.getLogger("uvicorn.error")
 
@@ -461,6 +461,43 @@ def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
         is_active=bool(company["is_active"]),
         created_at=company["created_at"],
         updated_at=company["updated_at"],
+
+def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
+    location = record.get("location") or {}
+    desktop = record.get("desktop") or {}
+    site = record.get("site") or {}
+
+    desktop_summary = desktop.get("summary") if isinstance(desktop.get("summary"), dict) else None
+    site_payload = site.get("payload") if isinstance(site.get("payload"), dict) else None
+    search_payload = record.get("search_result") if isinstance(record.get("search_result"), dict) else None
+    desktop_notes = desktop.get("notes") if isinstance(desktop.get("notes"), str) else None
+    site_notes = site.get("notes") if isinstance(site.get("notes"), str) else None
+
+    return PermitRecordResp(
+        permit_ref=str(record.get("permit_ref", "")),
+        created_at=record.get("created_at"),
+        updated_at=record.get("updated_at"),
+        location=PermitLocation(
+            display=location.get("display"),
+            lat=location.get("lat"),
+            lon=location.get("lon"),
+            radius_m=location.get("radius_m"),
+        ),
+        desktop=PermitStage(
+            status=str(desktop.get("status") or "Pending"),
+            outcome=desktop.get("outcome"),
+            notes=desktop_notes,
+            summary=desktop_summary,
+        ),
+        site=PermitStage(
+            status=str(site.get("status") or "Not started"),
+            outcome=site.get("outcome"),
+            notes=site_notes,
+            payload=site_payload,
+        ),
+        search_result=search_payload,
+    )
+
     )
 
 
@@ -471,7 +508,7 @@ def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request) -> HTMLResponse:
     if request.session.get("user"):
-        return RedirectResponse(url="/app", status_code=303)
+        return RedirectResponse(url="/dashboard", status_code=303)
     return _render_login(request)
 
 
@@ -492,7 +529,7 @@ async def login_action(request: Request, username: str = Form(...), password: st
             return RedirectResponse(url="/change-password", status_code=303)
         _start_session_for_user(request, user)
         log.info("User %s logged in", username)
-        return RedirectResponse(url="/app", status_code=303)
+        return RedirectResponse(url="/dashboard", status_code=303)
     else:
         error = "Invalid username or password."
     return _render_login(request, status=401, login_error=error, username=username)
@@ -563,7 +600,7 @@ async def signup_free_trial(
 
     _start_session_for_user(request, user_record)
     log.info("Created free trial account for %s", username)
-    return RedirectResponse(url="/app", status_code=303)
+    return RedirectResponse(url="/dashboard", status_code=303)
 
 
 @app.post("/request-upgrade", response_class=HTMLResponse)
@@ -694,13 +731,13 @@ async def change_password_action(
     log.info("User %s changed password", username)
     request.session.pop("pending_user_id", None)
     request.session.pop("pending_username", None)
-    return RedirectResponse(url="/app", status_code=303)
+    return RedirectResponse(url="/dashboard", status_code=303)
 
 
 @app.get("/forgot-password", response_class=HTMLResponse)
 async def forgot_password_page(request: Request) -> HTMLResponse:
     if request.session.get("user"):
-        return RedirectResponse(url="/app", status_code=303)
+        return RedirectResponse(url="/dashboard", status_code=303)
     return templates.TemplateResponse(
         "forgot_password.html",
         {"request": request, "error": None, "username": "", "company_number": "", "email": ""},
@@ -739,7 +776,7 @@ async def forgot_password_action(
                 if updated:
                     _start_session_for_user(request, updated)
                     log.info("User %s reset password via self-service", username)
-                    return RedirectResponse(url="/app", status_code=303)
+                    return RedirectResponse(url="/dashboard", status_code=303)
                 error = "Unable to update password. Please contact support."
     return templates.TemplateResponse(
         "forgot_password.html",
@@ -845,6 +882,58 @@ class AdminCompanyUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+
+class PermitStage(BaseModel):
+    status: str
+    outcome: Optional[str] = None
+    notes: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+    payload: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "forbid"
+
+
+class PermitLocation(BaseModel):
+    display: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    radius_m: Optional[int] = None
+
+    class Config:
+        extra = "forbid"
+
+
+class PermitRecordResp(BaseModel):
+    permit_ref: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    location: PermitLocation
+    desktop: PermitStage
+    site: PermitStage
+    search_result: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "forbid"
+
+
+class PermitSaveReq(BaseModel):
+    permit_ref: str = Field(..., min_length=1, max_length=120)
+    result: Dict[str, Any] = Field(default_factory=dict)
+
+    class Config:
+        extra = "forbid"
+
+
+class PermitSiteUpdateReq(BaseModel):
+    status: str = Field(default="Completed", min_length=1, max_length=120)
+    outcome: Optional[str] = None
+    notes: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "forbid"
+
 class SearchReq(BaseModel):
     location: str = Field(..., description="lat,lon or ///what.three.words")
     radius_m: int = Field(..., ge=10, le=20000, examples=[2000])
@@ -883,6 +972,36 @@ def api_history(request: Request):
     items = history_store.get_history(username, limit=20)
     return {"history": items}
 
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request) -> HTMLResponse:
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "user": user,
+            "display_name": request.session.get("display_name") or user,
+        },
+    )
+
+
+@app.get("/permits", response_class=HTMLResponse)
+async def permits_page(request: Request) -> HTMLResponse:
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(
+        "permits.html",
+        {
+            "request": request,
+            "user": user,
+            "display_name": request.session.get("display_name") or user,
+        },
+    )
 
 @app.get("/app")
 async def app_page(request: Request):
@@ -1384,6 +1503,57 @@ async def api_admin_update_company(request: Request, company_id: int, payload: A
         raise HTTPException(status_code=404, detail="Company not found")
     return _company_to_out(updated)
 
+
+
+@app.post("/api/permits", response_model=PermitRecordResp)
+def api_save_permit_record(request: Request, payload: PermitSaveReq):
+    username = _require_user(request)
+    permit_ref = (payload.permit_ref or "").strip()
+    if not permit_ref:
+        raise HTTPException(status_code=400, detail="Permit reference is required.")
+    record = permit_store.save_permit(
+        username=username,
+        permit_ref=permit_ref,
+        search_result=payload.result or {},
+    )
+    if not record:
+        raise HTTPException(status_code=500, detail="Unable to save permit record.")
+    return _permit_to_response(record)
+
+
+@app.get("/api/permits/{permit_ref}", response_model=PermitRecordResp)
+def api_get_permit_record(request: Request, permit_ref: str):
+    username = _require_user(request)
+    ref = (permit_ref or "").strip()
+    if not ref:
+        raise HTTPException(status_code=400, detail="Permit reference is required.")
+    record = permit_store.get_permit(username, ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit record not found.")
+    return _permit_to_response(record)
+
+
+@app.post("/api/permits/{permit_ref}/site-assessment", response_model=PermitRecordResp)
+def api_update_site_assessment(request: Request, permit_ref: str, payload: PermitSiteUpdateReq):
+    username = _require_user(request)
+    ref = (permit_ref or "").strip()
+    if not ref:
+        raise HTTPException(status_code=400, detail="Permit reference is required.")
+    status = (payload.status or "").strip() or "Completed"
+    outcome = (payload.outcome or "").strip() or None
+    notes = (payload.notes or "").strip() or None
+    payload_data = payload.payload if isinstance(payload.payload, dict) else None
+    record = permit_store.update_site_assessment(
+        username=username,
+        permit_ref=ref,
+        status=status,
+        outcome=outcome,
+        notes=notes,
+        payload=payload_data,
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit record not found.")
+    return _permit_to_response(record)
 
 @app.post("/api/search", response_model=SearchResp)
 def api_search(request: Request, req: SearchReq):
