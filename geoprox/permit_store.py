@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+
+
 import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from geoprox.db import USE_POSTGRES, get_postgres_conn
 
@@ -54,6 +56,17 @@ def _safe_int(value: Any) -> Optional[int]:
         return int(float(value))
     except (TypeError, ValueError):
         return None
+
+def _normalize_timestamp(value: Any) -> Optional[str]:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if value is None:
+        return None
+    try:
+        return str(value)
+    except Exception:
+        return None
+
 
 
 def init_db() -> None:
@@ -275,7 +288,14 @@ def update_site_assessment(
     if not existing:
         return None
 
-    payload_json = json.dumps(payload, ensure_ascii=False) if payload else None
+    merged_payload: Dict[str, Any] = {}
+    existing_payload = existing.get("site", {}).get("payload")
+    if isinstance(existing_payload, dict):
+        merged_payload = dict(existing_payload)
+    if isinstance(payload, dict):
+        merged_payload.update(payload)
+
+    payload_json = json.dumps(merged_payload, ensure_ascii=False) if merged_payload else None
     now = _now()
 
     with _get_conn() as conn:
@@ -302,11 +322,67 @@ def update_site_assessment(
     return get_permit(username, permit_ref)
 
 
+def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict[str, Any]]:
+    query = (query or "").strip()
+    limit = max(1, int(limit or 20))
+    pattern = f"%{query}%"
+    pattern_lower = f"%{query.lower()}%" if query else "%"
+    with _get_conn() as conn:
+        if USE_POSTGRES:
+            if query:
+                rows = conn.execute("""
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    FROM permit_records
+                    WHERE username = %s AND permit_ref ILIKE %s
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                """, (username, pattern, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    FROM permit_records
+                    WHERE username = %s
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                """, (username, limit)).fetchall()
+        else:
+            if query:
+                rows = conn.execute("""
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    FROM permit_records
+                    WHERE username = ? AND LOWER(permit_ref) LIKE ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                """, (username, pattern_lower, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    FROM permit_records
+                    WHERE username = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                """, (username, limit)).fetchall()
+    results: List[Dict[str, Any]] = []
+    for row in rows:
+        record = dict(row)
+        results.append({
+            "permit_ref": record.get("permit_ref"),
+            "created_at": _normalize_timestamp(record.get("created_at")),
+            "updated_at": _normalize_timestamp(record.get("updated_at")),
+            "desktop_status": record.get("desktop_status"),
+            "desktop_outcome": record.get("desktop_outcome"),
+            "site_status": record.get("site_status"),
+            "site_outcome": record.get("site_outcome"),
+        })
+    return results
+
+
 init_db()
 
 __all__ = [
     "get_permit",
     "save_permit",
     "update_site_assessment",
+    "search_permits",
 ]
 

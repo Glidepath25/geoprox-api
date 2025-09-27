@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Site Assessment - {{ permit.permit_ref }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09192a;
+      --panel: #13283d;
+      --panel-alt: #102338;
+      --text: #f2f7ff;
+      --muted: #8ea2ba;
+      --accent: #2b7cff;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(43,124,255,0.45);
+      --success: #44d19f;
+      --error: #ff9e9e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(200deg, rgba(43,124,255,0.1), transparent 55%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .brand span {
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: rgba(43,124,255,0.12);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.45rem 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .nav-btn:hover {
+      background: rgba(43,124,255,0.2);
+      border-color: var(--border-strong);
+    }
+    main {
+      width: 100%;
+      max-width: 960px;
+      margin: 2.5rem auto 3rem;
+      padding: 0 1.75rem 3rem;
+      flex: 1;
+      display: grid;
+      gap: 1.75rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.95rem;
+      font-weight: 600;
+    }
+    .subtitle {
+      margin: 0.3rem 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    form {
+      background: var(--panel);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      padding: 1.9rem;
+      box-shadow: 0 18px 45px rgba(9, 22, 40, 0.45);
+      display: grid;
+      gap: 1.4rem;
+    }
+    .section-title {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .grid-two {
+      display: grid;
+      gap: 1.1rem 1.4rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .grid-one {
+      display: grid;
+      gap: 1.1rem;
+    }
+    label {
+      display: block;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 0.35rem;
+    }
+    input[type="text"],
+    input[type="tel"],
+    input[type="email"],
+    input[type="date"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 0.7rem 0.85rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: var(--panel-alt);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: rgba(43,124,255,0.65);
+      box-shadow: 0 0 0 2px rgba(43,124,255,0.18);
+    }
+    .form-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      align-items: center;
+    }
+    .primary-btn {
+      padding: 0.78rem 1.6rem;
+      border-radius: 12px;
+      border: 0;
+      background: linear-gradient(135deg, rgba(43,124,255,0.9), rgba(22,102,175,0.9));
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      box-shadow: 0 18px 42px rgba(26,78,148,0.5);
+      transition: transform 0.16s ease, box-shadow 0.16s ease;
+    }
+    .primary-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 22px 48px rgba(26,78,148,0.6);
+    }
+    .secondary-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .secondary-link:hover { color: var(--text); }
+    .flash-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+    .flash {
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.08);
+    }
+    .flash-success { border-color: rgba(68,209,159,0.35); background: rgba(68,209,159,0.18); color: #a7f2d4; }
+    .flash-error { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.18); color: #ffb3b3; }
+    .supporting-info {
+      display: grid;
+      gap: 0.75rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .supporting-info a { color: var(--accent); text-decoration: none; }
+    .supporting-info a:hover { text-decoration: underline; }
+    @media (max-width: 680px) {
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.9rem;
+        padding: 1.1rem 1.5rem;
+      }
+      main {
+        padding: 0 1.25rem 2.5rem;
+      }
+      form {
+        padding: 1.4rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>GeoProx</span>
+      <div>Site assessment</div>
+    </div>
+    <div class="actions">
+      <a class="nav-btn" href="/permits/{{ permit.permit_ref | urlencode }}/view">Back to permit</a>
+      <a class="nav-btn" href="/dashboard">Dashboard</a>
+      <a class="nav-btn" href="/app">Desktop check</a>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h1>Site assessment for {{ permit.permit_ref }}</h1>
+      <p class="subtitle">Capture on-site findings and store them alongside the desktop proximity check.</p>
+    </section>
+
+    {% if flashes %}
+    <div class="flash-list">
+      {% for flash in flashes %}
+      <div class="flash flash-{{ flash.category }}">{{ flash.message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" novalidate>
+      <div class="supporting-info">
+        <div>Current status: {{ site_status or 'Not started' }}{% if site_outcome %} · Outcome: {{ site_outcome }}{% endif %}</div>
+        {% if site_pdf_url %}
+        <div>Latest report: <a href="{{ site_pdf_url }}" target="_blank" rel="noopener">Download site assessment PDF</a></div>
+        {% endif %}
+        {% if site_notes %}<div>Existing notes: {{ site_notes }}</div>{% endif %}
+      </div>
+
+      <div class="grid-two">
+        <div>
+          <label for="inspection_date">Inspection date</label>
+          <input id="inspection_date" name="inspection_date" type="date" value="{{ form_defaults.get('inspection_date', today) }}">
+        </div>
+        <div>
+          <label for="inspector_name">Inspector name</label>
+          <input id="inspector_name" name="inspector_name" type="text" value="{{ form_defaults.get('inspector_name', '') }}" placeholder="Full name">
+        </div>
+        <div>
+          <label for="inspector_email">Inspector email</label>
+          <input id="inspector_email" name="inspector_email" type="email" value="{{ form_defaults.get('inspector_email', '') }}" placeholder="name@example.com">
+        </div>
+        <div>
+          <label for="contact_number">Contact number</label>
+          <input id="contact_number" name="contact_number" type="tel" value="{{ form_defaults.get('contact_number', '') }}" placeholder="+44...">
+        </div>
+        <div>
+          <label for="onsite_contact">On-site contact</label>
+          <input id="onsite_contact" name="onsite_contact" type="text" value="{{ form_defaults.get('onsite_contact', '') }}" placeholder="Person met on site">
+        </div>
+        <div>
+          <label for="weather">Weather conditions</label>
+          <input id="weather" name="weather" type="text" value="{{ form_defaults.get('weather', '') }}" placeholder="Clear, light rain, etc.">
+        </div>
+      </div>
+
+      <div class="grid-one">
+        <div>
+          <label for="access_notes">Access notes</label>
+          <textarea id="access_notes" name="access_notes" placeholder="Access arrangements, restrictions, arrival notes">{{ form_defaults.get('access_notes', '') }}</textarea>
+        </div>
+        <div>
+          <label for="site_conditions">Site conditions</label>
+          <textarea id="site_conditions" name="site_conditions" placeholder="Describe the surrounding conditions and observations">{{ form_defaults.get('site_conditions', '') }}</textarea>
+        </div>
+        <div>
+          <label for="hazards">Hazards identified</label>
+          <textarea id="hazards" name="hazards" placeholder="List any hazards noted during the visit">{{ form_defaults.get('hazards', '') }}</textarea>
+        </div>
+        <div>
+          <label for="actions_required">Actions required</label>
+          <textarea id="actions_required" name="actions_required" placeholder="Follow-up actions or mitigation steps">{{ form_defaults.get('actions_required', '') }}</textarea>
+        </div>
+      </div>
+
+      <div class="grid-two">
+        <div>
+          <label for="risk_level">Overall risk level</label>
+          <select id="risk_level" name="risk_level">
+            <option value="">Select risk level</option>
+            {% for option in risk_options %}
+            <option value="{{ option }}" {% if form_defaults.get('risk_level') == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="site_status">Site assessment status</label>
+          <select id="site_status" name="site_status">
+            {% for value, label in status_options %}
+            <option value="{{ value }}" {% if (site_status or '') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="site_outcome">Assessment outcome</label>
+          <input id="site_outcome" name="site_outcome" type="text" value="{{ form_defaults.get('site_outcome', site_outcome or '') }}" placeholder="Pass, follow-up required, etc.">
+        </div>
+        <div>
+          <label for="additional_notes">Additional notes</label>
+          <textarea id="additional_notes" name="additional_notes" placeholder="Anything else worth recording">{{ form_defaults.get('additional_notes', site_notes or '') }}</textarea>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="primary-btn" type="submit">Save site assessment</button>
+        <a class="secondary-link" href="/permits/{{ permit.permit_ref | urlencode }}/view">Cancel and return to permit</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

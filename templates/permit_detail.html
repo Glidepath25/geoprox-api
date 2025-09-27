@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Permit {{ permit.permit_ref }} - GeoProx</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1724;
+      --panel: #13283d;
+      --panel-alt: #0f1f31;
+      --text: #f2f7ff;
+      --muted: #8ea2ba;
+      --accent: #2b7cff;
+      --border: rgba(255,255,255,0.08);
+      --success: #44d19f;
+      --error: #ff9e9e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(180deg, rgba(43,124,255,0.08), transparent 45%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .brand span {
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid rgba(43,124,255,0.45);
+      background: rgba(43,124,255,0.12);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.45rem 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .nav-btn:hover {
+      background: rgba(43,124,255,0.2);
+      border-color: rgba(43,124,255,0.45);
+    }
+    main {
+      width: 100%;
+      max-width: 1080px;
+      margin: 2.5rem auto 3rem;
+      padding: 0 2rem 3rem;
+      flex: 1;
+      display: grid;
+      gap: 1.75rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 600;
+    }
+    .subtitle {
+      margin: 0.3rem 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    .flash-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+    .flash {
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.07);
+    }
+    .flash-success { border-color: rgba(68,209,159,0.35); background: rgba(68,209,159,0.18); color: #a7f2d4; }
+    .flash-error { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.18); color: #ffb3b3; }
+    .card {
+      background: var(--panel);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 1.8rem;
+      box-shadow: 0 20px 50px rgba(10, 25, 45, 0.35);
+      display: grid;
+      gap: 1.1rem;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.1rem;
+    }
+    dt {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.6);
+    }
+    dd {
+      margin: 0.25rem 0 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      font-size: 0.78rem;
+      letter-spacing: 0.03em;
+    }
+    .status-chip.done {
+      border-color: rgba(68,209,159,0.4);
+      background: rgba(68,209,159,0.15);
+      color: #a7f2d4;
+    }
+    .status-chip.pending {
+      border-color: rgba(255,158,158,0.35);
+      background: rgba(255,158,158,0.15);
+      color: #ffb3b3;
+    }
+    .status-chip.progress {
+      border-color: rgba(255,200,87,0.35);
+      background: rgba(255,200,87,0.15);
+      color: #ffe5a0;
+    }
+    .link-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.7rem;
+    }
+    .link-list a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    .link-list a:hover { text-decoration: underline; }
+    .muted { color: var(--muted); }
+    .grid-two {
+      display: grid;
+      gap: 1.1rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .info-block {
+      background: var(--panel-alt);
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 1.1rem;
+      display: grid;
+      gap: 0.45rem;
+    }
+    .info-block strong {
+      font-size: 0.85rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.7);
+    }
+    .info-block span {
+      font-size: 0.95rem;
+    }
+    @media (max-width: 720px) {
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.9rem;
+        padding: 1.1rem 1.5rem;
+      }
+      main {
+        padding: 0 1.4rem 2.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>GeoProx</span>
+      <div>Permit {{ permit.permit_ref }}</div>
+    </div>
+    <div class="actions">
+      <a class="nav-btn" href="/dashboard">Dashboard</a>
+      <a class="nav-btn" href="/app">Desktop check</a>
+      <a class="nav-btn" href="/permits">Permits</a>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h1>Permit {{ permit.permit_ref }}</h1>
+      <p class="subtitle">Review the saved desktop result, site assessment progress, and supporting documents for this permit.</p>
+    </section>
+
+    {% if flashes %}
+    <div class="flash-list">
+      {% for flash in flashes %}
+      <div class="flash flash-{{ flash.category }}">{{ flash.message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <section class="card">
+      <h2>Summary</h2>
+      <dl>
+        <div>
+          <dt>Created</dt>
+          <dd>{{ permit.created_at or '-' }}</dd>
+        </div>
+        <div>
+          <dt>Last updated</dt>
+          <dd>{{ permit.updated_at or '-' }}</dd>
+        </div>
+        <div>
+          <dt>Desktop status</dt>
+          {% set desktop_status = permit.desktop.status or 'Pending' %}
+          {% set desktop_class = 'status-chip' %}
+          {% if 'complete' in desktop_status.lower() %}{% set desktop_class = 'status-chip done' %}
+          {% elif 'progress' in desktop_status.lower() %}{% set desktop_class = 'status-chip progress' %}
+          {% elif 'pending' in desktop_status.lower() or 'start' in desktop_status.lower() %}{% set desktop_class = 'status-chip pending' %}{% endif %}
+          <dd><span class="{{ desktop_class }}">{{ desktop_status }}</span></dd>
+        </div>
+        <div>
+          <dt>Site status</dt>
+          {% set site_status = permit.site.status or 'Not started' %}
+          {% set site_class = 'status-chip' %}
+          {% if 'complete' in site_status.lower() %}{% set site_class = 'status-chip done' %}
+          {% elif 'progress' in site_status.lower() %}{% set site_class = 'status-chip progress' %}
+          {% elif 'pending' in site_status.lower() or 'start' in site_status.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
+          <dd><span class="{{ site_class }}">{{ site_status }}</span></dd>
+        </div>
+        <div>
+          <dt>Location</dt>
+          <dd>
+            {% if permit.location.display %}{{ permit.location.display }}<br>{% endif %}
+            {% if permit.location.lat is not none and permit.location.lon is not none %}
+              {{ '%.5f'|format(permit.location.lat) }}, {{ '%.5f'|format(permit.location.lon) }}
+            {% else %}-{% endif %}
+          </dd>
+        </div>
+        <div>
+          <dt>Search radius</dt>
+          <dd>{% if permit.location.radius_m %}{{ permit.location.radius_m }} m{% else %}-{% endif %}</dd>
+        </div>
+        <div>
+          <dt>Desktop outcome</dt>
+          <dd>{{ permit.desktop.outcome or '-' }}</dd>
+        </div>
+        <div>
+          <dt>Site outcome</dt>
+          <dd>{{ permit.site.outcome or '-' }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Desktop assessment</h2>
+      {% if permit.desktop.summary %}
+      <div class="grid-two">
+        {% if permit.desktop.summary.radius %}
+        <div class="info-block">
+          <strong>Radius searched</strong>
+          <span>{{ permit.desktop.summary.radius }} m</span>
+        </div>
+        {% endif %}
+        {% if permit.desktop.summary.center %}
+        <div class="info-block">
+          <strong>Search centre</strong>
+          <span>{{ permit.desktop.summary.center }}</span>
+        </div>
+        {% endif %}
+        {% if permit.desktop.summary.categories %}
+        <div class="info-block" style="grid-column: 1 / -1;">
+          <strong>Categories</strong>
+          <span>
+            {% for category in permit.desktop.summary.categories %}
+              {{ category.label or category.name or category }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="muted">Desktop summary data will appear once a proximity check has been recorded for this permit.</p>
+      {% endif %}
+      {% set artifacts = permit.search_result.artifacts if permit.search_result and permit.search_result.artifacts else {} %}
+      {% if artifacts %}
+      <div class="link-list">
+        {% if artifacts.pdf_url %}<a href="{{ artifacts.pdf_url }}" target="_blank" rel="noopener">Download desktop PDF</a>{% endif %}
+        {% if artifacts.map_url %}<a href="{{ artifacts.map_url }}" target="_blank" rel="noopener">Open interactive map</a>{% endif %}
+        {% if artifacts.map_image_url %}<a href="{{ artifacts.map_image_url }}" target="_blank" rel="noopener">View static map image</a>{% endif %}
+      </div>
+      {% endif %}
+      {% if permit.desktop.notes %}
+      <p class="muted">Notes: {{ permit.desktop.notes }}</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Site assessment</h2>
+      <div class="link-list">
+        <a class="nav-btn" href="/permits/{{ permit.permit_ref | urlencode }}/site-assessment">Complete site assessment</a>
+        {% if site_pdf_url %}
+        <a class="nav-btn" href="{{ site_pdf_url }}" target="_blank" rel="noopener">Download latest site PDF</a>
+        {% endif %}
+      </div>
+      {% if permit.site.notes %}
+      <p class="muted">Notes: {{ permit.site.notes }}</p>
+      {% endif %}
+      {% if site_form_items %}
+      <dl>
+        {% for field in site_form_items %}
+        <div>
+          <dt>{{ field.label }}</dt>
+          <dd>{{ field.value or '-' }}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+      {% else %}
+      <p class="muted">No site assessment data recorded yet. Use the button above to complete the site visit questionnaire.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

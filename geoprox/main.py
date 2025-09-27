@@ -22,7 +22,31 @@ from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
 
 from geoprox import history_store, user_store, permit_store
+from geoprox.site_assessment_pdf import generate_site_assessment_pdf
 from geoprox.core import run_geoprox_search
+
+SITE_ASSESSMENT_FIELD_LABELS = [
+    ('inspection_date', 'Inspection Date'),
+    ('inspector_name', 'Inspector Name'),
+    ('inspector_email', 'Inspector Email'),
+    ('contact_number', 'Contact Number'),
+    ('onsite_contact', 'On-site Contact'),
+    ('weather', 'Weather Conditions'),
+    ('access_notes', 'Access Notes'),
+    ('site_conditions', 'Site Conditions'),
+    ('hazards', 'Hazards Identified'),
+    ('actions_required', 'Actions Required'),
+    ('risk_level', 'Overall Risk Level'),
+    ('site_outcome', 'Assessment Outcome'),
+    ('additional_notes', 'Additional Notes'),
+]
+SITE_ASSESSMENT_STATUS_OPTIONS = [
+    ('Not started', 'Not started'),
+    ('In progress', 'In progress'),
+    ('Completed', 'Completed'),
+]
+SITE_ASSESSMENT_RISK_OPTIONS = ['Low', 'Medium', 'High']
+
 log = logging.getLogger("uvicorn.error")
 
 # ---------------------------------------------------------------------------
@@ -462,6 +486,21 @@ def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
         created_at=company["created_at"],
         updated_at=company["updated_at"],
     )
+
+def _build_site_form_items(form_payload: Optional[Dict[str, Any]]) -> List[Dict[str, str]]:
+    data = form_payload if isinstance(form_payload, dict) else {}
+    items: List[Dict[str, str]] = []
+    for key, label in SITE_ASSESSMENT_FIELD_LABELS:
+        raw = data.get(key)
+        if raw is None:
+            value = ""
+        elif isinstance(raw, str):
+            value = raw.strip()
+        else:
+            value = str(raw)
+        items.append({"label": label, "value": value})
+    return items
+
 
 def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
     location = record.get("location") or {}
@@ -940,6 +979,15 @@ class PermitSiteUpdateReq(BaseModel):
     class Config:
         extra = "forbid"
 
+class PermitSearchItem(BaseModel):
+    permit_ref: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    desktop_status: Optional[str] = None
+    desktop_outcome: Optional[str] = None
+    site_status: Optional[str] = None
+    site_outcome: Optional[str] = None
+
 class SearchReq(BaseModel):
     location: str = Field(..., description="lat,lon or ///what.three.words")
     radius_m: int = Field(..., ge=10, le=20000, examples=[2000])
@@ -997,17 +1045,137 @@ async def dashboard_page(request: Request) -> HTMLResponse:
 
 @app.get("/permits", response_class=HTMLResponse)
 async def permits_page(request: Request) -> HTMLResponse:
-    user = request.session.get("user")
-    if not user:
+    username = request.session.get("user")
+    if not username:
         return RedirectResponse(url="/", status_code=303)
+    flashes = _consume_flashes(request)
+    raw_results = permit_store.search_permits(username, "", limit=20)
+    initial_results = [PermitSearchItem(**item).model_dump() for item in raw_results]
     return templates.TemplateResponse(
         "permits.html",
         {
             "request": request,
-            "user": user,
-            "display_name": request.session.get("display_name") or user,
+            "user": username,
+            "display_name": request.session.get("display_name") or username,
+            "initial_results": initial_results,
+            "flashes": flashes,
         },
     )
+
+@app.get("/permits/{permit_ref}/view", response_class=HTMLResponse)
+async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
+    username = _require_user(request)
+    record = permit_store.get_permit(username, permit_ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    permit = _permit_to_response(record)
+    flashes = _consume_flashes(request)
+    site_payload = permit.site.payload or {}
+    if not isinstance(site_payload, dict):
+        site_payload = {}
+    form_payload = site_payload.get("form") if isinstance(site_payload.get("form"), dict) else {}
+    site_form_items = _build_site_form_items(form_payload)
+    site_pdf_url = site_payload.get("pdf_url")
+    return templates.TemplateResponse(
+        "permit_detail.html",
+        {
+            "request": request,
+            "user": username,
+            "display_name": request.session.get("display_name") or username,
+            "permit": permit,
+            "site_payload": site_payload,
+            "site_form_items": site_form_items,
+            "site_pdf_url": site_pdf_url,
+            "flashes": flashes,
+        },
+    )
+
+
+@app.get("/permits/{permit_ref}/site-assessment", response_class=HTMLResponse)
+async def site_assessment_page(request: Request, permit_ref: str) -> HTMLResponse:
+    username = _require_user(request)
+    record = permit_store.get_permit(username, permit_ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    permit = _permit_to_response(record)
+    flashes = _consume_flashes(request)
+    site_payload = permit.site.payload or {}
+    if not isinstance(site_payload, dict):
+        site_payload = {}
+    form_defaults = site_payload.get("form") if isinstance(site_payload.get("form"), dict) else {}
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    return templates.TemplateResponse(
+        "site_assessment.html",
+        {
+            "request": request,
+            "user": username,
+            "display_name": request.session.get("display_name") or username,
+            "permit": permit,
+            "form_defaults": form_defaults or {},
+            "today": today,
+            "flashes": flashes,
+            "site_status": permit.site.status or "Not started",
+            "site_outcome": permit.site.outcome or "",
+            "site_notes": permit.site.notes or "",
+            "status_options": SITE_ASSESSMENT_STATUS_OPTIONS,
+            "risk_options": SITE_ASSESSMENT_RISK_OPTIONS,
+            "site_pdf_url": site_payload.get("pdf_url"),
+        },
+    )
+
+
+@app.post("/permits/{permit_ref}/site-assessment", response_class=HTMLResponse)
+async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
+    username = _require_user(request)
+    record = permit_store.get_permit(username, permit_ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit not found")
+
+    form = await request.form()
+
+    def _clean(key: str) -> str:
+        return (form.get(key) or "").strip()
+
+    status = _clean("site_status") or "Completed"
+    outcome = _clean("site_outcome") or None
+    notes = _clean("additional_notes") or None
+
+    form_data = {
+        "inspection_date": _clean("inspection_date"),
+        "inspector_name": _clean("inspector_name"),
+        "inspector_email": _clean("inspector_email"),
+        "contact_number": _clean("contact_number"),
+        "onsite_contact": _clean("onsite_contact"),
+        "weather": _clean("weather"),
+        "access_notes": _clean("access_notes"),
+        "site_conditions": _clean("site_conditions"),
+        "hazards": _clean("hazards"),
+        "actions_required": _clean("actions_required"),
+        "risk_level": _clean("risk_level"),
+        "site_outcome": outcome or "",
+        "additional_notes": notes or "",
+    }
+
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    pdf_path = ARTIFACTS_DIR / f"site-assessment_{permit_ref}_{timestamp}.pdf"
+    generate_site_assessment_pdf(pdf_path, permit_ref=permit_ref, form_data=form_data)
+    payload = {
+        "form": form_data,
+        "pdf_path": str(pdf_path),
+        "pdf_url": f"/artifacts/{pdf_path.name}",
+    }
+
+    permit_store.update_site_assessment(
+        username=username,
+        permit_ref=permit_ref,
+        status=status,
+        outcome=outcome,
+        notes=notes,
+        payload=payload,
+    )
+    _add_flash(request, "Site assessment saved.", "success")
+    return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
+
 
 @app.get("/app")
 async def app_page(request: Request):
@@ -1511,6 +1679,12 @@ async def api_admin_update_company(request: Request, company_id: int, payload: A
 
 
 
+@app.get("/api/permits/search", response_model=List[PermitSearchItem])
+def api_search_permits(request: Request, query: str = "", limit: int = 20):
+    username = _require_user(request)
+    items = permit_store.search_permits(username, query, limit)
+    return [PermitSearchItem(**item) for item in items]
+
 @app.post("/api/permits", response_model=PermitRecordResp)
 def api_save_permit_record(request: Request, payload: PermitSaveReq):
     username = _require_user(request)
@@ -1678,10 +1852,4 @@ def api_search(request: Request, req: SearchReq):
         tb = traceback.format_exc(limit=6)
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
-
-
-
-
-
-
 
