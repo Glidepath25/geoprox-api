@@ -14,14 +14,12 @@
       --muted: #8ea2ba;
       --accent: #2b7cff;
       --border: rgba(255,255,255,0.08);
-      --success: #44d19f;
-      --error: #ff9e9e;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: linear-gradient(180deg, rgba(43,124,255,0.08), transparent 45%), var(--bg);
+      background: linear-gradient(180deg, rgba(43,124,255,0.08), transparent 50%), var(--bg);
       color: var(--text);
       min-height: 100vh;
       display: flex;
@@ -74,7 +72,7 @@
     main {
       width: 100%;
       max-width: 1080px;
-      margin: 2.5rem auto 3rem;
+      margin: 2.4rem auto 3rem;
       padding: 0 2rem 3rem;
       flex: 1;
       display: grid;
@@ -101,8 +99,6 @@
       border: 1px solid var(--border);
       background: rgba(255,255,255,0.07);
     }
-    .flash-success { border-color: rgba(68,209,159,0.35); background: rgba(68,209,159,0.18); color: #a7f2d4; }
-    .flash-error { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.18); color: #ffb3b3; }
     .card {
       background: var(--panel);
       border-radius: 18px;
@@ -121,7 +117,7 @@
       margin: 0;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.1rem;
+      gap: 1.05rem;
     }
     dt {
       font-size: 0.78rem;
@@ -131,7 +127,7 @@
     }
     dd {
       margin: 0.25rem 0 0;
-      font-size: 1.05rem;
+      font-size: 1.02rem;
       font-weight: 600;
     }
     .status-chip {
@@ -171,28 +167,58 @@
       font-size: 0.92rem;
     }
     .link-list a:hover { text-decoration: underline; }
-    .muted { color: var(--muted); }
-    .grid-two {
-      display: grid;
-      gap: 1.1rem;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    }
     .info-block {
       background: var(--panel-alt);
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      padding: 1.1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 0.9rem;
       display: grid;
       gap: 0.45rem;
     }
-    .info-block strong {
-      font-size: 0.85rem;
-      letter-spacing: 0.03em;
+    .muted { color: var(--muted); }
+    .question-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .question-table th,
+    .question-table td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: left;
+      font-size: 0.88rem;
+    }
+    .question-table th {
+      background: rgba(255,255,255,0.06);
+      font-size: 0.78rem;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(255,255,255,0.75);
+    }
+    .results-grid {
+      display: grid;
+      gap: 0.9rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+    .result-card {
+      background: var(--panel-alt);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 0.9rem;
+      display: grid;
+      gap: 0.35rem;
+    }
+    .result-card strong {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
       color: rgba(255,255,255,0.7);
     }
-    .info-block span {
-      font-size: 0.95rem;
+    .result-value {
+      font-size: 1rem;
+      font-weight: 600;
     }
     @media (max-width: 720px) {
       header {
@@ -202,7 +228,7 @@
         padding: 1.1rem 1.5rem;
       }
       main {
-        padding: 0 1.4rem 2.5rem;
+        padding: 0 1.4rem 2.6rem;
       }
     }
   </style>
@@ -222,7 +248,7 @@
   <main>
     <section>
       <h1>Permit {{ permit.permit_ref }}</h1>
-      <p class="subtitle">Review the saved desktop result, site assessment progress, and supporting documents for this permit.</p>
+      <p class="subtitle">Review the saved desktop assessment, site questionnaire and any downloadable reports for this permit.</p>
     </section>
 
     {% if flashes %}
@@ -255,12 +281,12 @@
         </div>
         <div>
           <dt>Site status</dt>
-          {% set site_status = permit.site.status or 'Not started' %}
+          {% set site_status_value = permit.site.status or 'Not started' %}
           {% set site_class = 'status-chip' %}
-          {% if 'complete' in site_status.lower() %}{% set site_class = 'status-chip done' %}
-          {% elif 'progress' in site_status.lower() %}{% set site_class = 'status-chip progress' %}
-          {% elif 'pending' in site_status.lower() or 'start' in site_status.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
-          <dd><span class="{{ site_class }}">{{ site_status }}</span></dd>
+          {% if 'complete' in site_status_value.lower() %}{% set site_class = 'status-chip done' %}
+          {% elif 'progress' in site_status_value.lower() %}{% set site_class = 'status-chip progress' %}
+          {% elif 'pending' in site_status_value.lower() or 'start' in site_status_value.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
+          <dd><span class="{{ site_class }}">{{ site_status_value }}</span></dd>
         </div>
         <div>
           <dt>Location</dt>
@@ -289,28 +315,14 @@
     <section class="card">
       <h2>Desktop assessment</h2>
       {% if permit.desktop.summary %}
-      <div class="grid-two">
-        {% if permit.desktop.summary.radius %}
-        <div class="info-block">
-          <strong>Radius searched</strong>
-          <span>{{ permit.desktop.summary.radius }} m</span>
-        </div>
-        {% endif %}
-        {% if permit.desktop.summary.center %}
-        <div class="info-block">
-          <strong>Search centre</strong>
-          <span>{{ permit.desktop.summary.center }}</span>
-        </div>
-        {% endif %}
+      <div class="info-block">
+        <strong>Summary</strong>
+        <span>
+          <strong>Radius:</strong> {{ permit.desktop.summary.radius or '-' }} m | 
+          <strong>Centre:</strong> {{ permit.desktop.summary.center or '-' }}
+        </span>
         {% if permit.desktop.summary.categories %}
-        <div class="info-block" style="grid-column: 1 / -1;">
-          <strong>Categories</strong>
-          <span>
-            {% for category in permit.desktop.summary.categories %}
-              {{ category.label or category.name or category }}{% if not loop.last %}, {% endif %}
-            {% endfor %}
-          </span>
-        </div>
+        <span><strong>Categories:</strong> {% for category in permit.desktop.summary.categories %}{{ category.label or category.name or category }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
         {% endif %}
       </div>
       {% else %}
@@ -334,23 +346,66 @@
       <div class="link-list">
         <a class="nav-btn" href="/permits/{{ permit.permit_ref | urlencode }}/site-assessment">Complete site assessment</a>
         {% if site_pdf_url %}
-        <a class="nav-btn" href="{{ site_pdf_url }}" target="_blank" rel="noopener">Download latest site PDF</a>
+        <a class="nav-btn" href="{{ site_pdf_url }}" target="_blank" rel="noopener">Download site PDF</a>
         {% endif %}
       </div>
-      {% if permit.site.notes %}
-      <p class="muted">Notes: {{ permit.site.notes }}</p>
-      {% endif %}
-      {% if site_form_items %}
-      <dl>
-        {% for field in site_form_items %}
-        <div>
-          <dt>{{ field.label }}</dt>
-          <dd>{{ field.value or '-' }}</dd>
+      {% if site_form %}
+      <div>
+        <h3 class="section-title">Site details</h3>
+        <dl>
+          {% for key, label in detail_fields %}
+          {% set value = site_form.get(key) %}
+          {% if value %}
+          <div>
+            <dt>{{ label }}</dt>
+            <dd>{{ value }}</dd>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </dl>
+      </div>
+      <div>
+        <h3 class="section-title">Questionnaire responses</h3>
+        <table class="question-table">
+          <thead>
+            <tr>
+              <th style="width: 3rem;">Ref</th>
+              <th>Question</th>
+              <th style="width: 10rem;">Answer</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key, question, note in question_meta %}
+            <tr>
+              <td>Q{{ loop.index }}</td>
+              <td>{{ question }}</td>
+              <td>{{ site_form.get(key) or '-' }}</td>
+              <td>{{ note }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3 class="section-title">Assessment results</h3>
+        <div class="results-grid">
+          {% for key, label in result_meta %}
+          <div class="result-card">
+            <strong>{{ label }}</strong>
+            <div class="result-value">{{ site_form.get(key) or '-' }}</div>
+          </div>
+          {% endfor %}
         </div>
-        {% endfor %}
-      </dl>
+      </div>
+      {% if site_form.get('assessor_name') %}
+      <p class="muted">Assessor: {{ site_form.get('assessor_name') }}</p>
+      {% endif %}
+      {% if site_form.get('site_notes') %}
+      <p class="muted">Additional notes: {{ site_form.get('site_notes') }}</p>
+      {% endif %}
       {% else %}
-      <p class="muted">No site assessment data recorded yet. Use the button above to complete the site visit questionnaire.</p>
+      <p class="muted">No site assessment data recorded yet. Use the button above to capture the on-site questionnaire.</p>
       {% endif %}
     </section>
   </main>

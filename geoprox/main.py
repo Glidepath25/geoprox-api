@@ -25,27 +25,81 @@ from geoprox import history_store, user_store, permit_store
 from geoprox.site_assessment_pdf import generate_site_assessment_pdf
 from geoprox.core import run_geoprox_search
 
-SITE_ASSESSMENT_FIELD_LABELS = [
-    ('inspection_date', 'Inspection Date'),
-    ('inspector_name', 'Inspector Name'),
-    ('inspector_email', 'Inspector Email'),
-    ('contact_number', 'Contact Number'),
-    ('onsite_contact', 'On-site Contact'),
-    ('weather', 'Weather Conditions'),
-    ('access_notes', 'Access Notes'),
-    ('site_conditions', 'Site Conditions'),
-    ('hazards', 'Hazards Identified'),
-    ('actions_required', 'Actions Required'),
-    ('risk_level', 'Overall Risk Level'),
-    ('site_outcome', 'Assessment Outcome'),
-    ('additional_notes', 'Additional Notes'),
+SITE_ASSESSMENT_DETAIL_FIELDS = [
+    ('utility_type', 'Utility Type'),
+    ('assessment_date', 'Date of Assessment'),
+    ('location_of_work', 'Location of Work'),
+    ('permit_number', 'Permit Number'),
+    ('work_order_ref', 'Work Order Reference'),
+    ('excavation_site_number', 'Excavation Site Number'),
+    ('site_address', 'Address'),
+    ('site_postcode', 'Post Code'),
+    ('highway_authority', 'Highway Authority'),
+    ('works_type', 'Works Type'),
+    ('surface_location', 'Surface Location'),
+    ('what_three_words', 'What Three Words'),
 ]
+SITE_ASSESSMENT_QUESTIONS = [
+    (
+        'q1_asbestos',
+        'Are there any signs of asbestos fibres or asbestos containing materials in the excavation?',
+        'If asbestos or signs of asbestos are identified the excavation does not qualify for a risk assessment.'
+    ),
+    (
+        'q2_binder_shiny',
+        'Is the binder shiny, sticky to touch and is there an organic odour?',
+        'All three (shiny, sticky and creosote odour) required for a "yes".'
+    ),
+    (
+        'q3_spray_pak',
+        'Spray PAK across the profile of asphalt / bitumen. Does the paint change colour to Band 1 or 2?',
+        'Ensure to spray a line across the full depth of the bituminous layer. Refer to PAK colour chart.'
+    ),
+    (
+        'q4_soil_colour',
+        'Is the soil stained an unusual colour (such as orange, black, blue or green)?',
+        'Compare the discolouration of soil to other parts of the excavation.'
+    ),
+    (
+        'q5_water_sheen',
+        'If there is water or moisture in the excavation, is there a rainbow sheen or colouration to the water?',
+        'Looking for signs of oil in the excavation.'
+    ),
+    (
+        'q6_pungent_odour',
+        'Are there any pungent odours to the material?',
+        'Think bleach, garlic, egg, tar, gas or other strong smells.'
+    ),
+    (
+        'q7_litmus_change',
+        'Use litmus paper on wet soil, does it change colour to high or low pH?',
+        'Refer to the pH colour chart.'
+    ),
+]
+SITE_ASSESSMENT_RESULT_FIELDS = [
+    ('result_bituminous', 'Bituminous'),
+    ('result_sub_base', 'Sub-base'),
+]
+SITE_ASSESSMENT_FIELD_LABELS = (
+    SITE_ASSESSMENT_DETAIL_FIELDS
+    + [(key, question) for key, question, _ in SITE_ASSESSMENT_QUESTIONS]
+    + [(key, f"Assessment Result ({label})") for key, label in SITE_ASSESSMENT_RESULT_FIELDS]
+    + [('assessor_name', 'Assessor Name'),
+    ('site_notes', 'Site Notes')]
+)
+SITE_ASSESSMENT_LOCATION_OPTIONS = ['Public', 'Private']
+SITE_ASSESSMENT_WORKS_TYPE_OPTIONS = ['Immediate', 'Minor', 'Standard', 'Major (TM Only)']
+SITE_ASSESSMENT_SURFACE_OPTIONS = ['Carriageway', 'Footway / Footpath', 'Verge', 'Other']
 SITE_ASSESSMENT_STATUS_OPTIONS = [
     ('Not started', 'Not started'),
     ('In progress', 'In progress'),
     ('Completed', 'Completed'),
 ]
-SITE_ASSESSMENT_RISK_OPTIONS = ['Low', 'Medium', 'High']
+SITE_ASSESSMENT_RESULT_CHOICES = ['Green', 'Red', 'N/A']
+SITE_ASSESSMENT_YES_NO_CHOICES = ['Yes', 'No']
+SITE_ASSESSMENT_YES_NO_NA_CHOICES = ['Yes', 'No', 'N/A']
+SITE_ASSESSMENT_YES_NO_NA_KEYS = {'q3_spray_pak', 'q7_litmus_change'}
+
 
 log = logging.getLogger("uvicorn.error")
 
@@ -1062,6 +1116,7 @@ async def permits_page(request: Request) -> HTMLResponse:
         },
     )
 
+
 @app.get("/permits/{permit_ref}/view", response_class=HTMLResponse)
 async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     username = _require_user(request)
@@ -1085,6 +1140,10 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
             "permit": permit,
             "site_payload": site_payload,
             "site_form_items": site_form_items,
+            "site_form": form_payload or {},
+            "detail_fields": SITE_ASSESSMENT_DETAIL_FIELDS,
+            "question_meta": SITE_ASSESSMENT_QUESTIONS,
+            "result_meta": SITE_ASSESSMENT_RESULT_FIELDS,
             "site_pdf_url": site_pdf_url,
             "flashes": flashes,
         },
@@ -1103,7 +1162,16 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
     if not isinstance(site_payload, dict):
         site_payload = {}
     form_defaults = site_payload.get("form") if isinstance(site_payload.get("form"), dict) else {}
+    form_defaults = dict(form_defaults or {})
     today = datetime.utcnow().strftime("%Y-%m-%d")
+    if not form_defaults.get("assessment_date"):
+        form_defaults["assessment_date"] = today
+    if not form_defaults.get("permit_number"):
+        form_defaults["permit_number"] = permit.permit_ref
+    if "surface_location_other" not in form_defaults:
+        surface_value = form_defaults.get("surface_location")
+        if isinstance(surface_value, str) and surface_value.startswith("Other - "):
+            form_defaults["surface_location_other"] = surface_value[len("Other - ") :].strip()
     return templates.TemplateResponse(
         "site_assessment.html",
         {
@@ -1111,14 +1179,22 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
             "user": username,
             "display_name": request.session.get("display_name") or username,
             "permit": permit,
-            "form_defaults": form_defaults or {},
+            "form_defaults": form_defaults,
             "today": today,
             "flashes": flashes,
             "site_status": permit.site.status or "Not started",
             "site_outcome": permit.site.outcome or "",
             "site_notes": permit.site.notes or "",
             "status_options": SITE_ASSESSMENT_STATUS_OPTIONS,
-            "risk_options": SITE_ASSESSMENT_RISK_OPTIONS,
+            "location_options": SITE_ASSESSMENT_LOCATION_OPTIONS,
+            "works_type_options": SITE_ASSESSMENT_WORKS_TYPE_OPTIONS,
+            "surface_options": SITE_ASSESSMENT_SURFACE_OPTIONS,
+            "question_meta": SITE_ASSESSMENT_QUESTIONS,
+            "result_meta": SITE_ASSESSMENT_RESULT_FIELDS,
+            "result_choices": SITE_ASSESSMENT_RESULT_CHOICES,
+            "yes_no_choices": SITE_ASSESSMENT_YES_NO_CHOICES,
+            "yes_no_na_choices": SITE_ASSESSMENT_YES_NO_NA_CHOICES,
+            "yes_no_na_keys": SITE_ASSESSMENT_YES_NO_NA_KEYS,
             "site_pdf_url": site_payload.get("pdf_url"),
         },
     )
@@ -1136,24 +1212,59 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     def _clean(key: str) -> str:
         return (form.get(key) or "").strip()
 
-    status = _clean("site_status") or "Completed"
+    def _select(key: str, options: List[str]) -> str:
+        value = _clean(key)
+        if not value:
+            return ""
+        value_lower = value.lower()
+        for option in options:
+            if value_lower == option.lower():
+                return option
+        return ""
+
+    status = _select("site_status", [value for value, _ in SITE_ASSESSMENT_STATUS_OPTIONS]) or "Completed"
     outcome = _clean("site_outcome") or None
-    notes = _clean("additional_notes") or None
+    notes = _clean("site_notes") or None
+
+    location = _select("location_of_work", SITE_ASSESSMENT_LOCATION_OPTIONS)
+    works_type = _select("works_type", SITE_ASSESSMENT_WORKS_TYPE_OPTIONS)
+    surface_choice = _select("surface_location", SITE_ASSESSMENT_SURFACE_OPTIONS)
+    surface_other = _clean("surface_location_other")
+    if surface_choice == "Other" and surface_other:
+        surface_location = f"Other - {surface_other}"
+    elif surface_choice:
+        surface_location = surface_choice
+    else:
+        surface_location = surface_other
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
 
     form_data = {
-        "inspection_date": _clean("inspection_date"),
-        "inspector_name": _clean("inspector_name"),
-        "inspector_email": _clean("inspector_email"),
-        "contact_number": _clean("contact_number"),
-        "onsite_contact": _clean("onsite_contact"),
-        "weather": _clean("weather"),
-        "access_notes": _clean("access_notes"),
-        "site_conditions": _clean("site_conditions"),
-        "hazards": _clean("hazards"),
-        "actions_required": _clean("actions_required"),
-        "risk_level": _clean("risk_level"),
+        "utility_type": _clean("utility_type"),
+        "assessment_date": _clean("assessment_date") or today,
+        "location_of_work": location,
+        "permit_number": _clean("permit_number") or permit_ref,
+        "work_order_ref": _clean("work_order_ref"),
+        "excavation_site_number": _clean("excavation_site_number"),
+        "site_address": _clean("site_address"),
+        "site_postcode": _clean("site_postcode"),
+        "highway_authority": _clean("highway_authority"),
+        "works_type": works_type,
+        "surface_location": surface_location,
+        "surface_location_other": surface_other,
+        "what_three_words": _clean("what_three_words"),
+        "q1_asbestos": _select("q1_asbestos", SITE_ASSESSMENT_YES_NO_CHOICES),
+        "q2_binder_shiny": _select("q2_binder_shiny", SITE_ASSESSMENT_YES_NO_CHOICES),
+        "q3_spray_pak": _select("q3_spray_pak", SITE_ASSESSMENT_YES_NO_NA_CHOICES),
+        "q4_soil_colour": _select("q4_soil_colour", SITE_ASSESSMENT_YES_NO_CHOICES),
+        "q5_water_sheen": _select("q5_water_sheen", SITE_ASSESSMENT_YES_NO_CHOICES),
+        "q6_pungent_odour": _select("q6_pungent_odour", SITE_ASSESSMENT_YES_NO_CHOICES),
+        "q7_litmus_change": _select("q7_litmus_change", SITE_ASSESSMENT_YES_NO_NA_CHOICES),
+        "result_bituminous": _select("result_bituminous", SITE_ASSESSMENT_RESULT_CHOICES),
+        "result_sub_base": _select("result_sub_base", SITE_ASSESSMENT_RESULT_CHOICES),
+        "assessor_name": _clean("assessor_name"),
+        "site_notes": notes or "",
         "site_outcome": outcome or "",
-        "additional_notes": notes or "",
     }
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
@@ -1175,7 +1286,6 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     )
     _add_flash(request, "Site assessment saved.", "success")
     return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
-
 
 @app.get("/app")
 async def app_page(request: Request):
