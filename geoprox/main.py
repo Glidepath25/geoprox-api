@@ -468,6 +468,13 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
     desktop = record.get("desktop") or {}
     site = record.get("site") or {}
 
+    def _to_iso(value: Any) -> Optional[str]:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if value is None:
+            return None
+        return str(value)
+
     desktop_summary = desktop.get("summary") if isinstance(desktop.get("summary"), dict) else None
     site_payload = site.get("payload") if isinstance(site.get("payload"), dict) else None
     search_payload = record.get("search_result") if isinstance(record.get("search_result"), dict) else None
@@ -476,8 +483,8 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
 
     return PermitRecordResp(
         permit_ref=str(record.get("permit_ref", "")),
-        created_at=record.get("created_at"),
-        updated_at=record.get("updated_at"),
+        created_at=_to_iso(record.get("created_at")),
+        updated_at=_to_iso(record.get("updated_at")),
         location=PermitLocation(
             display=location.get("display"),
             lat=location.get("lat"),
