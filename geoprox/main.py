@@ -7,11 +7,13 @@ import sqlite3
 import csv
 import smtplib
 import ssl
+import mimetypes
 from email.message import EmailMessage
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.datastructures import UploadFile
 from pydantic import BaseModel, Field
 
 from geoprox import history_store, user_store, permit_store
@@ -39,42 +42,62 @@ SITE_ASSESSMENT_DETAIL_FIELDS = [
     ('surface_location', 'Surface Location'),
     ('what_three_words', 'What Three Words'),
 ]
+SITE_ASSESSMENT_QUESTION_SECTIONS = [
+    (
+        'General',
+        [
+            (
+                'q1_asbestos',
+                'Are there any signs of asbestos fibres or asbestos containing materials in the excavation?',
+                'If asbestos or signs of asbestos are identified the excavation does not qualify for a risk assessment.'
+            ),
+        ],
+    ),
+    (
+        'Asphalt / Bitumen Road Surfaces',
+        [
+            (
+                'q2_binder_shiny',
+                'Is the binder shiny, sticky to touch and is there an organic odour?',
+                'All three (shiny, sticky and creosote odour) required for a "yes".'
+            ),
+            (
+                'q3_spray_pak',
+                'Spray PAK across the profile of asphalt / bitumen. Does the paint change colour to Band 1 or 2?',
+                'Ensure to spray a line across the full depth of the bituminous layer. Refer to PAK colour chart.'
+            ),
+        ],
+    ),
+    (
+        'All Mobilised Wastes / Materials',
+        [
+            (
+                'q4_soil_colour',
+                'Is the soil stained an unusual colour (such as orange, black, blue or green)?',
+                'Compare the discolouration of soil to other parts of the excavation.'
+            ),
+            (
+                'q5_water_sheen',
+                'If there is water or moisture in the excavation, is there a rainbow sheen or colouration to the water?',
+                'Looking for signs of oil in the excavation.'
+            ),
+            (
+                'q6_pungent_odour',
+                'Are there any pungent odours to the material?',
+                'Think bleach, garlic, egg, tar, gas or other strong smells.'
+            ),
+            (
+                'q7_litmus_change',
+                'Use litmus paper on wet soil, does it change colour to high or low pH?',
+                'Refer to the pH colour chart.'
+            ),
+        ],
+    ),
+]
 SITE_ASSESSMENT_QUESTIONS = [
-    (
-        'q1_asbestos',
-        'Are there any signs of asbestos fibres or asbestos containing materials in the excavation?',
-        'If asbestos or signs of asbestos are identified the excavation does not qualify for a risk assessment.'
-    ),
-    (
-        'q2_binder_shiny',
-        'Is the binder shiny, sticky to touch and is there an organic odour?',
-        'All three (shiny, sticky and creosote odour) required for a "yes".'
-    ),
-    (
-        'q3_spray_pak',
-        'Spray PAK across the profile of asphalt / bitumen. Does the paint change colour to Band 1 or 2?',
-        'Ensure to spray a line across the full depth of the bituminous layer. Refer to PAK colour chart.'
-    ),
-    (
-        'q4_soil_colour',
-        'Is the soil stained an unusual colour (such as orange, black, blue or green)?',
-        'Compare the discolouration of soil to other parts of the excavation.'
-    ),
-    (
-        'q5_water_sheen',
-        'If there is water or moisture in the excavation, is there a rainbow sheen or colouration to the water?',
-        'Looking for signs of oil in the excavation.'
-    ),
-    (
-        'q6_pungent_odour',
-        'Are there any pungent odours to the material?',
-        'Think bleach, garlic, egg, tar, gas or other strong smells.'
-    ),
-    (
-        'q7_litmus_change',
-        'Use litmus paper on wet soil, does it change colour to high or low pH?',
-        'Refer to the pH colour chart.'
-    ),
+    (key, question, note)
+    for _, rows in SITE_ASSESSMENT_QUESTION_SECTIONS
+    for key, question, note in rows
 ]
 SITE_ASSESSMENT_RESULT_FIELDS = [
     ('result_bituminous', 'Bituminous'),
@@ -84,8 +107,10 @@ SITE_ASSESSMENT_FIELD_LABELS = (
     SITE_ASSESSMENT_DETAIL_FIELDS
     + [(key, question) for key, question, _ in SITE_ASSESSMENT_QUESTIONS]
     + [(key, f"Assessment Result ({label})") for key, label in SITE_ASSESSMENT_RESULT_FIELDS]
-    + [('assessor_name', 'Assessor Name'),
-    ('site_notes', 'Site Notes')]
+    + [
+        ('assessor_name', 'Assessor Name'),
+        ('site_notes', 'Site Notes'),
+    ]
 )
 SITE_ASSESSMENT_LOCATION_OPTIONS = ['Public', 'Private']
 SITE_ASSESSMENT_WORKS_TYPE_OPTIONS = ['Immediate', 'Minor', 'Standard', 'Major (TM Only)']
@@ -99,6 +124,22 @@ SITE_ASSESSMENT_RESULT_CHOICES = ['Green', 'Red', 'N/A']
 SITE_ASSESSMENT_YES_NO_CHOICES = ['Yes', 'No']
 SITE_ASSESSMENT_YES_NO_NA_CHOICES = ['Yes', 'No', 'N/A']
 SITE_ASSESSMENT_YES_NO_NA_KEYS = {'q3_spray_pak', 'q7_litmus_change'}
+SITE_ASSESSMENT_ATTACHMENT_CATEGORIES = [
+    ('pak', 'PAK spray result'),
+    ('litmus', 'Litmus paper result'),
+    ('general', 'General'),
+]
+SITE_ASSESSMENT_ATTACHMENT_LABELS = {key: label for key, label in SITE_ASSESSMENT_ATTACHMENT_CATEGORIES}
+SITE_ASSESSMENT_ALLOWED_IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
+SITE_ASSESSMENT_ALLOWED_IMAGE_MIME_MAP = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/heic': '.heic',
+    'image/heif': '.heif',
+}
+MAX_SITE_ATTACHMENT_SIZE = 5 * 1024 * 1024
+
 
 
 log = logging.getLogger("uvicorn.error")
@@ -555,6 +596,94 @@ def _build_site_form_items(form_payload: Optional[Dict[str, Any]]) -> List[Dict[
         items.append({"label": label, "value": value})
     return items
 
+def _group_site_attachments(payload: Optional[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    if isinstance(payload, dict):
+        raw = payload.get('attachments')
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                category = str(item.get('category') or 'general')
+                groups.setdefault(category, []).append(item)
+        for attachments in groups.values():
+            attachments.sort(key=lambda entry: entry.get('uploaded_at') or '', reverse=True)
+    return groups
+
+
+def _slugify_segment(value: str, default: str = 'item') -> str:
+    raw = (value or '').strip().lower()
+    cleaned = ''.join(ch if ch.isalnum() else '-' for ch in raw)
+    cleaned = cleaned.strip('-')
+    return cleaned or default
+
+
+def _build_site_result_summary(form_data: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        'bituminous': (form_data.get('result_bituminous') or '').strip(),
+        'sub_base': (form_data.get('result_sub_base') or '').strip(),
+    }
+
+
+def _summarize_site_outcome(summary: Dict[str, str]) -> Optional[str]:
+    bituminous = summary.get('bituminous') or ''
+    sub_base = summary.get('sub_base') or ''
+    if not bituminous and not sub_base:
+        return None
+    bituminous = bituminous or '-'
+    sub_base = sub_base or '-'
+    return f"Bituminous: {bituminous} | Sub-base: {sub_base}"
+
+
+async def _save_site_attachment(permit_ref: str, category: str, upload: UploadFile) -> Dict[str, str]:
+    filename = (upload.filename or '').strip()
+    if not filename:
+        return {}
+    data = await upload.read()
+    try:
+        await upload.close()
+    except Exception:
+        pass
+    if not data:
+        return {}
+    if len(data) > MAX_SITE_ATTACHMENT_SIZE:
+        raise ValueError(f"{filename} is larger than the {MAX_SITE_ATTACHMENT_SIZE // (1024 * 1024)} MB limit.")
+    content_type = (upload.content_type or '').lower()
+    suffix = SITE_ASSESSMENT_ALLOWED_IMAGE_MIME_MAP.get(content_type)
+    if not suffix:
+        guessed = Path(filename).suffix.lower()
+        if guessed in SITE_ASSESSMENT_ALLOWED_IMAGE_SUFFIXES:
+            suffix = guessed
+        else:
+            guessed = mimetypes.guess_extension(content_type or '') or ''
+            guessed = guessed.lower()
+            if guessed in SITE_ASSESSMENT_ALLOWED_IMAGE_SUFFIXES:
+                suffix = guessed
+    if not suffix:
+        raise ValueError(f"Unsupported file type for {filename}. Please upload an image file.")
+    safe_permit = _slugify_segment(permit_ref, 'permit')
+    safe_category = _slugify_segment(category, 'attachment')
+    timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
+    unique = uuid4().hex[:8]
+    relative_path = Path('site-assessments') / safe_permit / safe_category / f"{timestamp}_{unique}{suffix}"
+    full_path = ARTIFACTS_DIR / relative_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(data)
+    label = SITE_ASSESSMENT_ATTACHMENT_LABELS.get(category, category.title())
+    content_type = content_type or mimetypes.guess_type(filename)[0] or 'image/*'
+    return {
+        'category': category,
+        'label': label,
+        'filename': filename,
+        'content_type': content_type,
+        'path': str(full_path),
+        'url': f"/artifacts/{relative_path.as_posix()}",
+        'uploaded_at': datetime.utcnow().isoformat() + 'Z',
+    }
+
+
+
+
 
 def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
     location = record.get("location") or {}
@@ -570,6 +699,11 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
 
     desktop_summary = desktop.get("summary") if isinstance(desktop.get("summary"), dict) else None
     site_payload = site.get("payload") if isinstance(site.get("payload"), dict) else None
+    site_summary = site.get("summary") if isinstance(site.get("summary"), dict) else None
+    if not site_summary and isinstance(site_payload, dict):
+        summary_candidate = site_payload.get("summary")
+        if isinstance(summary_candidate, dict):
+            site_summary = summary_candidate
     search_payload = record.get("search_result") if isinstance(record.get("search_result"), dict) else None
     desktop_notes = desktop.get("notes") if isinstance(desktop.get("notes"), str) else None
     site_notes = site.get("notes") if isinstance(site.get("notes"), str) else None
@@ -594,6 +728,7 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
             status=str(site.get("status") or "Not started"),
             outcome=site.get("outcome"),
             notes=site_notes,
+            summary=site_summary,
             payload=site_payload,
         ),
         search_result=search_payload,
@@ -1131,6 +1266,10 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     form_payload = site_payload.get("form") if isinstance(site_payload.get("form"), dict) else {}
     site_form_items = _build_site_form_items(form_payload)
     site_pdf_url = site_payload.get("pdf_url")
+    site_summary = permit.site.summary if isinstance(permit.site.summary, dict) else {}
+    if not site_summary and form_payload:
+        site_summary = _build_site_result_summary(form_payload)
+    attachments_grouped = _group_site_attachments(site_payload)
     return templates.TemplateResponse(
         "permit_detail.html",
         {
@@ -1143,8 +1282,12 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
             "site_form": form_payload or {},
             "detail_fields": SITE_ASSESSMENT_DETAIL_FIELDS,
             "question_meta": SITE_ASSESSMENT_QUESTIONS,
+            "question_sections": SITE_ASSESSMENT_QUESTION_SECTIONS,
             "result_meta": SITE_ASSESSMENT_RESULT_FIELDS,
             "site_pdf_url": site_pdf_url,
+            "site_summary": site_summary,
+            "attachment_categories": SITE_ASSESSMENT_ATTACHMENT_CATEGORIES,
+            "attachments_grouped": attachments_grouped,
             "flashes": flashes,
         },
     )
@@ -1163,6 +1306,7 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
         site_payload = {}
     form_defaults = site_payload.get("form") if isinstance(site_payload.get("form"), dict) else {}
     form_defaults = dict(form_defaults or {})
+    attachments_grouped = _group_site_attachments(site_payload)
     today = datetime.utcnow().strftime("%Y-%m-%d")
     if not form_defaults.get("assessment_date"):
         form_defaults["assessment_date"] = today
@@ -1183,7 +1327,6 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
             "today": today,
             "flashes": flashes,
             "site_status": permit.site.status or "Not started",
-            "site_outcome": permit.site.outcome or "",
             "site_notes": permit.site.notes or "",
             "status_options": SITE_ASSESSMENT_STATUS_OPTIONS,
             "location_options": SITE_ASSESSMENT_LOCATION_OPTIONS,
@@ -1196,6 +1339,9 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
             "yes_no_na_choices": SITE_ASSESSMENT_YES_NO_NA_CHOICES,
             "yes_no_na_keys": SITE_ASSESSMENT_YES_NO_NA_KEYS,
             "site_pdf_url": site_payload.get("pdf_url"),
+            "question_sections": SITE_ASSESSMENT_QUESTION_SECTIONS,
+            "attachment_categories": SITE_ASSESSMENT_ATTACHMENT_CATEGORIES,
+            "attachments_grouped": attachments_grouped,
         },
     )
 
@@ -1223,7 +1369,6 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
         return ""
 
     status = _select("site_status", [value for value, _ in SITE_ASSESSMENT_STATUS_OPTIONS]) or "Completed"
-    outcome = _clean("site_outcome") or None
     notes = _clean("site_notes") or None
 
     location = _select("location_of_work", SITE_ASSESSMENT_LOCATION_OPTIONS)
@@ -1264,16 +1409,63 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
         "result_sub_base": _select("result_sub_base", SITE_ASSESSMENT_RESULT_CHOICES),
         "assessor_name": _clean("assessor_name"),
         "site_notes": notes or "",
-        "site_outcome": outcome or "",
     }
+
+    summary = _build_site_result_summary(form_data)
+    outcome = _summarize_site_outcome(summary)
+
+    existing_payload = record.get("site", {}).get("payload") if isinstance(record.get("site"), dict) else None
+    existing_attachments: List[Dict[str, Any]] = []
+    if isinstance(existing_payload, dict):
+        raw_attachments = existing_payload.get("attachments")
+        if isinstance(raw_attachments, list):
+            for item in raw_attachments:
+                if isinstance(item, dict):
+                    existing_attachments.append(item)
+
+    attachments: List[Dict[str, Any]] = list(existing_attachments)
+    attachment_paths = {att.get("path") for att in attachments if isinstance(att.get("path"), str)}
+
+    if hasattr(form, "getlist"):
+        for category, _label in SITE_ASSESSMENT_ATTACHMENT_CATEGORIES:
+            uploads = form.getlist(f"attachment_{category}")
+            for upload in uploads:
+                if not isinstance(upload, UploadFile):
+                    continue
+                if not upload.filename:
+                    continue
+                try:
+                    saved = await _save_site_attachment(permit_ref, category, upload)
+                except ValueError as exc:
+                    _add_flash(request, str(exc), "error")
+                    return RedirectResponse(url=f"/permits/{permit_ref}/site-assessment", status_code=303)
+                except Exception:
+                    log.exception(
+                        "Failed to save site attachment permit=%s category=%s filename=%s",
+                        permit_ref,
+                        category,
+                        upload.filename,
+                    )
+                    _add_flash(request, f"Failed to save attachment '{upload.filename}'.", "error")
+                    return RedirectResponse(url=f"/permits/{permit_ref}/site-assessment", status_code=303)
+                if saved:
+                    path_value = saved.get("path")
+                    if path_value and path_value not in attachment_paths:
+                        attachment_paths.add(path_value)
+                        attachments.append(saved)
+    else:
+        log.warning("Form data missing getlist() support; skipping attachments for permit %s", permit_ref)
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     pdf_path = ARTIFACTS_DIR / f"site-assessment_{permit_ref}_{timestamp}.pdf"
     generate_site_assessment_pdf(pdf_path, permit_ref=permit_ref, form_data=form_data)
-    payload = {
+
+    payload: Dict[str, Any] = {
         "form": form_data,
+        "summary": summary,
         "pdf_path": str(pdf_path),
         "pdf_url": f"/artifacts/{pdf_path.name}",
+        "attachments": attachments,
     }
 
     permit_store.update_site_assessment(
@@ -1286,6 +1478,7 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     )
     _add_flash(request, "Site assessment saved.", "success")
     return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
+
 
 @app.get("/app")
 async def app_page(request: Request):

@@ -206,6 +206,81 @@
       letter-spacing: normal;
       color: var(--text);
     }
+    .question-group-row td {
+      padding: 0.65rem 0.8rem;
+      background: rgba(43,124,255,0.08);
+      color: var(--text);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .attachment-grid {
+      display: grid;
+      gap: 1.2rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .attachment-card {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem 1.1rem;
+      display: grid;
+      gap: 0.75rem;
+    }
+    .attachment-card label span {
+      font-size: 0.82rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.75);
+    }
+    .attachment-card input[type="file"] {
+      border: 1px dashed rgba(255,255,255,0.18);
+      border-radius: 12px;
+      padding: 0.85rem;
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .attachment-existing {
+      display: grid;
+      gap: 0.55rem;
+    }
+    .attachment-preview {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .attachment-preview img {
+      width: 68px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+    }
+    .attachment-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      font-size: 0.84rem;
+    }
+    .attachment-meta a {
+      color: var(--text);
+      text-decoration: none;
+    }
+    .attachment-meta span {
+      font-size: 0.74rem;
+      color: rgba(255,255,255,0.55);
+    }
+    .attachment-empty {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.5);
+    }
+    .muted-text {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin: 0;
+    }
     .notes-text {
       font-size: 0.8rem;
       color: rgba(255,255,255,0.65);
@@ -316,9 +391,14 @@
     </div>
     {% endif %}
 
-    <form method="post" novalidate>
+    <form method="post" enctype="multipart/form-data" novalidate>
       <div class="supporting-info">
-        <div>Status: {{ site_status or 'Not started' }}{% if site_outcome %} | Outcome: {{ site_outcome }}{% endif %}</div>
+        <div>Status: {{ site_status or 'Not started' }}</div>
+        {% set saved_bituminous = form_defaults.get('result_bituminous') %}
+        {% set saved_sub_base = form_defaults.get('result_sub_base') %}
+        {% if saved_bituminous or saved_sub_base %}
+        <div>Latest results: Bituminous {{ saved_bituminous or '-' }}, Sub-base {{ saved_sub_base or '-' }}</div>
+        {% endif %}
         {% if site_pdf_url %}
         <div>Latest report: <a href="{{ site_pdf_url }}" target="_blank" rel="noopener">Download current site PDF</a></div>
         {% endif %}
@@ -404,6 +484,7 @@
 
       <div>
         <h2 class="section-title">Questionnaire</h2>
+        {% set counter = namespace(value=0) %}
         <table class="question-table">
           <thead>
             <tr>
@@ -414,10 +495,15 @@
             </tr>
           </thead>
           <tbody>
-            {% for key, question, note in question_meta %}
+            {% for section_title, rows in question_sections %}
+            <tr class="question-group-row">
+              <td colspan="4">{{ section_title }}</td>
+            </tr>
+            {% for key, question, note in rows %}
+            {% set counter.value = counter.value + 1 %}
             {% set selected = form_defaults.get(key, '') %}
             <tr>
-              <td>Q{{ loop.index }}</td>
+              <td>Q{{ counter.value }}</td>
               <td>{{ question }}</td>
               <td>
                 <div class="answer-options">
@@ -430,6 +516,7 @@
               </td>
               <td class="notes-text">{{ note }}</td>
             </tr>
+            {% endfor %}
             {% endfor %}
           </tbody>
         </table>
@@ -452,6 +539,39 @@
         </div>
       </div>
 
+      <div>
+        <h2 class="section-title">Photo evidence</h2>
+        <p class="muted-text">Capture supporting photos for the inspection (you can take a picture or choose from your library).</p>
+        <div class="attachment-grid">
+          {% for category_key, category_label in attachment_categories %}
+          <div class="attachment-card">
+            <div>
+              <label for="attachment_{{ category_key }}"><span>{{ category_label }}</span></label>
+              <input type="file" id="attachment_{{ category_key }}" name="attachment_{{ category_key }}" accept="image/*" capture="environment" multiple>
+            </div>
+            {% set existing = attachments_grouped.get(category_key, []) %}
+            {% if existing %}
+            <div class="attachment-existing">
+              {% for item in existing %}
+              <div class="attachment-preview">
+                <a href="{{ item.url }}" target="_blank" rel="noopener">
+                  <img src="{{ item.url }}" alt="{{ item.filename or ('Attachment ' ~ loop.index) }}">
+                </a>
+                <div class="attachment-meta">
+                  <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.filename or ('Attachment ' ~ loop.index) }}</a>
+                  {% if item.uploaded_at %}<span>{{ item.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="attachment-empty">No {{ category_label|lower }} uploaded yet.</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
       <div class="grid two">
         <div>
           <label for="assessor_name">Assessor name</label>
@@ -464,10 +584,6 @@
             <option value="{{ value }}" {% if (site_status or '') == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-        </div>
-        <div>
-          <label for="site_outcome">Assessment outcome</label>
-          <input id="site_outcome" name="site_outcome" type="text" value="{{ form_defaults.get('site_outcome', site_outcome or '') }}" placeholder="Example: Green - suitable for reuse">
         </div>
         <div>
           <label for="site_notes">Additional notes</label>

@@ -190,6 +190,73 @@
       text-align: left;
       font-size: 0.88rem;
     }
+    .question-group-row td {
+      padding: 0.65rem 0.85rem;
+      background: rgba(43,124,255,0.08);
+      color: var(--text);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .attachment-grid {
+      display: grid;
+      gap: 1.1rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .attachment-card {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem 1.2rem;
+      display: grid;
+      gap: 0.7rem;
+    }
+    .attachment-existing {
+      display: grid;
+      gap: 0.6rem;
+    }
+    .attachment-card strong {
+      font-size: 0.9rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.78);
+    }
+    .attachment-preview {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .attachment-preview img {
+      width: 70px;
+      height: 70px;
+      object-fit: cover;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+    }
+    .attachment-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      font-size: 0.84rem;
+    }
+    .attachment-meta a {
+      color: var(--text);
+      text-decoration: none;
+    }
+    .attachment-meta span {
+      font-size: 0.74rem;
+      color: rgba(255,255,255,0.55);
+    }
+    .attachment-empty {
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.5);
+    }
+    .muted-text {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin: 0;
+    }
     .question-table th {
       background: rgba(255,255,255,0.06);
       font-size: 0.78rem;
@@ -305,9 +372,15 @@
           <dt>Desktop outcome</dt>
           <dd>{{ permit.desktop.outcome or '-' }}</dd>
         </div>
+        {% set bituminous_value = site_summary.get('bituminous') if site_summary else site_form.get('result_bituminous') %}
+        {% set sub_base_value = site_summary.get('sub_base') if site_summary else site_form.get('result_sub_base') %}
         <div>
-          <dt>Site outcome</dt>
-          <dd>{{ permit.site.outcome or '-' }}</dd>
+          <dt>Bituminous result</dt>
+          <dd>{{ bituminous_value or '-' }}</dd>
+        </div>
+        <div>
+          <dt>Sub-base result</dt>
+          <dd>{{ sub_base_value or '-' }}</dd>
         </div>
       </dl>
     </section>
@@ -366,6 +439,7 @@
       </div>
       <div>
         <h3 class="section-title">Questionnaire responses</h3>
+        {% set counter = namespace(value=0) %}
         <table class="question-table">
           <thead>
             <tr>
@@ -376,13 +450,19 @@
             </tr>
           </thead>
           <tbody>
-            {% for key, question, note in question_meta %}
+            {% for section_title, rows in question_sections %}
+            <tr class="question-group-row">
+              <td colspan="4">{{ section_title }}</td>
+            </tr>
+            {% for key, question, note in rows %}
+            {% set counter.value = counter.value + 1 %}
             <tr>
-              <td>Q{{ loop.index }}</td>
+              <td>Q{{ counter.value }}</td>
               <td>{{ question }}</td>
               <td>{{ site_form.get(key) or '-' }}</td>
               <td>{{ note }}</td>
             </tr>
+            {% endfor %}
             {% endfor %}
           </tbody>
         </table>
@@ -398,6 +478,39 @@
           {% endfor %}
         </div>
       </div>
+      {% if attachments_grouped %}
+      <div>
+        <h3 class="section-title">Site photos</h3>
+        <div class="attachment-grid">
+          {% for category_key, category_label in attachment_categories %}
+          {% set photos = attachments_grouped.get(category_key, []) %}
+          {% if photos %}
+          <div class="attachment-card">
+            <strong>{{ category_label }}</strong>
+            <div class="attachment-existing">
+              {% for photo in photos %}
+              <div class="attachment-preview">
+                <a href="{{ photo.url }}" target="_blank" rel="noopener">
+                  <img src="{{ photo.url }}" alt="{{ photo.filename or ('Photo ' ~ loop.index) }}">
+                </a>
+                <div class="attachment-meta">
+                  <a href="{{ photo.url }}" target="_blank" rel="noopener">{{ photo.filename or ('Photo ' ~ loop.index) }}</a>
+                  {% if photo.uploaded_at %}<span>{{ photo.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% else %}
+          <div class="attachment-card">
+            <strong>{{ category_label }}</strong>
+            <p class="attachment-empty">No photos uploaded.</p>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
       {% if site_form.get('assessor_name') %}
       <p class="muted">Assessor: {{ site_form.get('assessor_name') }}</p>
       {% endif %}

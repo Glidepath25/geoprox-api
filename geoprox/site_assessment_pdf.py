@@ -175,8 +175,6 @@ def generate_site_assessment_pdf(out_path: Path, *, permit_ref: str, form_data: 
 
     assessor_name = form_data.get("assessor_name") or "-"
     story.append(Paragraph(f"Assessor name: {assessor_name}", value_style))
-    if form_data.get("site_outcome"):
-        story.append(Paragraph(f"Assessment outcome: {form_data.get('site_outcome')}", value_style))
     if form_data.get("site_notes"):
         story.append(Spacer(1, 4 * mm))
         story.append(Paragraph("Additional notes:", label_style))
