@@ -2097,6 +2097,34 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
     safe_limit = max(1, min(safe_limit, 2000))
     items = permit_store.search_permits(username, query, safe_limit)
 
+    EMPTY_TOKEN = "__EMPTY__"
+    filter_fields = [
+        "permit_ref",
+        "desktop_status",
+        "desktop_outcome",
+        "site_status",
+        "site_bituminous",
+        "site_sub_base",
+        "desktop_date",
+        "site_date",
+    ]
+    column_map = {
+        "permit_ref": "Permit",
+        "desktop_status": "Desktop Status",
+        "desktop_outcome": "Desktop Outcome",
+        "site_status": "Field Status",
+        "site_bituminous": "Bituminous Outcome",
+        "site_sub_base": "Sub-base Outcome",
+        "desktop_date": "Desktop Date",
+        "site_date": "Site Date",
+    }
+
+    active_filters: Dict[str, set[str]] = {}
+    for field in filter_fields:
+        values = request.query_params.getlist(f"filter_{field}")
+        if values:
+            active_filters[field] = set(values)
+
     columns = [
         "Permit",
         "Desktop Status",
@@ -2129,20 +2157,46 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
             dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
         return dt.strftime("%Y-%m-%d %H:%M")
 
+    def _normalise_filter_value(value: Any) -> str:
+        if value is None:
+            return EMPTY_TOKEN
+        text = str(value).strip()
+        return EMPTY_TOKEN if not text else text
+
     rows: List[Dict[str, Any]] = []
     for item in items:
+        bituminous_value = item.get("site_bituminous") or item.get("site_outcome") or ""
+        sub_base_value = item.get("site_sub_base") or item.get("site_outcome") or ""
+        desktop_date_value = _format_date(item.get("desktop_date"), item.get("created_at"))
+        site_date_value = _format_date(item.get("site_date"), item.get("updated_at"))
         rows.append(
             {
                 "Permit": item.get("permit_ref") or "",
                 "Desktop Status": item.get("desktop_status") or "",
                 "Desktop Outcome": item.get("desktop_outcome") or "",
                 "Field Status": item.get("site_status") or "",
-                "Bituminous Outcome": item.get("site_bituminous") or item.get("site_outcome") or "",
-                "Sub-base Outcome": item.get("site_sub_base") or item.get("site_outcome") or "",
-                "Desktop Date": _format_date(item.get("desktop_date"), item.get("created_at")),
-                "Site Date": _format_date(item.get("site_date"), item.get("updated_at")),
+                "Bituminous Outcome": bituminous_value,
+                "Sub-base Outcome": sub_base_value,
+                "Desktop Date": desktop_date_value,
+                "Site Date": site_date_value,
             }
         )
+
+    if active_filters:
+        filtered_rows: List[Dict[str, Any]] = []
+        for row in rows:
+            matches = True
+            for field, selected in active_filters.items():
+                column_name = column_map.get(field)
+                if not column_name:
+                    continue
+                value_key = _normalise_filter_value(row.get(column_name))
+                if selected and value_key not in selected:
+                    matches = False
+                    break
+            if matches:
+                filtered_rows.append(row)
+        rows = filtered_rows
 
     if rows:
         df = pd.DataFrame(rows, columns=columns)

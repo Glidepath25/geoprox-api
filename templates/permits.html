@@ -184,6 +184,93 @@
     .card-heading h2 {
       margin: 0;
     }
+    .filter-row th {
+      padding: 0.35rem 0.9rem;
+      background: rgba(255,255,255,0.03);
+      position: relative;
+    }
+    .filter-anchor {
+      position: relative;
+      display: flex;
+      justify-content: flex-end;
+      min-height: 1.8rem;
+    }
+    .filter-button {
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 0.25rem 0.65rem;
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .filter-button:hover,
+    .filter-button.menu-open {
+      background: rgba(43,124,255,0.18);
+      border-color: rgba(43,124,255,0.4);
+    }
+    .filter-button.has-filter {
+      border-color: rgba(68,209,159,0.45);
+      background: rgba(68,209,159,0.18);
+    }
+    .filter-menu {
+      position: absolute;
+      top: calc(100% + 0.45rem);
+      right: 0;
+      min-width: 210px;
+      max-height: 260px;
+      overflow-y: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(10,22,40,0.95);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      padding: 0.65rem 0.75rem;
+      z-index: 20;
+    }
+    .filter-menu.hidden {
+      display: none;
+    }
+    .filter-menu-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.55rem;
+    }
+    .filter-menu-actions button {
+      border: none;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      font-size: 0.7rem;
+      border-radius: 10px;
+      padding: 0.25rem 0.6rem;
+      cursor: pointer;
+    }
+    .filter-menu-actions button:hover {
+      background: rgba(43,124,255,0.25);
+    }
+    .filter-menu-options {
+      display: grid;
+      gap: 0.35rem;
+    }
+    .filter-menu-options label {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.86);
+    }
+    .filter-menu-options input[type="checkbox"] {
+      width: 0.9rem;
+      height: 0.9rem;
+      accent-color: var(--accent);
+    }
+    .filter-empty {
+      margin: 0;
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.6);
+    }
     .results-table {
       width: 100%;
       border-collapse: collapse;
@@ -265,6 +352,10 @@
       .results-table {
         min-width: 600px;
       }
+      .filter-menu {
+        left: 0;
+        right: auto;
+      }
     }
   </style>
 </head>
@@ -326,6 +417,16 @@
               <th scope="col">Desktop Date</th>
               <th scope="col">Site Date</th>
             </tr>
+            <tr class="filter-row">
+              <th><div class="filter-anchor" data-field="permit_ref"></div></th>
+              <th><div class="filter-anchor" data-field="desktop_status"></div></th>
+              <th><div class="filter-anchor" data-field="desktop_outcome"></div></th>
+              <th><div class="filter-anchor" data-field="site_status"></div></th>
+              <th><div class="filter-anchor" data-field="site_bituminous"></div></th>
+              <th><div class="filter-anchor" data-field="site_sub_base"></div></th>
+              <th><div class="filter-anchor" data-field="desktop_date"></div></th>
+              <th><div class="filter-anchor" data-field="site_date"></div></th>
+            </tr>
           </thead>
           <tbody id="permitResults" data-initial='{{ (initial_results or []) | tojson }}'></tbody>
         </table>
@@ -342,21 +443,42 @@
       const searchForm = document.getElementById('permitSearchForm');
       const queryInput = document.getElementById('permitQuery');
       const downloadBtn = document.getElementById('downloadBtn');
-      const EXPORT_LIMIT = 500;
-      let isLoading = false;
-      let lastQuery = '';
+      const filterAnchors = Array.from(document.querySelectorAll('.filter-anchor'));
+      const filterAnchorMap = filterAnchors.reduce((acc, anchor) => {
+        acc[anchor.dataset.field] = anchor;
+        return acc;
+      }, {});
 
-      if (downloadBtn) {
-        downloadBtn.disabled = true;
-        downloadBtn.addEventListener('click', () => {
-          const url = new URL('/api/permits/export', window.location.origin);
-          if (lastQuery) {
-            url.searchParams.set('query', lastQuery);
-          }
-          url.searchParams.set('limit', String(EXPORT_LIMIT));
-          window.location.href = url.toString();
-        });
-      }
+      const renderDate = (primary, fallback) => {
+        const source = primary || fallback;
+        if (!source) return '';
+        const date = new Date(source);
+        if (Number.isNaN(date.getTime())) return String(source);
+        const pad = (num) => String(num).padStart(2, '0');
+        return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+      };
+
+      const filterConfig = [
+        { field: 'permit_ref', accessor: (item) => item.permit_ref || '' },
+        { field: 'desktop_status', accessor: (item) => item.desktop_status || '' },
+        { field: 'desktop_outcome', accessor: (item) => item.desktop_outcome || '' },
+        { field: 'site_status', accessor: (item) => item.site_status || '' },
+        { field: 'site_bituminous', accessor: (item) => item.site_bituminous || item.site_outcome || '' },
+        { field: 'site_sub_base', accessor: (item) => item.site_sub_base || item.site_outcome || '' },
+        { field: 'desktop_date', accessor: (item) => renderDate(item.desktop_date, item.created_at) },
+        { field: 'site_date', accessor: (item) => renderDate(item.site_date, item.updated_at) },
+      ];
+
+      const EMPTY_TOKEN = '__EMPTY__';
+      const EMPTY_LABEL = '(blank)';
+      const EXPORT_LIMIT = 500;
+
+      let allItems = [];
+      let filterOptions = {};
+      let filterState = {};
+      let lastQuery = '';
+      let isLoading = false;
+      let documentClickBound = false;
 
       const parseInitial = () => {
         try {
@@ -367,6 +489,17 @@
         }
       };
 
+      const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => {
+        switch (char) {
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          case "'": return '&#39;';
+          default: return char;
+        }
+      });
+
       const statusClass = (status) => {
         if (!status) return 'status-pill';
         const key = String(status).toLowerCase();
@@ -376,15 +509,6 @@
         return 'status-pill';
       };
 
-      const formatDate = (value) => {
-        if (!value) return '';
-        const date = new Date(value);
-        if (!Number.isNaN(date.getTime())) {
-          return date.toLocaleDateString();
-        }
-        return String(value);
-      };
-
       const valueOrDash = (value) => {
         if (value === undefined || value === null) return '-';
         const text = String(value).trim();
@@ -392,7 +516,7 @@
       };
 
       const extractOutcome = (text, prefix) => {
-        if (typeof text !== 'string' || !text.trim()) return null;
+        if (typeof text !== 'string' || !text.trim()) return '';
         const loweredPrefix = prefix.toLowerCase();
         const segments = text.split('|');
         for (const segment of segments) {
@@ -403,14 +527,7 @@
           const trimmed = part.slice(delimiterIndex + 1).trim();
           if (trimmed) return trimmed;
         }
-        return null;
-      };
-
-      const renderDate = (primary, fallback) => {
-        const formattedPrimary = formatDate(primary);
-        if (formattedPrimary) return formattedPrimary;
-        const formattedFallback = formatDate(fallback);
-        return formattedFallback || '—';
+        return '';
       };
 
       const buildStatusCell = (value, fallback) => {
@@ -423,23 +540,185 @@
         return cell;
       };
 
-      const renderResults = (items) => {
+      const normaliseValue = (value) => {
+        if (value === undefined || value === null) return EMPTY_TOKEN;
+        const text = String(value).trim();
+        return text ? text : EMPTY_TOKEN;
+      };
+
+      const buildFilterOptions = (items) => {
+        const options = {};
+        filterConfig.forEach(({ field, accessor }) => {
+          const map = new Map();
+          items.forEach((item) => {
+            const rawValue = accessor(item);
+            const key = normaliseValue(rawValue);
+            if (!map.has(key)) {
+              const label = key === EMPTY_TOKEN ? EMPTY_LABEL : String(rawValue).trim() || EMPTY_LABEL;
+              map.set(key, label);
+            }
+          });
+          const sorted = Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base', numeric: true }));
+          options[field] = sorted;
+        });
+        return options;
+      };
+
+      const renderFilterControls = () => {
+        closeAllMenus();
+        Object.entries(filterOptions).forEach(([field, entries]) => {
+          const anchor = filterAnchorMap[field];
+          if (!anchor) return;
+          const activeSet = filterState[field];
+          const hasFilter = activeSet !== undefined;
+          const optionsHtml = entries.length
+            ? entries.map(([key, label]) => {
+                const checked = !activeSet || activeSet.has(key) ? 'checked' : '';
+                return `<label><input type="checkbox" value="${escapeHtml(key)}" ${checked}>${escapeHtml(label)}</label>`;
+              }).join('')
+            : '<p class="filter-empty">No values</p>';
+          anchor.innerHTML = `
+            <button type="button" class="filter-button ${hasFilter ? 'has-filter' : ''}" data-field="${field}">Filter</button>
+            <div class="filter-menu hidden" data-field="${field}">
+              <div class="filter-menu-actions">
+                <button type="button" data-action="select-all">Select all</button>
+                <button type="button" data-action="clear-filter">Clear</button>
+              </div>
+              <div class="filter-menu-options">${optionsHtml}</div>
+            </div>
+          `;
+        });
+        attachFilterEventListeners();
+      };
+
+      const attachFilterEventListeners = () => {
+        document.querySelectorAll('.filter-button').forEach((button) => {
+          button.addEventListener('click', handleFilterButton);
+        });
+        document.querySelectorAll('.filter-menu').forEach((menu) => {
+          menu.addEventListener('click', (event) => event.stopPropagation());
+        });
+        document.querySelectorAll('.filter-menu input[type="checkbox"]').forEach((input) => {
+          input.addEventListener('change', handleCheckboxChange);
+        });
+        document.querySelectorAll('.filter-menu button[data-action]').forEach((button) => {
+          button.addEventListener('click', handleFilterAction);
+        });
+        if (!documentClickBound) {
+          document.addEventListener('click', handleDocumentClick);
+          documentClickBound = true;
+        }
+      };
+
+      const handleFilterButton = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const field = event.currentTarget.dataset.field;
+        const anchor = filterAnchorMap[field];
+        if (!anchor) return;
+        const menu = anchor.querySelector('.filter-menu');
+        const isOpen = menu.classList.contains('open');
+        closeAllMenus();
+        if (!isOpen) {
+          menu.classList.remove('hidden');
+          menu.classList.add('open');
+          event.currentTarget.classList.add('menu-open');
+        }
+      };
+
+      const handleCheckboxChange = (event) => {
+        event.stopPropagation();
+        const menu = event.currentTarget.closest('.filter-menu');
+        const field = menu.dataset.field;
+        const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]'));
+        const checkedValues = checkboxes.filter((input) => input.checked).map((input) => input.value);
+        if (checkedValues.length === checkboxes.length) {
+          delete filterState[field];
+        } else {
+          filterState[field] = new Set(checkedValues);
+        }
+        updateButtonFilterClass(field);
+        refreshTable();
+      };
+
+      const handleFilterAction = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const action = event.currentTarget.dataset.action;
+        const menu = event.currentTarget.closest('.filter-menu');
+        const field = menu.dataset.field;
+        const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]'));
+        if (action === 'select-all') {
+          checkboxes.forEach((input) => { input.checked = true; });
+          delete filterState[field];
+        } else if (action === 'clear-filter') {
+          checkboxes.forEach((input) => { input.checked = false; });
+          filterState[field] = new Set();
+        }
+        updateButtonFilterClass(field);
+        refreshTable();
+      };
+
+      const handleDocumentClick = (event) => {
+        if (event.target.closest('.filter-menu') || event.target.closest('.filter-button')) {
+          return;
+        }
+        closeAllMenus();
+      };
+
+      const closeAllMenus = () => {
+        document.querySelectorAll('.filter-menu').forEach((menu) => {
+          menu.classList.remove('open');
+          menu.classList.add('hidden');
+        });
+        document.querySelectorAll('.filter-button').forEach((button) => {
+          button.classList.remove('menu-open');
+        });
+      };
+
+      const updateButtonFilterClass = (field) => {
+        const anchor = filterAnchorMap[field];
+        if (!anchor) return;
+        const button = anchor.querySelector('.filter-button');
+        if (!button) return;
+        const activeSet = filterState[field];
+        if (activeSet !== undefined) {
+          button.classList.add('has-filter');
+        } else {
+          button.classList.remove('has-filter');
+        }
+      };
+
+      const applyFilters = (items) => {
+        const activeFields = Object.keys(filterState);
+        if (activeFields.length === 0) {
+          return items.slice();
+        }
+        return items.filter((item) => {
+          return filterConfig.every(({ field, accessor }) => {
+            const selections = filterState[field];
+            if (selections === undefined) return true;
+            const key = normaliseValue(accessor(item));
+            return selections.has(key);
+          });
+        });
+      };
+
+      const renderTable = (items) => {
         resultsContainer.innerHTML = '';
         if (!Array.isArray(items) || items.length === 0) {
           resultsWrapper.classList.add('hidden');
+          const hasBaseData = allItems.length > 0;
+          emptyState.textContent = hasBaseData
+            ? 'No permits match the selected filters.'
+            : 'No permits found. Try another search phrase or create a permit from the desktop module.';
           emptyState.classList.remove('hidden');
-          if (downloadBtn) {
-            downloadBtn.classList.add('hidden');
-            downloadBtn.disabled = true;
-          }
+          updateDownloadState(false);
           return;
         }
         emptyState.classList.add('hidden');
         resultsWrapper.classList.remove('hidden');
-        if (downloadBtn) {
-          downloadBtn.classList.remove('hidden');
-          downloadBtn.disabled = false;
-        }
+        updateDownloadState(true);
         items.forEach((item) => {
           const row = document.createElement('tr');
 
@@ -450,7 +729,7 @@
             link.textContent = item.permit_ref;
             permitCell.appendChild(link);
           } else {
-            permitCell.textContent = '—';
+            permitCell.textContent = '-';
           }
           row.appendChild(permitCell);
 
@@ -462,26 +741,63 @@
 
           row.appendChild(buildStatusCell(item.site_status, 'Not started'));
 
-          const bituminousCell = document.createElement('td');
           const bituminousValue = item.site_bituminous || extractOutcome(item.site_outcome, 'bituminous');
+          const bituminousCell = document.createElement('td');
           bituminousCell.textContent = valueOrDash(bituminousValue);
           row.appendChild(bituminousCell);
 
-          const subBaseCell = document.createElement('td');
           const subBaseValue = item.site_sub_base || extractOutcome(item.site_outcome, 'sub-base');
+          const subBaseCell = document.createElement('td');
           subBaseCell.textContent = valueOrDash(subBaseValue);
           row.appendChild(subBaseCell);
 
           const desktopDateCell = document.createElement('td');
-          desktopDateCell.textContent = renderDate(item.desktop_date, item.created_at);
+          desktopDateCell.textContent = renderDate(item.desktop_date, item.created_at) || '-';
           row.appendChild(desktopDateCell);
 
           const siteDateCell = document.createElement('td');
-          siteDateCell.textContent = renderDate(item.site_date, item.updated_at);
+          siteDateCell.textContent = renderDate(item.site_date, item.updated_at) || '-';
           row.appendChild(siteDateCell);
 
           resultsContainer.appendChild(row);
         });
+      };
+
+      const updateDownloadState = (hasRows) => {
+        if (!downloadBtn) return;
+        if (hasRows) {
+          downloadBtn.classList.remove('hidden');
+          downloadBtn.disabled = false;
+        } else {
+          downloadBtn.classList.add('hidden');
+          downloadBtn.disabled = true;
+        }
+      };
+
+      const refreshTable = () => {
+        const filtered = applyFilters(allItems);
+        renderTable(filtered);
+      };
+
+      const updateFiltersFromItems = (items) => {
+        filterOptions = buildFilterOptions(items);
+        filterConfig.forEach(({ field }) => {
+          if (filterState[field] === undefined) return;
+          const existing = filterState[field];
+          if (existing.size === 0) {
+            filterState[field] = new Set();
+            return;
+          }
+          const validKeys = new Set((filterOptions[field] || []).map(([key]) => key));
+          const retained = Array.from(existing).filter((value) => validKeys.has(value));
+          if (retained.length === 0 || retained.length === validKeys.size) {
+            delete filterState[field];
+          } else {
+            filterState[field] = new Set(retained);
+          }
+        });
+        renderFilterControls();
+        Object.keys(filterAnchorMap).forEach(updateButtonFilterClass);
       };
 
       const fetchResults = async (query) => {
@@ -498,14 +814,38 @@
             return;
           }
           const data = await response.json().catch(() => []);
-          renderResults(Array.isArray(data) ? data : []);
+          allItems = Array.isArray(data) ? data : [];
+          filterState = {};
+          updateFiltersFromItems(allItems);
+          refreshTable();
         } catch (err) {
           console.error('Permit search failed', err);
-          renderResults([]);
+          allItems = [];
+          filterState = {};
+          updateFiltersFromItems(allItems);
+          refreshTable();
         } finally {
           isLoading = false;
         }
       };
+
+      if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+          if (downloadBtn.disabled) return;
+          const url = new URL('/api/permits/export', window.location.origin);
+          if (lastQuery) {
+            url.searchParams.set('query', lastQuery);
+          }
+          url.searchParams.set('limit', String(EXPORT_LIMIT));
+          Object.entries(filterState).forEach(([field, values]) => {
+            if (!values || values.size === 0) return;
+            values.forEach((value) => {
+              url.searchParams.append(`filter_${field}`, value);
+            });
+          });
+          window.location.href = url.toString();
+        });
+      }
 
       searchForm.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -513,7 +853,9 @@
         fetchResults(lastQuery);
       });
 
-      renderResults(parseInitial());
+      allItems = parseInitial();
+      updateFiltersFromItems(allItems);
+      refreshTable();
     })();
   </script>
 </body>
