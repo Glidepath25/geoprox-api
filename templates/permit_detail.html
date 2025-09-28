@@ -130,6 +130,59 @@
       font-size: 1.02rem;
       font-weight: 600;
     }
+
+    .summary-grid {
+      display: grid;
+      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      align-items: stretch;
+    }
+    .summary-meta {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .summary-status {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.9rem;
+      align-items: end;
+    }
+    .summary-row dd {
+      margin-top: 0.35rem;
+      display: flex;
+      align-items: center;
+    }
+    .result-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      font-size: 0.8rem;
+      letter-spacing: 0.03em;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .result-chip-green {
+      border-color: rgba(68,209,159,0.55);
+      background: rgba(68,209,159,0.2);
+      color: #a7f2d4;
+    }
+    .result-chip-amber {
+      border-color: rgba(255,200,87,0.5);
+      background: rgba(255,200,87,0.2);
+      color: #ffe7a6;
+    }
+    .result-chip-red {
+      border-color: rgba(255,119,119,0.5);
+      background: rgba(255,119,119,0.2);
+      color: #ffbfbf;
+    }
     .status-chip {
       display: inline-flex;
       align-items: center;
@@ -333,6 +386,23 @@
       }
     }
   </style>
+  {% macro result_chip(value) -%}
+    {% if value %}
+      {% set label = value|string %}
+      {% set lowered = label|lower %}
+      {% set tone = 'neutral' %}
+      {% if 'green' in lowered or 'low' in lowered or 'pass' in lowered %}
+        {% set tone = 'green' %}
+      {% elif 'amber' in lowered or 'medium' in lowered or 'moderate' in lowered or 'warning' in lowered %}
+        {% set tone = 'amber' %}
+      {% elif 'red' in lowered or 'fail' in lowered or 'high' in lowered %}
+        {% set tone = 'red' %}
+      {% endif %}
+      <span class="result-chip{% if tone != 'neutral' %} result-chip-{{ tone }}{% endif %}">{{ label }}</span>
+    {% else %}
+      <span class="muted">-</span>
+    {% endif %}
+  {%- endmacro %}
 </head>
 <body>
   <header>
@@ -362,61 +432,70 @@
 
     <section class="card">
       <h2>Summary</h2>
-      <dl>
-        <div>
-          <dt>Created</dt>
-          <dd>{{ created_at_display or '-' }}</dd>
-        </div>
-        <div>
-          <dt>Last updated</dt>
-          <dd>{{ updated_at_display or '-' }}</dd>
-        </div>
-        <div>
-          <dt>Desktop status</dt>
-          {% set desktop_status = permit.desktop.status or 'Pending' %}
-          {% set desktop_class = 'status-chip' %}
-          {% if 'complete' in desktop_status.lower() %}{% set desktop_class = 'status-chip done' %}
-          {% elif 'progress' in desktop_status.lower() %}{% set desktop_class = 'status-chip progress' %}
-          {% elif 'pending' in desktop_status.lower() or 'start' in desktop_status.lower() %}{% set desktop_class = 'status-chip pending' %}{% endif %}
-          <dd><span class="{{ desktop_class }}">{{ desktop_status }}</span></dd>
-        </div>
-        <div>
-          <dt>Site status</dt>
-          {% set site_status_value = permit.site.status or 'Not started' %}
-          {% set site_class = 'status-chip' %}
-          {% if 'complete' in site_status_value.lower() %}{% set site_class = 'status-chip done' %}
-          {% elif 'progress' in site_status_value.lower() %}{% set site_class = 'status-chip progress' %}
-          {% elif 'pending' in site_status_value.lower() or 'start' in site_status_value.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
-          <dd><span class="{{ site_class }}">{{ site_status_value }}</span></dd>
-        </div>
-        <div>
-          <dt>Location</dt>
-          <dd>
-            {% if permit.location.display %}{{ permit.location.display }}<br>{% endif %}
-            {% if permit.location.lat is not none and permit.location.lon is not none %}
-              {{ '%.5f'|format(permit.location.lat) }}, {{ '%.5f'|format(permit.location.lon) }}
-            {% else %}-{% endif %}
-          </dd>
-        </div>
-        <div>
-          <dt>Search radius</dt>
-          <dd>{% if permit.location.radius_m %}{{ permit.location.radius_m }} m{% else %}-{% endif %}</dd>
-        </div>
-        <div>
-          <dt>Desktop outcome</dt>
-          <dd>{{ permit.desktop.outcome or '-' }}</dd>
-        </div>
-        {% set bituminous_value = site_summary.get('bituminous') if site_summary else site_form.get('result_bituminous') %}
-        {% set sub_base_value = site_summary.get('sub_base') if site_summary else site_form.get('result_sub_base') %}
-        <div>
-          <dt>Bituminous result</dt>
-          <dd>{{ bituminous_value or '-' }}</dd>
-        </div>
-        <div>
-          <dt>Sub-base result</dt>
-          <dd>{{ sub_base_value or '-' }}</dd>
-        </div>
-      </dl>
+      {% set desktop_status = permit.desktop.status or 'Pending' %}
+      {% set desktop_class = 'status-chip' %}
+      {% if 'complete' in desktop_status.lower() %}{% set desktop_class = 'status-chip done' %}
+      {% elif 'progress' in desktop_status.lower() %}{% set desktop_class = 'status-chip progress' %}
+      {% elif 'pending' in desktop_status.lower() or 'start' in desktop_status.lower() %}{% set desktop_class = 'status-chip pending' %}{% endif %}
+      {% set site_status_value = permit.site.status or 'Not started' %}
+      {% set site_class = 'status-chip' %}
+      {% if 'complete' in site_status_value.lower() %}{% set site_class = 'status-chip done' %}
+      {% elif 'progress' in site_status_value.lower() %}{% set site_class = 'status-chip progress' %}
+      {% elif 'pending' in site_status_value.lower() or 'start' in site_status_value.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
+      {% set desktop_outcome_value = permit.desktop.outcome %}
+      {% set bituminous_value = site_summary.get('bituminous') if site_summary else site_form.get('result_bituminous') %}
+      {% set sub_base_value = site_summary.get('sub_base') if site_summary else site_form.get('result_sub_base') %}
+      <div class="summary-grid">
+        <dl class="summary-meta">
+          <div>
+            <dt>Created</dt>
+            <dd>{{ created_at_display or '-' }}</dd>
+          </div>
+          <div>
+            <dt>Last updated</dt>
+            <dd>{{ updated_at_display or '-' }}</dd>
+          </div>
+          <div>
+            <dt>Location</dt>
+            <dd>
+              {% if permit.location.display %}{{ permit.location.display }}<br>{% endif %}
+              {% if permit.location.lat is not none and permit.location.lon is not none %}
+                {{ '%.5f'|format(permit.location.lat) }}, {{ '%.5f'|format(permit.location.lon) }}
+              {% else %}-{% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Search radius</dt>
+            <dd>{% if permit.location.radius_m %}{{ permit.location.radius_m }} m{% else %}-{% endif %}</dd>
+          </div>
+        </dl>
+        <dl class="summary-status">
+          <div class="summary-row">
+            <div>
+              <dt>Desktop status</dt>
+              <dd><span class="{{ desktop_class }}">{{ desktop_status }}</span></dd>
+            </div>
+            <div>
+              <dt>Desktop outcome</dt>
+              <dd>{{ result_chip(desktop_outcome_value) }}</dd>
+            </div>
+          </div>
+          <div class="summary-row">
+            <div>
+              <dt>Site status</dt>
+              <dd><span class="{{ site_class }}">{{ site_status_value }}</span></dd>
+            </div>
+            <div>
+              <dt>Bituminous result</dt>
+              <dd>{{ result_chip(bituminous_value) }}</dd>
+            </div>
+            <div>
+              <dt>Sub-base result</dt>
+              <dd>{{ result_chip(sub_base_value) }}</dd>
+            </div>
+          </div>
+        </dl>
+      </div>
     </section>
 
     <section class="card">
