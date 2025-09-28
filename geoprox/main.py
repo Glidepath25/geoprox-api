@@ -596,6 +596,93 @@ def _build_site_form_items(form_payload: Optional[Dict[str, Any]]) -> List[Dict[
         items.append({"label": label, "value": value})
     return items
 
+
+
+def _normalize_artifact_link(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    trimmed = str(value).strip()
+    if not trimmed:
+        return None
+    lowered = trimmed.lower()
+    if lowered.startswith('http://') or lowered.startswith('https://'):
+        return trimmed
+    if trimmed.startswith('/'):
+        return trimmed
+    name = Path(trimmed).name
+    if not name:
+        return None
+    return f"/artifacts/{name}"
+
+
+def _presign_artifact_key(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return None
+    signer = getattr(history_store, '_signed_url', None)
+    if not callable(signer):
+        return None
+    try:
+        return signer(str(key))  # type: ignore[arg-type]
+    except Exception:
+        return None
+
+
+def _normalize_search_artifacts(artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    data = dict(artifacts)
+
+    def pick(*choices: Optional[str]) -> Optional[str]:
+        for choice in choices:
+            if not choice:
+                continue
+            normalized = _normalize_artifact_link(choice)
+            if normalized:
+                return normalized
+        return None
+
+    pdf_url = pick(
+        _presign_artifact_key(artifacts.get('pdf_key')),
+        artifacts.get('pdf_url'),
+        artifacts.get('pdf_download_url'),
+        artifacts.get('pdf_path'),
+    )
+    if pdf_url:
+        data['pdf_url'] = pdf_url
+        data.setdefault('pdf_download_url', pdf_url)
+
+    map_url = pick(
+        _presign_artifact_key(artifacts.get('map_key')),
+        artifacts.get('map_url'),
+        artifacts.get('map_embed_url'),
+        artifacts.get('map_html_url'),
+        artifacts.get('map_path'),
+    )
+    if map_url:
+        data['map_url'] = map_url
+        data.setdefault('map_embed_url', map_url)
+
+    map_html_url = pick(
+        artifacts.get('map_html_url'),
+        artifacts.get('map_html_path'),
+        data.get('map_url'),
+    )
+    if map_html_url:
+        data['map_html_url'] = map_html_url
+
+    map_image_url = pick(
+        _presign_artifact_key(artifacts.get('map_image_key')),
+        artifacts.get('map_image_url'),
+        artifacts.get('map_image_path'),
+    )
+    if map_image_url:
+        data['map_image_url'] = map_image_url
+
+    for path_field in ('pdf_path', 'map_path', 'map_html_path', 'map_image_path'):
+        normalized_path = _normalize_artifact_link(artifacts.get(path_field))
+        if normalized_path:
+            data[path_field] = normalized_path
+
+    return data
+
 def _group_site_attachments(payload: Optional[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     groups: Dict[str, List[Dict[str, Any]]] = {}
     if isinstance(payload, dict):
@@ -704,7 +791,13 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
         summary_candidate = site_payload.get("summary")
         if isinstance(summary_candidate, dict):
             site_summary = summary_candidate
-    search_payload = record.get("search_result") if isinstance(record.get("search_result"), dict) else None
+    search_payload_raw = record.get("search_result")
+    search_payload = search_payload_raw if isinstance(search_payload_raw, dict) else None
+    if search_payload:
+        search_payload = dict(search_payload)
+        artifacts = search_payload.get("artifacts")
+        if isinstance(artifacts, dict):
+            search_payload["artifacts"] = _normalize_search_artifacts(artifacts)
     desktop_notes = desktop.get("notes") if isinstance(desktop.get("notes"), str) else None
     site_notes = site.get("notes") if isinstance(site.get("notes"), str) else None
 
