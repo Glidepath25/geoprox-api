@@ -71,14 +71,27 @@ def _signed_url(key: Optional[str]) -> Optional[str]:
 
 
 def _resolve_links(data: Dict[str, Any], artifacts: Dict[str, Any]) -> None:
-    pdf_link = _signed_url(artifacts.get("pdf_key"))
+    pdf_key = artifacts.get("pdf_s3_key") or artifacts.get("pdf_key")
+    pdf_link = _signed_url(pdf_key) if pdf_key else None
+    if not pdf_link:
+        relative = artifacts.get("pdf_relative_path")
+        if relative:
+            pdf_link = _normalize_artifact(f"/artifacts/{relative}")
     if not pdf_link:
         pdf_link = artifacts.get("pdf_url") or artifacts.get("pdf_download_url")
     if not pdf_link:
         pdf_link = data.get("pdf_path")
     data["pdf_path"] = _normalize_artifact(pdf_link)
+    if pdf_key:
+        data["pdf_s3_key"] = pdf_key
+    if artifacts.get("pdf_relative_path"):
+        data["pdf_relative_path"] = artifacts["pdf_relative_path"]
 
-    map_link = _signed_url(artifacts.get("map_key"))
+    map_key = artifacts.get("map_s3_key") or artifacts.get("map_key")
+    map_link = _signed_url(map_key) if map_key else None
+    relative_map = artifacts.get("map_relative_path") or artifacts.get("map_html_relative_path")
+    if not map_link and relative_map:
+        map_link = _normalize_artifact(f"/artifacts/{relative_map}")
     if not map_link:
         map_link = (
             artifacts.get("map_url")
@@ -88,6 +101,10 @@ def _resolve_links(data: Dict[str, Any], artifacts: Dict[str, Any]) -> None:
     if not map_link:
         map_link = data.get("map_path")
     data["map_path"] = _normalize_artifact(map_link)
+    if map_key:
+        data["map_s3_key"] = map_key
+    if relative_map:
+        data["map_relative_path"] = relative_map
 
 def _month_bounds(reference: Optional[datetime] = None) -> Tuple[str, str]:
     if reference is None:

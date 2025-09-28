@@ -559,7 +559,7 @@
                 </a>
                 <div class="attachment-meta">
                   <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.filename or ('Attachment ' ~ loop.index) }}</a>
-                  {% if item.uploaded_at %}<span>{{ item.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
+                  {% if item.uploaded_at_display %}<span>{{ item.uploaded_at_display }}</span>{% elif item.uploaded_at %}<span>{{ item.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
                 </div>
               </div>
               {% endfor %}

@@ -452,10 +452,13 @@
       const renderDate = (primary, fallback) => {
         const source = primary || fallback;
         if (!source) return '';
+        if (typeof source === 'string' && source.includes('/') && source.length <= 10) {
+          return source;
+        }
         const date = new Date(source);
         if (Number.isNaN(date.getTime())) return String(source);
         const pad = (num) => String(num).padStart(2, '0');
-        return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+        return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${String(date.getUTCFullYear()).slice(-2)}`;
       };
 
       const filterConfig = [

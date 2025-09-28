@@ -95,7 +95,7 @@ def generate_site_assessment_pdf(out_path: Path, *, permit_ref: str, form_data: 
     story.append(Paragraph("Site Assessment Report", title_style))
     story.append(Paragraph(f"Permit reference: {permit_ref}", subtitle_style))
     story.append(Paragraph(
-        f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC",
+        f"Generated: {datetime.utcnow().strftime('%d/%m/%y %H:%M')} UTC",
         subtitle_style,
     ))
     story.append(Spacer(1, 8 * mm))

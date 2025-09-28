@@ -646,7 +646,13 @@ def _artifact_s3_key_from_relative(relative_path: str) -> Optional[str]:
     return trimmed
 
 
-def _persist_artifact(relative_path: Path, full_path: Path, content_type: Optional[str] = None) -> Dict[str, Optional[str]]:
+def _persist_artifact(
+    relative_path: Path,
+    full_path: Path,
+    *,
+    content_type: Optional[str] = None,
+    delete_local: bool = False,
+) -> Dict[str, Optional[str]]:
     url = f"/artifacts/{relative_path.as_posix()}"
     s3_key = None
     client = _get_s3_client_cached()
@@ -659,6 +665,11 @@ def _persist_artifact(relative_path: Path, full_path: Path, content_type: Option
                 s3_key = key
             except Exception:
                 log.exception("Failed to upload artifact to S3 key=%s", key)
+    if delete_local and s3_key and full_path.exists():
+        try:
+            full_path.unlink()
+        except Exception:
+            log.warning("Unable to remove local artifact copy path=%s", full_path)
     return {"url": url, "s3_key": s3_key}
 
 
@@ -716,6 +727,37 @@ def _normalize_artifact_link(value: Optional[str]) -> Optional[str]:
     if not name:
         return None
     return f"/artifacts/{name}"
+
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        iso_text = text
+        if iso_text.endswith("Z"):
+            iso_text = iso_text[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(iso_text)
+        except ValueError:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    dt = datetime.strptime(text, fmt)
+                    return dt.replace(tzinfo=timezone.utc if fmt != "%Y-%m-%d" else timezone.utc)
+                except ValueError:
+                    continue
+    return None
+
+
+def _format_ddmmyy(value: Any, include_time: bool = False) -> str:
+    dt = _parse_datetime(value)
+    if not dt:
+        return str(value) if value not in (None, "") else ""
+    if dt.tzinfo:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%d/%m/%y %H:%M" if include_time else "%d/%m/%y")
 
 
 def _presign_artifact_key(key: Optional[str]) -> Optional[str]:
@@ -806,6 +848,7 @@ def _group_site_attachments(payload: Optional[Dict[str, Any]]) -> Dict[str, List
                     entry.get('path'),
                     entry.get('relative_path'),
                 )
+                entry['uploaded_at_display'] = _format_ddmmyy(entry.get('uploaded_at'), include_time=True)
                 groups.setdefault(category, []).append(entry)
         for attachments in groups.values():
             attachments.sort(key=lambda entry: entry.get('uploaded_at') or '', reverse=True)
@@ -872,7 +915,12 @@ async def _save_site_attachment(permit_ref: str, category: str, upload: UploadFi
     full_path.write_bytes(data)
     label = SITE_ASSESSMENT_ATTACHMENT_LABELS.get(category, category.title())
     content_type = content_type or mimetypes.guess_type(filename)[0] or 'image/*'
-    persisted = _persist_artifact(relative_path, full_path, content_type=content_type)
+    persisted = _persist_artifact(
+        relative_path,
+        full_path,
+        content_type=content_type,
+        delete_local=bool(S3_BUCKET),
+    )
     return {
         'category': category,
         'label': label,
@@ -1490,6 +1538,22 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     if not site_summary and form_payload:
         site_summary = _build_site_result_summary(form_payload)
     attachments_grouped = _group_site_attachments(site_payload)
+    search_payload = permit.search_result if isinstance(permit.search_result, dict) else {}
+    desktop_details = []
+    if isinstance(search_payload.get("details_100m"), list):
+        for row in search_payload.get("details_100m"):
+            if not isinstance(row, dict):
+                continue
+            desktop_details.append({
+                "distance": row.get("distance_m"),
+                "category": row.get("category"),
+                "name": row.get("name") or "(unnamed)",
+                "address": row.get("address") or "",
+                "lat": row.get("lat"),
+                "lon": row.get("lon"),
+            })
+    created_at_display = _format_ddmmyy(record.get("created_at"), include_time=True)
+    updated_at_display = _format_ddmmyy(record.get("updated_at"), include_time=True)
     return templates.TemplateResponse(
         "permit_detail.html",
         {
@@ -1508,6 +1572,9 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
             "site_summary": site_summary,
             "attachment_categories": SITE_ASSESSMENT_ATTACHMENT_CATEGORIES,
             "attachments_grouped": attachments_grouped,
+            "desktop_details": desktop_details,
+            "created_at_display": created_at_display,
+            "updated_at_display": updated_at_display,
             "flashes": flashes,
         },
     )
@@ -1707,7 +1774,12 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     generate_site_assessment_pdf(pdf_path, permit_ref=permit_ref, form_data=form_data)
 
     pdf_relative = pdf_path.relative_to(ARTIFACTS_DIR).as_posix()
-    pdf_persisted = _persist_artifact(Path(pdf_relative), pdf_path, content_type="application/pdf")
+    pdf_persisted = _persist_artifact(
+        Path(pdf_relative),
+        pdf_path,
+        content_type="application/pdf",
+        delete_local=bool(S3_BUCKET),
+    )
 
     payload: Dict[str, Any] = {
         "form": form_data,
@@ -1762,7 +1834,24 @@ def get_artifact(request: Request, path: str):
 @app.get("/history", response_class=HTMLResponse)
 def history_page(request: Request) -> HTMLResponse:
     user = _require_user(request)
-    items = history_store.get_history(user, limit=200)
+    raw_items = history_store.get_history(user, limit=200)
+    items: List[Dict[str, Any]] = []
+    for row in raw_items:
+        entry = dict(row)
+        entry["timestamp_display"] = _format_ddmmyy(entry.get("timestamp"), include_time=True)
+        entry["pdf_path"] = _resolve_artifact_url(
+            entry.get("pdf_path"),
+            entry.get("pdf_s3_key"),
+            entry.get("pdf_path"),
+            entry.get("pdf_relative_path"),
+        )
+        entry["map_path"] = _resolve_artifact_url(
+            entry.get("map_path"),
+            entry.get("map_s3_key"),
+            entry.get("map_path"),
+            entry.get("map_relative_path"),
+        )
+        items.append(entry)
     return templates.TemplateResponse("history.html", {
         "request": request,
         "user": user,
@@ -2376,10 +2465,16 @@ def api_save_permit_record(request: Request, payload: PermitSaveReq):
     permit_ref = (payload.permit_ref or "").strip()
     if not permit_ref:
         raise HTTPException(status_code=400, detail="Permit reference is required.")
+    result_payload = payload.result or {}
+    if isinstance(result_payload, dict):
+        _persist_search_artifacts(result_payload)
+        artifacts = result_payload.get("artifacts")
+        if isinstance(artifacts, dict):
+            result_payload["artifacts"] = _normalize_search_artifacts(artifacts)
     record = permit_store.save_permit(
         username=username,
         permit_ref=permit_ref,
-        search_result=payload.result or {},
+        search_result=result_payload,
     )
     if not record:
         raise HTTPException(status_code=500, detail="Unable to save permit record.")
@@ -2482,19 +2577,10 @@ def api_search(request: Request, req: SearchReq):
         if not result:
             raise RuntimeError("run_geoprox_search returned None")
 
+        _persist_search_artifacts(result)
         arts = result.get("artifacts", {}) or {}
-        if arts.get("pdf_path") and not arts.get("pdf_url"):
-            arts["pdf_url"] = f"/artifacts/{Path(arts['pdf_path']).name}"
-        if arts.get("map_html_url") and not arts.get("map_url"):
-            arts["map_url"] = arts["map_html_url"]
-        if arts.get("map_html_url") and not arts.get("map_embed_url"):
-            arts["map_embed_url"] = arts["map_html_url"]
-        if arts.get("map_html_path") and not arts.get("map_url"):
-            arts["map_url"] = f"/artifacts/{Path(arts['map_html_path']).name}"
-        if arts.get("map_image_path") and not arts.get("map_image_url"):
-            arts["map_image_url"] = f"/artifacts/{Path(arts['map_image_path']).name}"
-
-        result["artifacts"] = arts
+        normalized_artifacts = _normalize_search_artifacts(arts)
+        result["artifacts"] = normalized_artifacts
 
         selection_info = result.get("selection") or {}
         if "mode" not in selection_info:
@@ -2505,8 +2591,8 @@ def api_search(request: Request, req: SearchReq):
 
         timestamp = datetime.utcnow().isoformat() + "Z"
         outcome = result.get("summary", {}).get("outcome")
-        pdf_name = Path(arts["pdf_path"]).name if arts.get("pdf_path") else None
-        map_name = Path(arts["map_html_path"]).name if arts.get("map_html_path") else None
+        pdf_link = normalized_artifacts.get("pdf_url") or normalized_artifacts.get("pdf_download_url")
+        map_link = normalized_artifacts.get("map_url") or normalized_artifacts.get("map_embed_url")
 
         history_store.record_search(
             username=username,
@@ -2515,8 +2601,8 @@ def api_search(request: Request, req: SearchReq):
             radius_m=req.radius_m,
             outcome=outcome,
             permit=req.permit,
-            pdf_path=pdf_name,
-            map_path=map_name,
+            pdf_path=pdf_link,
+            map_path=map_link,
             result=result,
         )
 
@@ -2538,3 +2624,71 @@ def api_search(request: Request, req: SearchReq):
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
 
+def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return
+    if not S3_BUCKET:
+        return
+
+    updated = dict(artifacts)
+    if updated.get("pdf_s3_key") or updated.get("pdf_key"):
+        for _, field in [
+            ("pdf", "pdf_path"),
+            ("map_html", "map_html_path"),
+            ("map", "map_path"),
+            ("map_image", "map_image_path"),
+        ]:
+            raw_path = updated.get(field)
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                continue
+            candidate = Path(raw_path)
+            if not candidate.is_absolute():
+                candidate = (ARTIFACTS_DIR / raw_path).resolve()
+            if candidate.exists():
+                try:
+                    candidate.unlink()
+                except Exception:
+                    log.debug("Unable to remove cached artifact %s", candidate)
+        return
+
+    changed = False
+
+    field_defs = [
+        ("pdf", "pdf_path"),
+        ("map_html", "map_html_path"),
+        ("map", "map_path"),
+        ("map_image", "map_image_path"),
+    ]
+
+    for base, field in field_defs:
+        raw_path = updated.get(field)
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            continue
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = (ARTIFACTS_DIR / raw_path).resolve()
+        if not candidate.exists():
+            continue
+        relative = _relative_artifact_path(str(candidate))
+        if not relative:
+            try:
+                relative = candidate.relative_to(ARTIFACTS_DIR).as_posix()
+            except Exception:
+                relative = candidate.name
+        content_type = mimetypes.guess_type(candidate.name)[0]
+        persisted = _persist_artifact(
+            Path(relative),
+            candidate,
+            content_type=content_type,
+            delete_local=True,
+        )
+        updated[f"{base}_relative_path"] = relative
+        if persisted.get("s3_key"):
+            updated[f"{base}_s3_key"] = persisted["s3_key"]
+        if persisted.get("url"):
+            updated[f"{base}_url"] = persisted["url"]
+        changed = True
+
+    if changed:
+        payload["artifacts"] = updated

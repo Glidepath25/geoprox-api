@@ -167,6 +167,40 @@
       font-size: 0.92rem;
     }
     .link-list a:hover { text-decoration: underline; }
+    .summary-table-wrapper,
+    .details-table-wrapper {
+      margin-top: 1rem;
+      overflow-x: auto;
+    }
+    .summary-table,
+    .details-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 420px;
+    }
+    .summary-table th,
+    .summary-table td,
+    .details-table th,
+    .details-table td {
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    .summary-table thead th,
+    .details-table thead th {
+      background: rgba(255,255,255,0.08);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.72rem;
+    }
+    .tick {
+      color: #51d4a5;
+      font-weight: 600;
+    }
+    .cross {
+      color: rgba(255,255,255,0.5);
+    }
     .info-block {
       background: var(--panel-alt);
       border-radius: 12px;
@@ -331,11 +365,11 @@
       <dl>
         <div>
           <dt>Created</dt>
-          <dd>{{ permit.created_at or '-' }}</dd>
+          <dd>{{ created_at_display or '-' }}</dd>
         </div>
         <div>
           <dt>Last updated</dt>
-          <dd>{{ permit.updated_at or '-' }}</dd>
+          <dd>{{ updated_at_display or '-' }}</dd>
         </div>
         <div>
           <dt>Desktop status</dt>
@@ -394,12 +428,63 @@
           <strong>Radius:</strong> {{ permit.desktop.summary.radius or '-' }} m | 
           <strong>Centre:</strong> {{ permit.desktop.summary.center or '-' }}
         </span>
-        {% if permit.desktop.summary.categories %}
-        <span><strong>Categories:</strong> {% for category in permit.desktop.summary.categories %}{{ category.label or category.name or category }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        {% if permit.desktop.summary.outcome %}
+        <span><strong>Risk weighting:</strong> {{ permit.desktop.summary.outcome }}</span>
         {% endif %}
       </div>
+      {% if permit.desktop.summary.categories %}
+      <div class="summary-table-wrapper">
+        <table class="summary-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>&lt;10 m</th>
+              <th>10-25 m</th>
+              <th>25-100 m</th>
+              <th>Present</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in permit.desktop.summary.categories %}
+            <tr>
+              <td>{{ row.label or row.name or 'Category' }}</td>
+              <td>{% if row.lt10 %}<span class="tick">✓</span>{% else %}<span class="cross">–</span>{% endif %}</td>
+              <td>{% if row.r10_25 %}<span class="tick">✓</span>{% else %}<span class="cross">–</span>{% endif %}</td>
+              <td>{% if row.r25_100 %}<span class="tick">✓</span>{% else %}<span class="cross">–</span>{% endif %}</td>
+              <td>{% if not row.no %}<span class="tick">✓</span>{% else %}<span class="cross">–</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
       {% else %}
       <p class="muted">Desktop summary data will appear once a proximity check has been recorded for this permit.</p>
+      {% endif %}
+      {% if desktop_details %}
+      <div class="details-table-wrapper">
+        <h3 class="section-title">Features within 100&nbsp;m</h3>
+        <table class="details-table">
+          <thead>
+            <tr>
+              <th>Distance (m)</th>
+              <th>Category</th>
+              <th>Name</th>
+              <th>Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in desktop_details %}
+            <tr>
+              <td>{% if row.distance is not none %}{{ row.distance }}{% else %}-{% endif %}</td>
+              <td>{{ row.category or '-' }}</td>
+              <td>{{ row.name or '-' }}</td>
+              <td>{% if row.address %}{{ row.address }}{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% endif %}
       {% set artifacts = permit.search_result.artifacts if permit.search_result and permit.search_result.artifacts else {} %}
       {% if artifacts %}
@@ -495,7 +580,7 @@
                 </a>
                 <div class="attachment-meta">
                   <a href="{{ photo.url }}" target="_blank" rel="noopener">{{ photo.filename or ('Photo ' ~ loop.index) }}</a>
-                  {% if photo.uploaded_at %}<span>{{ photo.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
+                  {% if photo.uploaded_at_display %}<span>{{ photo.uploaded_at_display }}</span>{% elif photo.uploaded_at %}<span>{{ photo.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
                 </div>
               </div>
               {% endfor %}
