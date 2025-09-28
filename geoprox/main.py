@@ -12,7 +12,13 @@ from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+try:
+    import boto3  # type: ignore
+    from botocore.exceptions import BotoCoreError, ClientError  # type: ignore
+except Exception:  # pragma: no cover - boto3 optional
+    boto3 = None
+    BotoCoreError = ClientError = Exception
 from uuid import uuid4
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -154,6 +160,10 @@ STATIC_DIR = (REPO_ROOT / "static").resolve()
 TEMPLATES_DIR = (REPO_ROOT / "templates").resolve()
 ARTIFACTS_DIR = Path(os.environ.get("ARTIFACTS_DIR", "artifacts")).resolve()
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+S3_BUCKET = os.environ.get("GEOPROX_BUCKET", "").strip()
+S3_ARTIFACT_PREFIX = os.environ.get("GEOPROX_ARTIFACT_PREFIX", "").strip()
+_S3_CLIENT = None
 
 PROMO_PDF_URL = os.environ.get("LOGIN_PROMO_PDF", "/static/geoprox-intro.pdf")
 SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@geoprox.co.uk")
@@ -335,6 +345,18 @@ def _safe_artifact(path: str, request: Request) -> Path:
         log.warning("artifact blocked path=%s base=%s", full, ARTIFACTS_DIR)
         raise HTTPException(status_code=400, detail="Invalid artifact path")
     if not full.exists():
+        client = _get_s3_client_cached()
+        if client:
+            try:
+                relative = full.relative_to(ARTIFACTS_DIR).as_posix()
+                key = _artifact_s3_key_from_relative(relative)
+                if key:
+                    full.parent.mkdir(parents=True, exist_ok=True)
+                    client.download_file(S3_BUCKET, key, str(full))
+            except Exception:
+                log.exception("Failed to download artifact from S3 path=%s", path)
+        if full.exists():
+            return full
         available = []
         try:
             available = sorted(p.name for p in ARTIFACTS_DIR.glob('*'))[:20]
@@ -599,6 +621,83 @@ def _build_site_form_items(form_payload: Optional[Dict[str, Any]]) -> List[Dict[
 
 
 
+def _get_s3_client_cached():
+    global _S3_CLIENT
+    if not S3_BUCKET or boto3 is None:
+        return None
+    if _S3_CLIENT is None:
+        try:
+            _S3_CLIENT = boto3.client("s3")
+        except Exception:
+            log.exception("Failed to initialise S3 client for artifacts")
+            _S3_CLIENT = None
+    return _S3_CLIENT
+
+
+def _artifact_s3_key_from_relative(relative_path: str) -> Optional[str]:
+    if not relative_path:
+        return None
+    trimmed = relative_path.strip().lstrip("/\\")
+    if not trimmed:
+        return None
+    if S3_ARTIFACT_PREFIX:
+        prefix = S3_ARTIFACT_PREFIX.rstrip("/")
+        return f"{prefix}/{trimmed}"
+    return trimmed
+
+
+def _persist_artifact(relative_path: Path, full_path: Path, content_type: Optional[str] = None) -> Dict[str, Optional[str]]:
+    url = f"/artifacts/{relative_path.as_posix()}"
+    s3_key = None
+    client = _get_s3_client_cached()
+    if client:
+        key = _artifact_s3_key_from_relative(relative_path.as_posix())
+        if key:
+            extra_args = {"ContentType": content_type} if content_type else None
+            try:
+                client.upload_file(str(full_path), S3_BUCKET, key, ExtraArgs=extra_args)
+                s3_key = key
+            except Exception:
+                log.exception("Failed to upload artifact to S3 key=%s", key)
+    return {"url": url, "s3_key": s3_key}
+
+
+def _relative_artifact_path(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    candidate = Path(text)
+    if candidate.is_absolute():
+        try:
+            relative = candidate.resolve().relative_to(ARTIFACTS_DIR)
+            return relative.as_posix()
+        except Exception:
+            return None
+    normalized = text.replace('\\', '/').lstrip('/')
+    return normalized or None
+
+
+def _resolve_artifact_url(primary: Optional[str], s3_key: Optional[str], path_value: Optional[str], relative_value: Optional[str] = None) -> Optional[str]:
+    if s3_key:
+        signed = _presign_artifact_key(s3_key)
+        if signed:
+            return signed
+    for candidate in (primary, relative_value):
+        normalized = _normalize_artifact_link(candidate)
+        if normalized:
+            return normalized
+    if path_value:
+        relative = _relative_artifact_path(path_value)
+        if relative:
+            return f"/artifacts/{relative}"
+        normalized = _normalize_artifact_link(path_value)
+        if normalized:
+            return normalized
+    return None
+
+
 def _normalize_artifact_link(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -610,6 +709,9 @@ def _normalize_artifact_link(value: Optional[str]) -> Optional[str]:
         return trimmed
     if trimmed.startswith('/'):
         return trimmed
+    relative = _relative_artifact_path(trimmed)
+    if relative:
+        return f"/artifacts/{relative}"
     name = Path(trimmed).name
     if not name:
         return None
@@ -693,7 +795,18 @@ def _group_site_attachments(payload: Optional[Dict[str, Any]]) -> Dict[str, List
                 if not isinstance(item, dict):
                     continue
                 category = str(item.get('category') or 'general')
-                groups.setdefault(category, []).append(item)
+                entry = dict(item)
+                if not entry.get('relative_path') and entry.get('path'):
+                    relative_guess = _relative_artifact_path(entry.get('path'))
+                    if relative_guess:
+                        entry['relative_path'] = relative_guess
+                entry['url'] = _resolve_artifact_url(
+                    entry.get('url'),
+                    entry.get('s3_key'),
+                    entry.get('path'),
+                    entry.get('relative_path'),
+                )
+                groups.setdefault(category, []).append(entry)
         for attachments in groups.values():
             attachments.sort(key=lambda entry: entry.get('uploaded_at') or '', reverse=True)
     return groups
@@ -759,13 +872,16 @@ async def _save_site_attachment(permit_ref: str, category: str, upload: UploadFi
     full_path.write_bytes(data)
     label = SITE_ASSESSMENT_ATTACHMENT_LABELS.get(category, category.title())
     content_type = content_type or mimetypes.guess_type(filename)[0] or 'image/*'
+    persisted = _persist_artifact(relative_path, full_path, content_type=content_type)
     return {
         'category': category,
         'label': label,
         'filename': filename,
         'content_type': content_type,
         'path': str(full_path),
-        'url': f"/artifacts/{relative_path.as_posix()}",
+        'relative_path': relative_path.as_posix(),
+        'url': persisted.get('url') or f"/artifacts/{relative_path.as_posix()}",
+        's3_key': persisted.get('s3_key'),
         'uploaded_at': datetime.utcnow().isoformat() + 'Z',
     }
 
@@ -1326,6 +1442,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
             "request": request,
             "user": user,
             "display_name": request.session.get("display_name") or user,
+            "is_admin": bool(request.session.get("is_admin")),
         },
     )
 
@@ -1363,7 +1480,12 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
         site_payload = {}
     form_payload = site_payload.get("form") if isinstance(site_payload.get("form"), dict) else {}
     site_form_items = _build_site_form_items(form_payload)
-    site_pdf_url = site_payload.get("pdf_url")
+    site_pdf_url = _resolve_artifact_url(
+        site_payload.get("pdf_url"),
+        site_payload.get("pdf_s3_key"),
+        site_payload.get("pdf_path"),
+        site_payload.get("pdf_relative_path"),
+    )
     site_summary = permit.site.summary if isinstance(permit.site.summary, dict) else {}
     if not site_summary and form_payload:
         site_summary = _build_site_result_summary(form_payload)
@@ -1414,6 +1536,12 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
         surface_value = form_defaults.get("surface_location")
         if isinstance(surface_value, str) and surface_value.startswith("Other - "):
             form_defaults["surface_location_other"] = surface_value[len("Other - ") :].strip()
+    site_pdf_url = _resolve_artifact_url(
+        site_payload.get("pdf_url"),
+        site_payload.get("pdf_s3_key"),
+        site_payload.get("pdf_path"),
+        site_payload.get("pdf_relative_path"),
+    )
     return templates.TemplateResponse(
         "site_assessment.html",
         {
@@ -1436,7 +1564,7 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
             "yes_no_choices": SITE_ASSESSMENT_YES_NO_CHOICES,
             "yes_no_na_choices": SITE_ASSESSMENT_YES_NO_NA_CHOICES,
             "yes_no_na_keys": SITE_ASSESSMENT_YES_NO_NA_KEYS,
-            "site_pdf_url": site_payload.get("pdf_url"),
+            "site_pdf_url": site_pdf_url,
             "question_sections": SITE_ASSESSMENT_QUESTION_SECTIONS,
             "attachment_categories": SITE_ASSESSMENT_ATTACHMENT_CATEGORIES,
             "attachments_grouped": attachments_grouped,
@@ -1554,15 +1682,40 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     else:
         log.warning("Form data missing getlist() support; skipping attachments for permit %s", permit_ref)
 
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        if not attachment.get('relative_path') and attachment.get('path'):
+            rel_guess = _relative_artifact_path(attachment.get('path'))
+            if rel_guess:
+                attachment['relative_path'] = rel_guess
+        if S3_BUCKET and not attachment.get('s3_key'):
+            rel = attachment.get('relative_path')
+            path_value = attachment.get('path')
+            try:
+                if rel and path_value and Path(path_value).exists():
+                    persisted_attachment = _persist_artifact(Path(rel), Path(path_value), content_type=attachment.get('content_type'))
+                    if persisted_attachment.get('s3_key'):
+                        attachment['s3_key'] = persisted_attachment['s3_key']
+                    if persisted_attachment.get('url'):
+                        attachment['url'] = persisted_attachment['url']
+            except Exception:
+                log.exception("Failed to sync site attachment to S3 path=%s", attachment.get('path'))
+
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     pdf_path = ARTIFACTS_DIR / f"site-assessment_{permit_ref}_{timestamp}.pdf"
     generate_site_assessment_pdf(pdf_path, permit_ref=permit_ref, form_data=form_data)
+
+    pdf_relative = pdf_path.relative_to(ARTIFACTS_DIR).as_posix()
+    pdf_persisted = _persist_artifact(Path(pdf_relative), pdf_path, content_type="application/pdf")
 
     payload: Dict[str, Any] = {
         "form": form_data,
         "summary": summary,
         "pdf_path": str(pdf_path),
-        "pdf_url": f"/artifacts/{pdf_path.name}",
+        "pdf_relative_path": pdf_relative,
+        "pdf_url": pdf_persisted.get("url") or f"/artifacts/{pdf_relative}",
+        "pdf_s3_key": pdf_persisted.get("s3_key"),
         "attachments": attachments,
     }
 
@@ -2119,7 +2272,7 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
         "site_date": "Site Date",
     }
 
-    active_filters: Dict[str, set[str]] = {}
+    active_filters: Dict[str, Set[str]] = {}
     for field in filter_fields:
         values = request.query_params.getlist(f"filter_{field}")
         if values:
