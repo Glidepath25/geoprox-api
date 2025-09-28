@@ -135,6 +135,7 @@ def generate_sample_testing_pdf(
     if logo:
         logo_img = Image(str(logo))
         logo_img._restrictSize(36 * mm, 36 * mm)
+        logo_img.hAlign = 'LEFT'
         story.append(logo_img)
         story.append(Spacer(1, 6 * mm))
 

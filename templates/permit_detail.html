@@ -131,29 +131,63 @@
       font-weight: 600;
     }
 
-    .summary-grid {
+    .summary-card {
+      gap: 1.6rem;
+    }
+    .summary-meta-grid {
       display: grid;
-      gap: 1.5rem;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      align-items: stretch;
-    }
-    .summary-meta {
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    }
-    .summary-status {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1rem;
     }
-    .summary-row {
+    .summary-matrix {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 0.9rem;
-      align-items: end;
+      gap: 1.2rem;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
-    .summary-row dd {
-      margin-top: 0.35rem;
+    .summary-panel {
+      background: var(--panel-alt);
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 1rem;
+      display: grid;
+      gap: 0.8rem;
+    }
+    .summary-panel h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(255,255,255,0.82);
+    }
+    .summary-pair {
+      display: grid;
+      gap: 0;
+    }
+    .summary-label {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px 8px 0 0;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+      color: rgba(255,255,255,0.78);
+    }
+    .summary-value {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      padding: 0.5rem 0.6rem;
       display: flex;
+      justify-content: center;
       align-items: center;
+    }
+    .summary-value .status-chip,
+    .summary-value .result-chip {
+      width: 100%;
+      justify-content: center;
+      border-radius: 6px;
     }
     .result-chip {
       display: inline-flex;
@@ -430,107 +464,104 @@
     </div>
     {% endif %}
 
-    <section class="card">
+    <section class="card summary-card">
       <h2>Summary</h2>
       {% set desktop_status = permit.desktop.status or 'Pending' %}
       {% set desktop_class = 'status-chip' %}
-      {% if 'complete' in desktop_status.lower() %}{% set desktop_class = 'status-chip done' %}
-      {% elif 'progress' in desktop_status.lower() %}{% set desktop_class = 'status-chip progress' %}
-      {% elif 'pending' in desktop_status.lower() or 'start' in desktop_status.lower() %}{% set desktop_class = 'status-chip pending' %}{% endif %}
+      {% if 'complete' in desktop_status.lower() %}{% set desktop_class = 'status-chip done' %}{% elif 'progress' in desktop_status.lower() %}{% set desktop_class = 'status-chip progress' %}{% elif 'pending' in desktop_status.lower() or 'start' in desktop_status.lower() %}{% set desktop_class = 'status-chip pending' %}{% endif %}
       {% set site_status_value = permit.site.status or 'Not started' %}
       {% set site_class = 'status-chip' %}
-      {% if 'complete' in site_status_value.lower() %}{% set site_class = 'status-chip done' %}
-      {% elif 'progress' in site_status_value.lower() %}{% set site_class = 'status-chip progress' %}
-      {% elif 'pending' in site_status_value.lower() or 'start' in site_status_value.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
+      {% if 'complete' in site_status_value.lower() %}{% set site_class = 'status-chip done' %}{% elif 'progress' in site_status_value.lower() %}{% set site_class = 'status-chip progress' %}{% elif 'pending' in site_status_value.lower() or 'start' in site_status_value.lower() %}{% set site_class = 'status-chip pending' %}{% endif %}
       {% set desktop_outcome_value = permit.desktop.outcome %}
       {% set bituminous_value = site_summary.get('bituminous') if site_summary else site_form.get('result_bituminous') %}
       {% set sub_base_value = site_summary.get('sub_base') if site_summary else site_form.get('result_sub_base') %}
-      <div class="summary-grid">
-        <dl class="summary-meta">
-          <div>
-            <dt>Created</dt>
-            <dd>{{ created_at_display or '-' }}</dd>
-          </div>
-          <div>
-            <dt>Last updated</dt>
-            <dd>{{ updated_at_display or '-' }}</dd>
-          </div>
-          <div>
-            <dt>Location</dt>
-            <dd>
-              {% if permit.location.display %}{{ permit.location.display }}<br>{% endif %}
-              {% if permit.location.lat is not none and permit.location.lon is not none %}
-                {{ '%.5f'|format(permit.location.lat) }}, {{ '%.5f'|format(permit.location.lon) }}
-              {% else %}-{% endif %}
-            </dd>
-          </div>
-          <div>
-            <dt>Search radius</dt>
-            <dd>{% if permit.location.radius_m %}{{ permit.location.radius_m }} m{% else %}-{% endif %}</dd>
-          </div>
-          {% if sample_summary %}
-          <div>
-            <dt>Sampling date</dt>
-            <dd>{{ sample_summary.get('sampling_date') or '-' }}</dd>
-          </div>
-          {% endif %}
-        </dl>
-        <dl class="summary-status">
-          <div class="summary-row">
-            <div>
-              <dt>Desktop status</dt>
-              <dd><span class="{{ desktop_class }}">{{ desktop_status }}</span></dd>
-            </div>
-            <div>
-              <dt>Desktop outcome</dt>
-              <dd>{{ result_chip(desktop_outcome_value) }}</dd>
-            </div>
-          </div>
-          <div class="summary-row">
-            <div>
-              <dt>Site status</dt>
-              <dd><span class="{{ site_class }}">{{ site_status_value }}</span></dd>
-            </div>
-            <div>
-              <dt>Bituminous result</dt>
-              <dd>{{ result_chip(bituminous_value) }}</dd>
-            </div>
-            <div>
-              <dt>Sub-base result</dt>
-              <dd>{{ result_chip(sub_base_value) }}</dd>
+      {% set sample_status_value = permit.sample.status or 'Not required' %}
+      {% set sample_class = 'status-chip' %}
+      {% if 'complete' in sample_status_value|lower %}{% set sample_class = 'status-chip done' %}{% elif 'pending' in sample_status_value|lower %}{% set sample_class = 'status-chip progress' %}{% elif 'not' in sample_status_value|lower %}{% set sample_class = 'status-chip pending' %}{% endif %}
+      {% set sample_entries = sample_summary.get('entries') if sample_summary else [] %}
+      {% set sample_first = sample_entries[0] if sample_entries|length > 0 else None %}
+      {% set sample_second = sample_entries[1] if sample_entries|length > 1 else None %}
+      <dl class="summary-meta-grid">
+        <div>
+          <dt>Created</dt>
+          <dd>{{ created_at_display or '-' }}</dd>
+        </div>
+        <div>
+          <dt>Last updated</dt>
+          <dd>{{ updated_at_display or '-' }}</dd>
+        </div>
+        <div>
+          <dt>Location</dt>
+          <dd>
+            {% if permit.location.display %}{{ permit.location.display }}<br>{% endif %}
+            {% if permit.location.lat is not none and permit.location.lon is not none %}
+              {{ '%.5f'|format(permit.location.lat) }}, {{ '%.5f'|format(permit.location.lon) }}
+            {% else %}-{% endif %}
+          </dd>
+        </div>
+        <div>
+          <dt>Search radius</dt>
+          <dd>{% if permit.location.radius_m %}{{ permit.location.radius_m }} m{% else %}-{% endif %}</dd>
+        </div>
+        {% if sample_summary %}
+        <div>
+          <dt>Sampling date</dt>
+          <dd>{{ sample_summary.get('sampling_date') or '-' }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+      <div class="summary-matrix">
+        <div class="summary-panel">
+          <h3>Desktop</h3>
+          <div class="summary-pair">
+            <div class="summary-label">Desktop status</div>
+            <div class="summary-value">
+              <span class="{{ desktop_class }}">{{ desktop_status }}</span>
             </div>
           </div>
-          <div class="summary-row">
-            <div>
-              <dt>Sample status</dt>
-              {% set sample_status_value = permit.sample.status or 'Not required' %}
-              {% set sample_class = 'status-chip' %}
-              {% if 'complete' in sample_status_value|lower %}{% set sample_class = 'status-chip done' %}
-              {% elif 'pending' in sample_status_value|lower %}{% set sample_class = 'status-chip progress' %}
-              {% elif 'not' in sample_status_value|lower %}{% set sample_class = 'status-chip pending' %}{% endif %}
-              <dd><span class="{{ sample_class }}">{{ sample_status_value }}</span></dd>
-            </div>
-            <div>
-              <dt>Sample outcome</dt>
-              <dd>{{ result_chip(sample_outcome_summary) }}</dd>
-            </div>
-            {% set sample_entries = sample_summary.get('entries') if sample_summary else [] %}
-            {% if sample_entries and sample_entries|length > 0 %}
-            {% set first = sample_entries[0] %}
-            <div>
-              <dt>{{ first.label }}</dt>
-              <dd>{{ result_chip(first.lab_result) }}</dd>
-            </div>
-            {% endif %}
-            {% if sample_entries and sample_entries|length > 1 %}
-            {% set second = sample_entries[1] %}
-            <div>
-              <dt>{{ second.label }}</dt>
-              <dd>{{ result_chip(second.lab_result) }}</dd>
-            </div>
-            {% endif %}
+          <div class="summary-pair">
+            <div class="summary-label">Desktop outcome</div>
+            <div class="summary-value">{{ result_chip(desktop_outcome_value) }}</div>
           </div>
-        </dl>
+        </div>
+        <div class="summary-panel">
+          <h3>Site</h3>
+          <div class="summary-pair">
+            <div class="summary-label">Site status</div>
+            <div class="summary-value">
+              <span class="{{ site_class }}">{{ site_status_value }}</span>
+            </div>
+          </div>
+          <div class="summary-pair">
+            <div class="summary-label">Bituminous result</div>
+            <div class="summary-value">{{ result_chip(bituminous_value) }}</div>
+          </div>
+          <div class="summary-pair">
+            <div class="summary-label">Sub-base result</div>
+            <div class="summary-value">{{ result_chip(sub_base_value) }}</div>
+          </div>
+        </div>
+        <div class="summary-panel">
+          <h3>Sample</h3>
+          <div class="summary-pair">
+            <div class="summary-label">Sample status</div>
+            <div class="summary-value">
+              <span class="{{ sample_class }}">{{ sample_status_value }}</span>
+            </div>
+          </div>
+          <div class="summary-pair">
+            <div class="summary-label">Sample outcome</div>
+            <div class="summary-value">{{ result_chip(sample_outcome_summary) }}</div>
+          </div>
+          <div class="summary-pair">
+            <div class="summary-label">{{ sample_first.label if sample_first and sample_first.label else 'Sample 1' }}</div>
+            <div class="summary-value">{{ result_chip(sample_first.lab_result if sample_first and sample_first.lab_result else '-') }}</div>
+          </div>
+          <div class="summary-pair">
+            <div class="summary-label">{{ sample_second.label if sample_second and sample_second.label else 'Sample 2' }}</div>
+            <div class="summary-value">{{ result_chip(sample_second.lab_result if sample_second and sample_second.lab_result else '-') }}</div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -606,7 +637,6 @@
       <div class="link-list">
         {% if artifacts.pdf_url %}<a href="{{ artifacts.pdf_url }}" target="_blank" rel="noopener">Download desktop PDF</a>{% endif %}
         {% if artifacts.map_url %}<a href="{{ artifacts.map_url }}" target="_blank" rel="noopener">Open interactive map</a>{% endif %}
-        {% if artifacts.map_image_url %}<a href="{{ artifacts.map_image_url }}" target="_blank" rel="noopener">View static map image</a>{% endif %}
       </div>
       {% endif %}
       {% if permit.desktop.notes %}
@@ -696,8 +726,8 @@
                 <div class="attachment-meta">
                   <a href="{{ photo.url }}" target="_blank" rel="noopener">{{ photo.filename or ('Photo ' ~ loop.index) }}</a>
                   {% if photo.uploaded_at_display %}<span>{{ photo.uploaded_at_display }}</span>{% elif photo.uploaded_at %}<span>{{ photo.uploaded_at|replace('T', ' ')|replace('Z', ' UTC') }}</span>{% endif %}
-                </div>
-              </div>
+        </div>
+      </div>
               {% endfor %}
             </div>
           </div>
