@@ -133,7 +133,9 @@ def generate_sample_testing_pdf(
     story = []
     logo = _safe_logo_path(logo_path)
     if logo:
-        story.append(Image(str(logo), width=36 * mm, preserveAspectRatio=True))
+        logo_img = Image(str(logo))
+        logo_img._restrictSize(36 * mm, 36 * mm)
+        story.append(logo_img)
         story.append(Spacer(1, 6 * mm))
 
     story.append(Paragraph("Sample Testing Report", title_style))
