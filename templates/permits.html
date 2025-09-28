@@ -76,7 +76,7 @@
     }
     main {
       width: 100%;
-      max-width: 1100px;
+      max-width: none;
       margin: 2.5rem auto 3rem;
       padding: 0 2rem 3rem;
       flex: 1;
@@ -283,7 +283,7 @@
     .results-table td {
       padding: 0.65rem 0.9rem;
       border-bottom: 1px solid rgba(255,255,255,0.08);
-      text-align: left;
+      text-align: center;
       font-size: 0.85rem;
     }
     .results-table th {
@@ -474,6 +474,9 @@
         { field: 'site_status', accessor: (item) => item.site_status || '' },
         { field: 'site_bituminous', accessor: (item) => item.site_bituminous || item.site_outcome || '' },
         { field: 'site_sub_base', accessor: (item) => item.site_sub_base || item.site_outcome || '' },
+        { field: 'sample_status', accessor: (item) => item.sample_status || '' },
+        { field: 'sample_outcome', accessor: (item) => item.sample_outcome || '' },
+        { field: 'sample_date', accessor: (item) => renderDate(item.sample_date, item.updated_at) },
         { field: 'desktop_date', accessor: (item) => renderDate(item.desktop_date, item.created_at) },
         { field: 'site_date', accessor: (item) => renderDate(item.site_date, item.updated_at) },
       ];
@@ -759,6 +762,16 @@
           const subBaseCell = document.createElement('td');
           subBaseCell.textContent = valueOrDash(subBaseValue);
           row.appendChild(subBaseCell);
+
+          row.appendChild(buildStatusCell(item.sample_status, 'Not required'));
+
+          const sampleOutcomeCell = document.createElement('td');
+          sampleOutcomeCell.textContent = valueOrDash(item.sample_outcome);
+          row.appendChild(sampleOutcomeCell);
+
+          const sampleDateCell = document.createElement('td');
+          sampleDateCell.textContent = renderDate(item.sample_date, item.updated_at) || '-';
+          row.appendChild(sampleDateCell);
 
           const desktopDateCell = document.createElement('td');
           desktopDateCell.textContent = renderDate(item.desktop_date, item.created_at) || '-';
