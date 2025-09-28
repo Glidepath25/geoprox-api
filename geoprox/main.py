@@ -13,7 +13,7 @@ from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 try:
     import boto3  # type: ignore
     from botocore.exceptions import BotoCoreError, ClientError  # type: ignore
@@ -34,6 +34,7 @@ import pandas as pd
 
 from geoprox import history_store, user_store, permit_store
 from geoprox.site_assessment_pdf import generate_site_assessment_pdf
+from geoprox.sample_testing_pdf import generate_sample_testing_pdf
 from geoprox.core import run_geoprox_search
 
 SITE_ASSESSMENT_DETAIL_FIELDS = [
@@ -146,6 +147,39 @@ SITE_ASSESSMENT_ALLOWED_IMAGE_MIME_MAP = {
     'image/heic': '.heic',
     'image/heif': '.heif',
 }
+
+SAMPLE_TESTING_STATUS_OPTIONS = [
+    ('Not required', 'Not required'),
+    ('Pending sample', 'Pending sample'),
+    ('Pending result', 'Pending result'),
+    ('Complete', 'Complete'),
+]
+SAMPLE_TESTING_STATUS_DEFAULT = 'Not required'
+SAMPLE_TESTING_STATUS_LABELS = {value: label for value, label in SAMPLE_TESTING_STATUS_OPTIONS}
+SAMPLE_TESTING_MATERIAL_OPTIONS = ['Bituminous', 'Sub-base']
+SAMPLE_TESTING_LAB_RESULT_OPTIONS = ['Green', 'Red']
+SAMPLE_TESTING_ENTRY_KEYS = [
+    ('sample_1', 'Sample 1'),
+    ('sample_2', 'Sample 2'),
+]
+SAMPLE_TESTING_DETERMINANTS = [
+    ('coal_tar', 'Coal Tar (determined by BaP)'),
+    ('tph', 'Total Petroleum Hydrocarbons (C6-C40)'),
+    ('heavy_metal', 'Heavy Metal'),
+    ('asbestos', 'Asbestos'),
+    ('other', 'Other'),
+]
+SAMPLE_TESTING_ATTACHMENT_CATEGORIES = [
+    ('field_photo', 'Field photo'),
+    ('lab_report', 'Lab result'),
+    ('general', 'General attachment'),
+]
+SAMPLE_TESTING_ATTACHMENT_LABELS = {key: label for key, label in SAMPLE_TESTING_ATTACHMENT_CATEGORIES}
+SAMPLE_TESTING_FIELD_LABELS = [
+    ('sampling_date', 'Sampling date'),
+    ('sampled_by_name', 'Sampled by'),
+    ('results_recorded_by', 'Results recorded by'),
+]
 MAX_SITE_ATTACHMENT_SIZE = 5 * 1024 * 1024
 
 
@@ -855,6 +889,51 @@ def _normalize_artifact_link(value: Optional[str]) -> Optional[str]:
         return None
     return f"/artifacts/{name}"
 
+def _ensure_local_artifact(relative: Optional[str], path_value: Optional[str], s3_key: Optional[str]) -> Optional[Path]:
+    rel_value: Optional[str] = None
+    if path_value:
+        candidate = Path(path_value)
+        if candidate.exists():
+            return candidate
+        rel_value = _relative_artifact_path(path_value)
+    if relative:
+        rel_value = relative
+    target_path: Optional[Path] = None
+    if rel_value:
+        rel_path = ARTIFACTS_DIR / Path(rel_value)
+        if rel_path.exists():
+            return rel_path
+        target_path = rel_path
+    client = _get_s3_client_cached()
+    key = s3_key or (_artifact_s3_key_from_relative(rel_value) if rel_value else None)
+    if client and key:
+        if target_path is None:
+            target_path = ARTIFACTS_DIR / Path(Path(key).name)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            client.download_file(S3_BUCKET, key, str(target_path))
+            if target_path.exists():
+                return target_path
+        except Exception:
+            log.exception("Failed to download artifact from S3 key=%s", key)
+    return target_path if target_path is not None and target_path.exists() else None
+
+
+def _collect_attachment_assets(attachments: Sequence[Dict[str, Any]]) -> List[Tuple[str, Path]]:
+    assets: List[Tuple[str, Path]] = []
+    for item in attachments:
+        if not isinstance(item, dict):
+            continue
+        label = item.get('label') or item.get('filename') or 'Attachment'
+        local_path = _ensure_local_artifact(
+            item.get('relative_path'),
+            item.get('path'),
+            item.get('s3_key'),
+        )
+        if local_path and local_path.exists():
+            assets.append((label, local_path))
+    return assets
+
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, datetime):
@@ -981,6 +1060,32 @@ def _group_site_attachments(payload: Optional[Dict[str, Any]]) -> Dict[str, List
             attachments.sort(key=lambda entry: entry.get('uploaded_at') or '', reverse=True)
     return groups
 
+def _group_sample_attachments(payload: Optional[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    if isinstance(payload, dict):
+        raw = payload.get('attachments')
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                category = str(item.get('category') or 'general')
+                entry = dict(item)
+                if not entry.get('relative_path') and entry.get('path'):
+                    relative_guess = _relative_artifact_path(entry.get('path'))
+                    if relative_guess:
+                        entry['relative_path'] = relative_guess
+                entry['url'] = _resolve_artifact_url(
+                    entry.get('url'),
+                    entry.get('s3_key'),
+                    entry.get('path'),
+                    entry.get('relative_path'),
+                )
+                entry['uploaded_at_display'] = _format_ddmmyy(entry.get('uploaded_at'), include_time=True)
+                groups.setdefault(category, []).append(entry)
+        for attachments in groups.values():
+            attachments.sort(key=lambda entry: entry.get('uploaded_at') or '', reverse=True)
+    return groups
+
 
 def _slugify_segment(value: str, default: str = 'item') -> str:
     raw = (value or '').strip().lower()
@@ -995,6 +1100,41 @@ def _build_site_result_summary(form_data: Dict[str, Any]) -> Dict[str, str]:
         'sub_base': (form_data.get('result_sub_base') or '').strip(),
     }
 
+def _build_sample_result_summary(form_data: Dict[str, Any]) -> Dict[str, Any]:
+    entries = []
+    for key, label in SAMPLE_TESTING_ENTRY_KEYS:
+        entry = {
+            'label': label,
+            'number': (form_data.get(f'{key}_number') or '').strip(),
+            'material': (form_data.get(f'{key}_material') or '').strip(),
+            'lab_result': (form_data.get(f'{key}_lab_result') or '').strip(),
+            'determinants': [],
+        }
+        for det_key, det_label in SAMPLE_TESTING_DETERMINANTS:
+            entry['determinants'].append({
+                'label': det_label,
+                'present': (form_data.get(f'{key}_{det_key}_present') or '').strip(),
+                'concentration': (form_data.get(f'{key}_{det_key}_concentration') or '').strip(),
+            })
+        entries.append(entry)
+    summary = {
+        'entries': entries,
+        'sampling_date': (form_data.get('sampling_date') or '').strip(),
+        'sampled_by': (form_data.get('sampled_by_name') or '').strip(),
+        'results_recorded_by': (form_data.get('results_recorded_by') or '').strip(),
+    }
+    return summary
+
+
+def _normalize_sample_status(value: Optional[str]) -> str:
+    if not value:
+        return SAMPLE_TESTING_STATUS_DEFAULT
+    lowered = value.strip().lower()
+    for status_value, status_label in SAMPLE_TESTING_STATUS_OPTIONS:
+        if lowered == status_value.lower() or lowered == status_label.lower():
+            return status_label
+    return SAMPLE_TESTING_STATUS_DEFAULT
+
 
 def _summarize_site_outcome(summary: Dict[str, str]) -> Optional[str]:
     bituminous = summary.get('bituminous') or ''
@@ -1004,6 +1144,18 @@ def _summarize_site_outcome(summary: Dict[str, str]) -> Optional[str]:
     bituminous = bituminous or '-'
     sub_base = sub_base or '-'
     return f"Bituminous: {bituminous} | Sub-base: {sub_base}"
+
+def _summarize_sample_outcome(summary: Dict[str, Any]) -> Optional[str]:
+    entries = summary.get('entries') if isinstance(summary.get('entries'), list) else []
+    highlights = []
+    for entry in entries:
+        label = entry.get('label') or ''
+        lab_result = (entry.get('lab_result') or '').strip()
+        if label or lab_result:
+            highlights.append(f"{label}: {lab_result or '-'}")
+    if not highlights:
+        return None
+    return ' | '.join(highlights)
 
 
 async def _save_site_attachment(permit_ref: str, category: str, upload: UploadFile) -> Dict[str, str]:
@@ -1062,12 +1214,69 @@ async def _save_site_attachment(permit_ref: str, category: str, upload: UploadFi
 
 
 
+async def _save_sample_attachment(permit_ref: str, category: str, upload: UploadFile) -> Dict[str, str]:
+    filename = (upload.filename or '').strip()
+    if not filename:
+        return {}
+    data = await upload.read()
+    try:
+        await upload.close()
+    except Exception:
+        pass
+    if not data:
+        return {}
+    if len(data) > MAX_SITE_ATTACHMENT_SIZE:
+        raise ValueError(f"{filename} is larger than the {MAX_SITE_ATTACHMENT_SIZE // (1024 * 1024)} MB limit.")
+    content_type = (upload.content_type or '').lower()
+    suffix = SITE_ASSESSMENT_ALLOWED_IMAGE_MIME_MAP.get(content_type)
+    if not suffix:
+        guessed = Path(filename).suffix.lower()
+        if guessed in SITE_ASSESSMENT_ALLOWED_IMAGE_SUFFIXES:
+            suffix = guessed
+        else:
+            guessed = mimetypes.guess_extension(content_type or '') or ''
+            guessed = guessed.lower()
+            if guessed in SITE_ASSESSMENT_ALLOWED_IMAGE_SUFFIXES:
+                suffix = guessed
+    if not suffix:
+        raise ValueError(f"Unsupported file type for {filename}. Please upload an image file.")
+    safe_permit = _slugify_segment(permit_ref, 'permit')
+    safe_category = _slugify_segment(category, 'attachment')
+    timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
+    unique = uuid4().hex[:8]
+    relative_path = Path('sample-testing') / safe_permit / safe_category / f"{timestamp}_{unique}{suffix}"
+    full_path = ARTIFACTS_DIR / relative_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(data)
+    label = SAMPLE_TESTING_ATTACHMENT_LABELS.get(category, category.title())
+    content_type = content_type or mimetypes.guess_type(filename)[0] or 'image/*'
+    persisted = _persist_artifact(
+        relative_path,
+        full_path,
+        content_type=content_type,
+        delete_local=bool(S3_BUCKET),
+    )
+    return {
+        'category': category,
+        'label': label,
+        'filename': filename,
+        'content_type': content_type,
+        'path': str(full_path),
+        'relative_path': relative_path.as_posix(),
+        'url': persisted.get('url') or f"/artifacts/{relative_path.as_posix()}",
+        's3_key': persisted.get('s3_key'),
+        'uploaded_at': datetime.utcnow().isoformat() + 'Z',
+    }
+
+
+
 
 
 def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
     location = record.get("location") or {}
     desktop = record.get("desktop") or {}
     site = record.get("site") or {}
+    sample = record.get("sample") or {}
 
     def _to_iso(value: Any) -> Optional[str]:
         if isinstance(value, datetime):
@@ -1083,6 +1292,12 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
         summary_candidate = site_payload.get("summary")
         if isinstance(summary_candidate, dict):
             site_summary = summary_candidate
+    sample_payload = sample.get("payload") if isinstance(sample.get("payload"), dict) else None
+    sample_summary = sample.get("summary") if isinstance(sample.get("summary"), dict) else None
+    if not sample_summary and isinstance(sample_payload, dict):
+        summary_candidate = sample_payload.get("summary")
+        if isinstance(summary_candidate, dict):
+            sample_summary = summary_candidate
     search_payload_raw = record.get("search_result")
     search_payload = search_payload_raw if isinstance(search_payload_raw, dict) else None
     if search_payload:
@@ -1092,6 +1307,7 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
             search_payload["artifacts"] = _normalize_search_artifacts(artifacts)
     desktop_notes = desktop.get("notes") if isinstance(desktop.get("notes"), str) else None
     site_notes = site.get("notes") if isinstance(site.get("notes"), str) else None
+    sample_notes = sample.get("notes") if isinstance(sample.get("notes"), str) else None
 
     return PermitRecordResp(
         permit_ref=str(record.get("permit_ref", "")),
@@ -1115,6 +1331,13 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
             notes=site_notes,
             summary=site_summary,
             payload=site_payload,
+        ),
+        sample=PermitStage(
+            status=str(sample.get("status") or SAMPLE_TESTING_STATUS_DEFAULT),
+            outcome=sample.get("outcome"),
+            notes=sample_notes,
+            summary=sample_summary,
+            payload=sample_payload,
         ),
         search_result=search_payload,
     )
@@ -1530,6 +1753,7 @@ class PermitRecordResp(BaseModel):
     location: PermitLocation
     desktop: PermitStage
     site: PermitStage
+    sample: PermitStage
     search_result: Optional[Dict[str, Any]] = None
 
     class Config:
@@ -1553,6 +1777,16 @@ class PermitSiteUpdateReq(BaseModel):
     class Config:
         extra = "forbid"
 
+
+class PermitSampleUpdateReq(BaseModel):
+    status: str = Field(default=SAMPLE_TESTING_STATUS_DEFAULT, min_length=1, max_length=120)
+    outcome: Optional[str] = None
+    notes: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "forbid"
+
 class PermitSearchItem(BaseModel):
     permit_ref: str
     created_at: Optional[str] = None
@@ -1565,6 +1799,9 @@ class PermitSearchItem(BaseModel):
     site_bituminous: Optional[str] = None
     site_sub_base: Optional[str] = None
     site_date: Optional[str] = None
+    sample_status: Optional[str] = None
+    sample_outcome: Optional[str] = None
+    sample_date: Optional[str] = None
 
 class SearchReq(BaseModel):
     location: str = Field(..., description="lat,lon or ///what.three.words")
@@ -1665,6 +1902,21 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     if not site_summary and form_payload:
         site_summary = _build_site_result_summary(form_payload)
     attachments_grouped = _group_site_attachments(site_payload)
+    sample_payload = permit.sample.payload or {}
+    if not isinstance(sample_payload, dict):
+        sample_payload = {}
+    sample_form = sample_payload.get("form") if isinstance(sample_payload.get("form"), dict) else {}
+    sample_summary = permit.sample.summary if isinstance(permit.sample.summary, dict) else {}
+    if not sample_summary and sample_form:
+        sample_summary = _build_sample_result_summary(sample_form)
+    sample_pdf_url = _resolve_artifact_url(
+        sample_payload.get("pdf_url"),
+        sample_payload.get("pdf_s3_key"),
+        sample_payload.get("pdf_path"),
+        sample_payload.get("pdf_relative_path"),
+    )
+    sample_attachments_grouped = _group_sample_attachments(sample_payload)
+    sample_outcome_summary = _summarize_sample_outcome(sample_summary) if sample_summary else None
     search_payload = permit.search_result if isinstance(permit.search_result, dict) else {}
     desktop_details = []
     if isinstance(search_payload.get("details_100m"), list):
@@ -1699,6 +1951,17 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
             "site_summary": site_summary,
             "attachment_categories": SITE_ASSESSMENT_ATTACHMENT_CATEGORIES,
             "attachments_grouped": attachments_grouped,
+            "sample_payload": sample_payload,
+            "sample_form": sample_form or {},
+            "sample_summary": sample_summary,
+            "sample_outcome_summary": sample_outcome_summary,
+            "sample_pdf_url": sample_pdf_url,
+            "sample_attachment_categories": SAMPLE_TESTING_ATTACHMENT_CATEGORIES,
+            "sample_attachments_grouped": sample_attachments_grouped,
+            "sample_detail_fields": SAMPLE_TESTING_FIELD_LABELS,
+            "sample_entry_keys": SAMPLE_TESTING_ENTRY_KEYS,
+            "sample_determinants": SAMPLE_TESTING_DETERMINANTS,
+            "sample_status_options": SAMPLE_TESTING_STATUS_OPTIONS,
             "desktop_details": desktop_details,
             "created_at_display": created_at_display,
             "updated_at_display": updated_at_display,
@@ -1898,7 +2161,14 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     pdf_path = ARTIFACTS_DIR / f"site-assessment_{permit_ref}_{timestamp}.pdf"
-    generate_site_assessment_pdf(pdf_path, permit_ref=permit_ref, form_data=form_data)
+    site_assets = _collect_attachment_assets(attachments)
+    generate_site_assessment_pdf(
+        pdf_path,
+        permit_ref=permit_ref,
+        form_data=form_data,
+        attachments=site_assets,
+        logo_path=STATIC_DIR / 'geoprox-logo.png',
+    )
 
     pdf_relative = pdf_path.relative_to(ARTIFACTS_DIR).as_posix()
     pdf_persisted = _persist_artifact(
@@ -1928,6 +2198,252 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     )
     _add_flash(request, "Site assessment saved.", "success")
     return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
+
+
+
+@app.get("/permits/{permit_ref}/sample-testing", response_class=HTMLResponse)
+async def sample_testing_page(request: Request, permit_ref: str) -> HTMLResponse:
+    username = _require_user(request)
+    record = permit_store.get_permit(username, permit_ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    permit = _permit_to_response(record)
+    flashes = _consume_flashes(request)
+
+    sample_payload = permit.sample.payload or {}
+    if not isinstance(sample_payload, dict):
+        sample_payload = {}
+    form_defaults = sample_payload.get("form") if isinstance(sample_payload.get("form"), dict) else {}
+    form_defaults = dict(form_defaults or {})
+    attachments_grouped = _group_sample_attachments(sample_payload)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if not form_defaults.get("sampling_date"):
+        form_defaults["sampling_date"] = today
+    if not form_defaults.get("sample_status"):
+        form_defaults["sample_status"] = permit.sample.status or SAMPLE_TESTING_STATUS_DEFAULT
+
+    sample_pdf_url = _resolve_artifact_url(
+        sample_payload.get("pdf_url"),
+        sample_payload.get("pdf_s3_key"),
+        sample_payload.get("pdf_path"),
+        sample_payload.get("pdf_relative_path"),
+    )
+
+    return templates.TemplateResponse(
+        "sample_assessment.html",
+        {
+            "request": request,
+            "user": username,
+            "display_name": request.session.get("display_name") or username,
+            "permit": permit,
+            "form_defaults": form_defaults,
+            "today": today,
+            "flashes": flashes,
+            "sample_status": permit.sample.status or SAMPLE_TESTING_STATUS_DEFAULT,
+            "sample_notes": permit.sample.notes or "",
+            "sample_summary": permit.sample.summary or {},
+            "sample_pdf_url": sample_pdf_url,
+            "status_options": SAMPLE_TESTING_STATUS_OPTIONS,
+            "material_options": SAMPLE_TESTING_MATERIAL_OPTIONS,
+            "lab_result_options": SAMPLE_TESTING_LAB_RESULT_OPTIONS,
+            "entry_keys": SAMPLE_TESTING_ENTRY_KEYS,
+            "determinants": SAMPLE_TESTING_DETERMINANTS,
+            "attachment_categories": SAMPLE_TESTING_ATTACHMENT_CATEGORIES,
+            "attachments_grouped": attachments_grouped,
+        },
+    )
+
+
+@app.post("/permits/{permit_ref}/sample-testing", response_class=HTMLResponse)
+async def sample_testing_submit(request: Request, permit_ref: str) -> Response:
+    username = _require_user(request)
+    record = permit_store.get_permit(username, permit_ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit not found")
+
+    form = await request.form()
+
+    def _clean(key: str) -> str:
+        return (form.get(key) or "").strip()
+
+    def _select(key: str, options: Sequence[str], *, default: Optional[str] = None) -> str:
+        value = _clean(key)
+        if not value:
+            return default or ""
+        lowered = value.lower()
+        for option in options:
+            if lowered == option.lower():
+                return option
+        return default or ""
+
+    status = _normalize_sample_status(_clean("sample_status"))
+    notes = _clean("sample_notes") or None
+
+    form_data: Dict[str, Any] = {
+        "sampling_date": _clean("sampling_date") or datetime.utcnow().strftime("%Y-%m-%d"),
+        "sampled_by_name": _clean("sampled_by_name"),
+        "results_recorded_by": _clean("results_recorded_by"),
+        "sample_comments": _clean("sample_comments"),
+    }
+
+    for entry_key, _label in SAMPLE_TESTING_ENTRY_KEYS:
+        material = _select(f"{entry_key}_material", SAMPLE_TESTING_MATERIAL_OPTIONS)
+        lab_result = _select(f"{entry_key}_lab_result", SAMPLE_TESTING_LAB_RESULT_OPTIONS)
+        form_data[f"{entry_key}_number"] = _clean(f"{entry_key}_number")
+        form_data[f"{entry_key}_material"] = material
+        form_data[f"{entry_key}_lab_result"] = lab_result
+        for det_key, _det_label in SAMPLE_TESTING_DETERMINANTS:
+            present_value = _clean(f"{entry_key}_{det_key}_present")
+            concentration_value = _clean(f"{entry_key}_{det_key}_concentration")
+            form_data[f"{entry_key}_{det_key}_present"] = present_value
+            form_data[f"{entry_key}_{det_key}_concentration"] = concentration_value
+
+    summary = _build_sample_result_summary(form_data)
+    outcome = _summarize_sample_outcome(summary)
+
+    existing_payload = record.get("sample", {}).get("payload") if isinstance(record.get("sample"), dict) else None
+    existing_attachments: List[Dict[str, Any]] = []
+    if isinstance(existing_payload, dict):
+        raw_attachments = existing_payload.get("attachments")
+        if isinstance(raw_attachments, list):
+            for item in raw_attachments:
+                if isinstance(item, dict):
+                    existing_attachments.append(item)
+
+    attachments: List[Dict[str, Any]] = list(existing_attachments)
+    attachment_paths = {att.get("path") for att in attachments if isinstance(att.get("path"), str)}
+
+    if hasattr(form, "getlist"):
+        for category, _label in SAMPLE_TESTING_ATTACHMENT_CATEGORIES:
+            uploads = form.getlist(f"attachment_{category}")
+            for upload in uploads:
+                if not isinstance(upload, UploadFile) or not upload.filename:
+                    continue
+                try:
+                    saved = await _save_sample_attachment(permit_ref, category, upload)
+                except ValueError as exc:
+                    _add_flash(request, str(exc), "error")
+                    return RedirectResponse(url=f"/permits/{permit_ref}/sample-testing", status_code=303)
+                except Exception:
+                    log.exception(
+                        "Failed to save sample attachment permit=%s category=%s filename=%s",
+                        permit_ref,
+                        category,
+                        upload.filename,
+                    )
+                    _add_flash(request, f"Failed to save attachment '{upload.filename}'.", "error")
+                    return RedirectResponse(url=f"/permits/{permit_ref}/sample-testing", status_code=303)
+                if saved:
+                    path_value = saved.get("path")
+                    if path_value and path_value not in attachment_paths:
+                        attachment_paths.add(path_value)
+                        attachments.append(saved)
+    else:
+        log.warning("Form data missing getlist() support; skipping sample attachments for permit %s", permit_ref)
+
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        if not attachment.get('relative_path') and attachment.get('path'):
+            rel_guess = _relative_artifact_path(attachment.get('path'))
+            if rel_guess:
+                attachment['relative_path'] = rel_guess
+        if S3_BUCKET and not attachment.get('s3_key'):
+            rel = attachment.get('relative_path')
+            path_value = attachment.get('path')
+            try:
+                if rel and path_value and Path(path_value).exists():
+                    persisted_attachment = _persist_artifact(Path(rel), Path(path_value), content_type=attachment.get('content_type'))
+                    if persisted_attachment.get('s3_key'):
+                        attachment['s3_key'] = persisted_attachment['s3_key']
+                    if persisted_attachment.get('url'):
+                        attachment['url'] = persisted_attachment['url']
+            except Exception:
+                log.exception("Failed to sync sample attachment to S3 path=%s", attachment.get('path'))
+
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    pdf_path = ARTIFACTS_DIR / f"sample-testing_{permit_ref}_{timestamp}.pdf"
+    sample_assets = _collect_attachment_assets(attachments)
+    generate_sample_testing_pdf(
+        pdf_path,
+        permit_ref=permit_ref,
+        form_data=form_data,
+        attachments=sample_assets,
+        logo_path=STATIC_DIR / 'geoprox-logo.png',
+    )
+
+    pdf_relative = pdf_path.relative_to(ARTIFACTS_DIR).as_posix()
+    pdf_persisted = _persist_artifact(
+        Path(pdf_relative),
+        pdf_path,
+        content_type="application/pdf",
+        delete_local=bool(S3_BUCKET),
+    )
+
+    payload: Dict[str, Any] = {
+        "form": form_data,
+        "summary": summary,
+        "pdf_path": str(pdf_path),
+        "pdf_relative_path": pdf_relative,
+        "pdf_url": pdf_persisted.get("url") or f"/artifacts/{pdf_relative}",
+        "pdf_s3_key": pdf_persisted.get("s3_key"),
+        "attachments": attachments,
+    }
+
+    permit_store.update_sample_assessment(
+        username=username,
+        permit_ref=permit_ref,
+        status=status,
+        outcome=outcome,
+        notes=notes,
+        payload=payload,
+    )
+    _add_flash(request, "Sample testing record saved.", "success")
+    return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
+
+
+@app.post("/permits/{permit_ref}/sample-status", response_class=HTMLResponse)
+async def sample_status_update(request: Request, permit_ref: str) -> Response:
+    username = _require_user(request)
+    form = await request.form()
+    status = _normalize_sample_status((form.get("sample_status") or ""))
+    notes = (form.get("sample_notes") or "").strip() or None
+    outcome = (form.get("sample_outcome") or "").strip() or None
+    record = permit_store.update_sample_assessment(
+        username=username,
+        permit_ref=permit_ref,
+        status=status,
+        outcome=outcome,
+        notes=notes,
+        payload=None,
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    _add_flash(request, "Sample status updated.", "success")
+    return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
+
+
+@app.post("/api/permits/{permit_ref}/sample-testing", response_model=PermitRecordResp)
+def api_update_sample_testing(request: Request, permit_ref: str, payload: PermitSampleUpdateReq) -> PermitRecordResp:
+    username = _require_user(request)
+    ref = (permit_ref or "").strip()
+    if not ref:
+        raise HTTPException(status_code=400, detail="Permit reference is required.")
+    status = _normalize_sample_status(payload.status)
+    notes = (payload.notes or "").strip() or None
+    outcome = (payload.outcome or "").strip() or None
+    payload_data = payload.payload if isinstance(payload.payload, dict) else None
+    record = permit_store.update_sample_assessment(
+        username=username,
+        permit_ref=ref,
+        status=status,
+        outcome=outcome,
+        notes=notes,
+        payload=payload_data,
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Permit record not found.")
+    return _permit_to_response(record)
 
 
 @app.get("/app")

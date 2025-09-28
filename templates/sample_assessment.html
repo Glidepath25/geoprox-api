@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample Testing - {{ permit.permit_ref }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>    :root {      color-scheme: dark;      --bg: #071322;      --panel: #132a40;      --panel-alt: #0f2034;      --text: #f2f7ff;      --muted: #8ea2ba;      --accent: #2b7cff;      --border: rgba(255,255,255,0.08);      --border-strong: rgba(43,124,255,0.45);    }    * { box-sizing: border-box; }    body {      margin: 0;      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;      background: linear-gradient(185deg, rgba(43,124,255,0.1), transparent 55%), var(--bg);      color: var(--text);      min-height: 100vh;      display: flex;      flex-direction: column;    }    header {      display: flex;      align-items: center;      justify-content: space-between;      padding: 1.25rem 2rem;    }    .brand {      display: flex;      align-items: center;      gap: 0.65rem;      letter-spacing: 0.06em;      text-transform: uppercase;      font-size: 0.85rem;      font-weight: 600;    }    .brand span {      padding: 0.35rem 0.75rem;      border-radius: 999px;      border: 1px solid rgba(43,124,255,0.45);      background: rgba(43,124,255,0.12);    }    main {      width: 100%;      max-width: 1000px;      margin: 1.5rem auto 3rem;      padding: 0 2rem 3rem;      flex: 1;      display: grid;      gap: 1.5rem;    }    .card {      background: var(--panel);      border-radius: 18px;      border: 1px solid var(--border);      padding: 1.6rem;      box-shadow: 0 24px 60px rgba(8, 18, 35, 0.4);      display: grid;      gap: 1rem;    }    h1 {      margin: 0;      font-size: 1.6rem;    }    h2 {      margin: 0;      font-size: 1.2rem;    }    label {      font-size: 0.85rem;      text-transform: uppercase;      letter-spacing: 0.05em;      color: rgba(255,255,255,0.7);    }    input[type=text], input[type=date], select, textarea {      width: 100%;      padding: 0.6rem 0.75rem;      border-radius: 10px;      border: 1px solid rgba(255,255,255,0.1);      background: var(--panel-alt);      color: var(--text);      font-size: 0.95rem;    }    textarea { min-height: 120px; }    .grid {      display: grid;      gap: 1rem;    }    .grid.two {      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));    }    .grid.three {      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));    }    .entry {      border: 1px solid rgba(255,255,255,0.1);      border-radius: 16px;      padding: 1.1rem;      background: var(--panel-alt);      display: grid;      gap: 1rem;    }    .entry h3 {      margin: 0;      font-size: 1rem;    }    .determinant-table {      width: 100%;      border-collapse: collapse;      border: 1px solid rgba(255,255,255,0.12);      border-radius: 12px;      overflow: hidden;    }    .determinant-table th, .determinant-table td {      padding: 0.55rem 0.65rem;      border-bottom: 1px solid rgba(255,255,255,0.08);      text-align: left;      font-size: 0.88rem;    }    .determinant-table th {      background: rgba(255,255,255,0.08);      text-transform: uppercase;      letter-spacing: 0.04em;      font-size: 0.72rem;    }    .actions {      display: flex;      gap: 0.6rem;      flex-wrap: wrap;      align-items: center;    }    .nav-btn, button {      display: inline-flex;      align-items: center;      justify-content: center;      gap: 0.35rem;      padding: 0.55rem 1.1rem;      border-radius: 999px;      border: 1px solid var(--border);      background: rgba(255,255,255,0.08);      color: var(--text);      text-decoration: none;      font-size: 0.9rem;      cursor: pointer;      transition: background 0.15s ease, border-color 0.15s ease;    }    button.primary {      background: var(--accent);      border-color: var(--accent);      color: #fff;    }    .attachments {      display: grid;      gap: 1rem;    }    .attachment-group {      border: 1px solid rgba(255,255,255,0.1);      border-radius: 14px;      padding: 1rem;      background: rgba(255,255,255,0.04);      display: grid;      gap: 0.6rem;    }    .attachment-group ul {      margin: 0;      padding-left: 1.1rem;      color: var(--muted);      font-size: 0.9rem;    }    .flash {      padding: 0.65rem 0.8rem;      border-radius: 10px;      border: 1px solid rgba(255,255,255,0.15);      background: rgba(255,255,255,0.06);      font-size: 0.9rem;    }    .flash.error { border-color: rgba(255,99,132,0.45); background: rgba(255,99,132,0.1); }    .flash.success { border-color: rgba(76,175,80,0.45); background: rgba(76,175,80,0.12); }    footer {      padding: 1.4rem 2rem 2.4rem;      text-align: center;      color: var(--muted);      font-size: 0.82rem;    }    @media (max-width: 720px) {      header { flex-direction: column; align-items: flex-start; gap: 0.7rem; }      main { padding: 0 1.4rem 2.4rem; }    }  </style>
+</head>
+<body>
+<header>
+<div class="brand">
+<span>GeoProx</span>
+<div>Sample testing</div>
+</div>
+<div class="actions">
+<a class="nav-btn" href="/permits/{{ permit.permit_ref | urlencode }}/view">Back to permit</a>
+<a class="nav-btn" href="/app">Desktop check</a>
+</div>
+</header>
+<main>
+<section class="card">
+<div class="actions" style="justify-content: space-between; align-items: baseline;">
+<div>
+<h1>Sample testing for {{ permit.permit_ref }}</h1>
+<p class="muted">Update the sampling status and record field sample details.</p>
+</div>        {% if sample_pdf_url %}        <a class="nav-btn" target="_blank" rel="noopener" href="{{ sample_pdf_url }}">Download last PDF</a>        {% endif %}      </div>      {% for flash in flashes %}      <div class="flash {{ flash.category }}">{{ flash.message }}</div>      {% endfor %}      <form method="post" enctype="multipart/form-data" class="grid" style="gap: 1.4rem;">
+<input type="hidden" name="csrf_token" value="">
+<div class="grid two">
+<div>
+<label for="sample_status">Sample status</label>
+<select id="sample_status" name="sample_status" required>              {% for value, label in status_options %}              {% set selected = "selected" if (form_defaults.get('sample_status') or sample_status or '')|lower == value|lower else '' %}              <option value="{{ value }}" {{ selected }}>{{ label }}</option>              {% endfor %}            </select>
+</div>
+<div>
+<label for="sampleOut">Outcome override (optional)</label>
+<input id="sampleOut" type="text" name="sample_outcome" value="{{ sample_summary.get('outcome') if sample_summary else '' }}">
+</div>
+</div>
+<div class="grid two">
+<div>
+<label for="samplingDate">Sampling date</label>
+<input id="samplingDate" type="date" name="sampling_date" value="{{ form_defaults.get('sampling_date', today) }}">
+</div>
+<div>
+<label for="sampledBy">Sampled by</label>
+<input id="sampledBy" type="text" name="sampled_by_name" value="{{ form_defaults.get('sampled_by_name', '') }}">
+</div>
+</div>
+<div class="grid two">
+<div>
+<label for="recordedBy">Results recorded by</label>
+<input id="recordedBy" type="text" name="results_recorded_by" value="{{ form_defaults.get('results_recorded_by', '') }}">
+</div>
+<div>
+<label for="sampleNotes">Notes (optional)</label>
+<input id="sampleNotes" type="text" name="sample_notes" value="{{ sample_notes or '' }}">
+</div>
+</div>
+<div>
+<label for="sampleComments">Comments</label>
+<textarea id="sampleComments" name="sample_comments">{{ form_defaults.get('sample_comments', '') }}</textarea>
+</div>        {% for key, label in entry_keys %}        <div class="entry">
+<div class="grid two">
+<h3>{{ label }}</h3>
+<div>
+</div>
+</div>
+<div class="grid three">
+<div>
+<label for="{{ key }}_number">Sample number</label>
+<input id="{{ key }}_number" type="text" name="{{ key }}_number" value="{{ form_defaults.get(key ~ '_number', '') }}">
+</div>
+<div>
+<label for="{{ key }}_material">Material sampled</label>
+<select id="{{ key }}_material" name="{{ key }}_material">
+<option value="">
+</option>                {% for option in material_options %}                {% set selected = "selected" if form_defaults.get(key ~ '_material', '')|lower == option|lower else '' %}                <option value="{{ option }}" {{ selected }}>{{ option }}</option>                {% endfor %}              </select>
+</div>
+<div>
+<label for="{{ key }}_lab_result">Lab analysis</label>
+<select id="{{ key }}_lab_result" name="{{ key }}_lab_result">
+<option value="">
+</option>                {% for option in lab_result_options %}                {% set selected = "selected" if form_defaults.get(key ~ '_lab_result', '')|lower == option|lower else '' %}                <option value="{{ option }}" {{ selected }}>{{ option }}</option>                {% endfor %}              </select>
+</div>
+</div>
+<table class="determinant-table">
+<thead>
+<tr>
+<th>Determinant</th>
+<th>Present</th>
+<th>Concentration if Red (mg/kg)</th>
+</tr>
+</thead>
+<tbody>              {% for det_key, det_label in determinants %}              <tr>
+<td>{{ det_label }}</td>
+<td>
+<select name="{{ key }}_{{ det_key }}_present">                    {% set field_value = form_defaults.get(key ~ '_' ~ det_key ~ '_present', '') %}                    {% for option in ["", "Yes", "No", "N/A"] %}                    {% set selected = "selected" if field_value|lower == option|lower else '' %}                    <option value="{{ option }}" {{ selected }}>{{ option or '-' }}</option>                    {% endfor %}                  </select>
+</td>
+<td>
+<input type="text" name="{{ key }}_{{ det_key }}_concentration" value="{{ form_defaults.get(key ~ '_' ~ det_key ~ '_concentration', '') }}">
+</td>
+</tr>              {% endfor %}            </tbody>
+</table>
+</div>        {% endfor %}        <div class="attachments">
+<h2>Attachments</h2>          {% for category, label in attachment_categories %}          <div class="attachment-group">
+<div class="grid two">
+<label>{{ label }}</label>
+<input type="file" name="attachment_{{ category }}" accept="image/*" multiple>
+</div>            {% set existing = attachments_grouped.get(category, []) %}            {% if existing %}            <ul>              {% for item in existing %}              <li>
+<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.filename }}</a> - {{ item.uploaded_at_display }}</li>              {% endfor %}            </ul>            {% else %}            <p class="muted" style="margin:0;">No attachments in this category yet.</p>            {% endif %}          </div>          {% endfor %}        </div>
+<div class="actions" style="justify-content: flex-end;">
+<button class="primary" type="submit">Save sample testing</button>
+</div>
+</form>
+</section>
+</main>
+<footer>    &copy; {{ now().year if false else '' }} GeoProx - Sample testing module  </footer>
+</body>
+</html>

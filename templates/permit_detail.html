@@ -468,6 +468,12 @@
             <dt>Search radius</dt>
             <dd>{% if permit.location.radius_m %}{{ permit.location.radius_m }} m{% else %}-{% endif %}</dd>
           </div>
+          {% if sample_summary %}
+          <div>
+            <dt>Sampling date</dt>
+            <dd>{{ sample_summary.get('sampling_date') or '-' }}</dd>
+          </div>
+          {% endif %}
         </dl>
         <dl class="summary-status">
           <div class="summary-row">
@@ -494,8 +500,122 @@
               <dd>{{ result_chip(sub_base_value) }}</dd>
             </div>
           </div>
+          <div class="summary-row">
+            <div>
+              <dt>Sample status</dt>
+              {% set sample_status_value = permit.sample.status or 'Not required' %}
+              {% set sample_class = 'status-chip' %}
+              {% if 'complete' in sample_status_value|lower %}{% set sample_class = 'status-chip done' %}
+              {% elif 'pending' in sample_status_value|lower %}{% set sample_class = 'status-chip progress' %}
+              {% elif 'not' in sample_status_value|lower %}{% set sample_class = 'status-chip pending' %}{% endif %}
+              <dd><span class="{{ sample_class }}">{{ sample_status_value }}</span></dd>
+            </div>
+            <div>
+              <dt>Sample outcome</dt>
+              <dd>{{ result_chip(sample_outcome_summary) }}</dd>
+            </div>
+            {% set sample_entries = sample_summary.get('entries') if sample_summary else [] %}
+            {% if sample_entries and sample_entries|length > 0 %}
+            {% set first = sample_entries[0] %}
+            <div>
+              <dt>{{ first.label }}</dt>
+              <dd>{{ result_chip(first.lab_result) }}</dd>
+            </div>
+            {% endif %}
+            {% if sample_entries and sample_entries|length > 1 %}
+            {% set second = sample_entries[1] %}
+            <div>
+              <dt>{{ second.label }}</dt>
+              <dd>{{ result_chip(second.lab_result) }}</dd>
+            </div>
+            {% endif %}
+          </div>
         </dl>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>Sample testing</h2>
+      <div class="link-list">
+        <a class="nav-btn" href="/permits/{{ permit.permit_ref | urlencode }}/sample-testing">Complete sample testing</a>
+        {% if sample_pdf_url %}<a class="nav-btn" href="{{ sample_pdf_url }}" target="_blank" rel="noopener">Download sample PDF</a>{% endif %}
+      </div>
+      <form class="grid two" style="gap: 0.9rem; align-items: end;" method="post" action="/permits/{{ permit.permit_ref | urlencode }}/sample-status">
+        <div>
+          <label for="sampleStatusUpdate">Update status</label>
+          <select id="sampleStatusUpdate" name="sample_status">
+            {% for value, label in sample_status_options %}
+            {% set selected = 'selected' if (permit.sample.status or SAMPLE_TESTING_STATUS_DEFAULT)|lower == value|lower else '' %}
+            <option value="{{ value }}" {{ selected }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="sampleStatusOutcome">Outcome (optional)</label>
+          <input id="sampleStatusOutcome" type="text" name="sample_outcome" value="{{ permit.sample.outcome or '' }}">
+        </div>
+        <div>
+          <label for="sampleStatusNotes">Notes (optional)</label>
+          <input id="sampleStatusNotes" type="text" name="sample_notes" value="{{ permit.sample.notes or '' }}">
+        </div>
+        <div class="actions" style="justify-content: flex-end;">
+          <button type="submit" class="nav-btn">Update status</button>
+        </div>
+      </form>
+      {% if sample_summary %}
+      <div class="info-block">
+        <strong>Summary</strong>
+        <span><strong>Sampling date:</strong> {{ sample_summary.get('sampling_date') or '-' }}</span>
+        <span><strong>Sampled by:</strong> {{ sample_summary.get('sampled_by') or '-' }}</span>
+        <span><strong>Results recorded by:</strong> {{ sample_summary.get('results_recorded_by') or '-' }}</span>
+      </div>
+      {% set entries = sample_summary.get('entries') if sample_summary else [] %}
+      {% if entries %}
+      <div class="details-table-wrapper">
+        <table class="question-table">
+          <thead>
+            <tr>
+              <th>Sample</th>
+              <th>Material</th>
+              <th>Lab result</th>
+              <th>Determinants</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in entries %}
+            <tr>
+              <td>{{ entry.label }}</td>
+              <td>{{ entry.material or '-' }}</td>
+              <td>{{ result_chip(entry.lab_result) }}</td>
+              <td>
+                {% for det in entry.determinants %}
+                  <strong>{{ det.label }}:</strong> {{ det.present or '-' }}{% if det.concentration %} ({{ det.concentration }}){% endif %}{% if not loop.last %}<br>{% endif %}
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      {% else %}
+      <p class="muted">No sample testing data recorded yet. Use the button above to capture the sampling results.</p>
+      {% endif %}
+      {% if sample_attachments_grouped %}
+      <div class="attachment-grid">
+        {% for category, items in sample_attachments_grouped.items() %}
+        {% set label = category.replace('_', ' ').title() %}
+        <div class="attachment-card">
+          <strong>{{ label }}</strong>
+          <div class="attachment-existing">
+            {% for item in items %}
+            <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.filename }}</a><span class="muted">{{ item.uploaded_at_display }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </section>
 
     <section class="card">

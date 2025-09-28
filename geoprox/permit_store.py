@@ -22,6 +22,16 @@ def _sqlite_conn():
     conn.row_factory = sqlite3.Row
     try:
         yield conn
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(permit_records)")}
+        if 'sample_status' not in cols:
+            conn.execute("ALTER TABLE permit_records ADD COLUMN sample_status TEXT DEFAULT 'Not required'")
+        if 'sample_outcome' not in cols:
+            conn.execute("ALTER TABLE permit_records ADD COLUMN sample_outcome TEXT")
+        if 'sample_notes' not in cols:
+            conn.execute("ALTER TABLE permit_records ADD COLUMN sample_notes TEXT")
+        if 'sample_payload' not in cols:
+            conn.execute("ALTER TABLE permit_records ADD COLUMN sample_payload TEXT")
+        conn.execute("UPDATE permit_records SET sample_status = COALESCE(sample_status, 'Not required')")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -91,11 +101,19 @@ def init_db() -> None:
                     site_outcome TEXT,
                     site_notes TEXT,
                     site_payload JSONB,
+                    sample_status TEXT NOT NULL DEFAULT 'Not required',
+                    sample_outcome TEXT,
+                    sample_notes TEXT,
+                    sample_payload JSONB,
                     search_result JSONB,
                     UNIQUE (username, permit_ref)
                 )
                 """
             )
+            conn.execute("ALTER TABLE permit_records ADD COLUMN IF NOT EXISTS sample_status TEXT NOT NULL DEFAULT 'Not required'")
+            conn.execute("ALTER TABLE permit_records ADD COLUMN IF NOT EXISTS sample_outcome TEXT")
+            conn.execute("ALTER TABLE permit_records ADD COLUMN IF NOT EXISTS sample_notes TEXT")
+            conn.execute("ALTER TABLE permit_records ADD COLUMN IF NOT EXISTS sample_payload JSONB")
         return
 
     with _get_conn() as conn:
@@ -118,6 +136,10 @@ def init_db() -> None:
                 site_outcome TEXT,
                 site_notes TEXT,
                 site_payload TEXT,
+                sample_status TEXT NOT NULL DEFAULT 'Not required',
+                sample_outcome TEXT,
+                sample_notes TEXT,
+                sample_payload TEXT,
                 search_result TEXT,
                 UNIQUE (username, permit_ref)
             )
@@ -128,7 +150,7 @@ def init_db() -> None:
 
 def _row_to_record(row: Any) -> Dict[str, Any]:
     data = dict(row)
-    for key in ("desktop_summary", "site_payload", "search_result"):
+    for key in ("desktop_summary", "site_payload", "sample_payload", "search_result"):
         value = data.get(key)
         if value and isinstance(value, str):
             try:
@@ -157,6 +179,12 @@ def _row_to_record(row: Any) -> Dict[str, Any]:
             "outcome": data.get("site_outcome"),
             "notes": data.get("site_notes"),
             "payload": data.get("site_payload"),
+        },
+        "sample": {
+            "status": data.get("sample_status"),
+            "outcome": data.get("sample_outcome"),
+            "notes": data.get("sample_notes"),
+            "payload": data.get("sample_payload"),
         },
         "search_result": data.get("search_result"),
     }
@@ -250,8 +278,12 @@ def save_permit(
                     site_outcome,
                     site_notes,
                     site_payload,
+                    sample_status,
+                    sample_outcome,
+                    sample_notes,
+                    sample_payload,
                     search_result
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     username,
@@ -266,6 +298,10 @@ def save_permit(
                     outcome,
                     summary_json,
                     "Not started",
+                    None,
+                    None,
+                    None,
+                    "Not required",
                     None,
                     None,
                     None,
@@ -322,6 +358,57 @@ def update_site_assessment(
     return get_permit(username, permit_ref)
 
 
+
+
+
+def update_sample_assessment(
+    *,
+    username: str,
+    permit_ref: str,
+    status: str,
+    outcome: Optional[str],
+    notes: Optional[str],
+    payload: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    existing = get_permit(username, permit_ref)
+    if not existing:
+        return None
+
+    merged_payload: Dict[str, Any] = {}
+    existing_payload = existing.get("sample", {}).get("payload")
+    if isinstance(existing_payload, dict):
+        merged_payload = dict(existing_payload)
+    if isinstance(payload, dict):
+        merged_payload.update(payload)
+
+    payload_json = json.dumps(merged_payload, ensure_ascii=False) if merged_payload else None
+    now = _now()
+
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE permit_records
+            SET updated_at = ?,
+                sample_status = ?,
+                sample_outcome = ?,
+                sample_notes = ?,
+                sample_payload = ?
+            WHERE username = ? AND permit_ref = ?
+            """
+,
+            (
+                now,
+                status,
+                outcome,
+                notes,
+                payload_json,
+                username,
+                permit_ref,
+            ),
+        )
+    return get_permit(username, permit_ref)
+
+
 def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict[str, Any]]:
     query = (query or "").strip()
     limit = max(1, int(limit or 20))
@@ -331,7 +418,7 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
         if USE_POSTGRES:
             if query:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload, sample_status, sample_outcome, sample_payload
                     FROM permit_records
                     WHERE username = %s AND permit_ref ILIKE %s
                     ORDER BY updated_at DESC
@@ -339,7 +426,7 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
                 """, (username, pattern, limit)).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload, sample_status, sample_outcome, sample_payload
                     FROM permit_records
                     WHERE username = %s
                     ORDER BY updated_at DESC
@@ -348,7 +435,7 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
         else:
             if query:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload, sample_status, sample_outcome, sample_payload
                     FROM permit_records
                     WHERE username = ? AND LOWER(permit_ref) LIKE ?
                     ORDER BY updated_at DESC
@@ -356,13 +443,23 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
                 """, (username, pattern_lower, limit)).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload, sample_status, sample_outcome, sample_payload
                     FROM permit_records
                     WHERE username = ?
                     ORDER BY updated_at DESC
                     LIMIT ?
                 """, (username, limit)).fetchall()
     def _parse_site_payload(raw: Any) -> Dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    def _parse_sample_payload(raw: Any) -> Dict[str, Any]:
         if isinstance(raw, dict):
             return raw
         if isinstance(raw, str):
@@ -392,6 +489,9 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
         payload = _parse_site_payload(record.get("site_payload"))
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
         form = payload.get("form") if isinstance(payload.get("form"), dict) else {}
+        sample_payload = _parse_sample_payload(record.get("sample_payload"))
+        sample_form = sample_payload.get("form") if isinstance(sample_payload.get("form"), dict) else {}
+        sample_summary = sample_payload.get("summary") if isinstance(sample_payload.get("summary"), dict) else {}
 
         site_bituminous = (summary.get("bituminous") or form.get("result_bituminous") or "").strip() or None
         site_sub_base = (summary.get("sub_base") or form.get("result_sub_base") or "").strip() or None
@@ -407,6 +507,14 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
         if not site_date:
             site_date = _normalize_timestamp(record.get("updated_at")) if record.get("site_status") and record.get("site_status") != "Not started" else None
 
+        sample_date = None
+        if isinstance(sample_form.get("sampling_date"), str):
+            sample_date = sample_form.get("sampling_date").strip() or None
+        if not sample_date and sample_summary.get("reported_at"):
+            sample_date = str(sample_summary.get("reported_at"))
+        if not sample_date and record.get("sample_status") and record.get("sample_status").lower() == "complete":
+            sample_date = _normalize_timestamp(record.get("updated_at"))
+
         result_item = {
             "permit_ref": record.get("permit_ref"),
             "created_at": _normalize_timestamp(record.get("created_at")),
@@ -419,6 +527,9 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
             "site_bituminous": site_bituminous,
             "site_sub_base": site_sub_base,
             "site_date": site_date,
+            "sample_status": record.get("sample_status"),
+            "sample_outcome": record.get("sample_outcome"),
+            "sample_date": sample_date,
         }
         results.append(result_item)
     return results
@@ -430,6 +541,7 @@ __all__ = [
     "get_permit",
     "save_permit",
     "update_site_assessment",
+    "update_sample_assessment",
     "search_permits",
 ]
 
