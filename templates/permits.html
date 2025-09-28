@@ -168,39 +168,61 @@
     }
     .flash-success { border-color: rgba(68,209,159,0.35); background: rgba(68,209,159,0.18); color: #a7f2d4; }
     .flash-error { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.18); color: #ffb3b3; }
-    .results-list {
-      display: grid;
-      gap: 1rem;
-    }
-    .result-item {
-      padding: 1.2rem 1.4rem;
+    .table-wrapper {
       border-radius: 16px;
       border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(9,20,36,0.8);
-      display: grid;
-      gap: 0.65rem;
+      background: rgba(9,20,36,0.75);
+      overflow-x: auto;
     }
-    .result-header {
+    .card-heading {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 0.6rem;
-      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.1rem;
     }
-    .result-header strong {
-      font-size: 1.05rem;
-      letter-spacing: 0.01em;
+    .card-heading h2 {
+      margin: 0;
     }
-    .result-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
     }
-    .status-row {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
+    .results-table thead {
+      background: rgba(255,255,255,0.08);
+    }
+    .results-table th,
+    .results-table td {
+      padding: 0.65rem 0.9rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: left;
+      font-size: 0.85rem;
+    }
+    .results-table th {
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.78);
+      white-space: nowrap;
+    }
+    .results-table tbody tr:nth-child(odd) {
+      background: rgba(255,255,255,0.03);
+    }
+    .results-table tbody tr:hover {
+      background: rgba(43,124,255,0.1);
+    }
+    .results-table td a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    button.nav-btn {
+      border: none;
+      font: inherit;
+    }
+    button.nav-btn:hover {
+      cursor: pointer;
     }
     .status-pill {
       display: inline-flex;
@@ -216,10 +238,6 @@
     .status-pill.status-done { border-color: rgba(68,209,159,0.4); background: rgba(68,209,159,0.15); color: #a7f2d4; }
     .status-pill.status-progress { border-color: rgba(255,200,87,0.4); background: rgba(255,200,87,0.15); color: #ffe5a0; }
     .status-pill.status-pending { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.15); color: #ffb3b3; }
-    .meta {
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.65);
-    }
     .empty-state {
       text-align: center;
       padding: 1.4rem;
@@ -241,16 +259,11 @@
       .search-form {
         grid-template-columns: 1fr;
       }
-      .result-header {
-        flex-direction: column;
-        align-items: flex-start;
+      .table-wrapper {
+        border-radius: 12px;
       }
-      .result-actions {
-        width: 100%;
-      }
-      .result-actions .nav-btn {
-        width: 100%;
-        justify-content: center;
+      .results-table {
+        min-width: 600px;
       }
     }
   </style>
@@ -296,19 +309,54 @@
     </section>
 
     <section class="card">
-      <h2>Matching permits</h2>
-      <div id="permitResults" class="results-list" data-initial='{{ (initial_results or []) | tojson }}'></div>
+      <div class="card-heading">
+        <h2>Matching permits</h2>
+        <button id="downloadBtn" type="button" class="nav-btn hidden">Download data</button>
+      </div>
+      <div id="resultsWrapper" class="table-wrapper hidden">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th scope="col">Permit</th>
+              <th scope="col">Desktop Status</th>
+              <th scope="col">Desktop Outcome</th>
+              <th scope="col">Field Status</th>
+              <th scope="col">Bituminous Outcome</th>
+              <th scope="col">Sub-base Outcome</th>
+              <th scope="col">Desktop Date</th>
+              <th scope="col">Site Date</th>
+            </tr>
+          </thead>
+          <tbody id="permitResults" data-initial='{{ (initial_results or []) | tojson }}'></tbody>
+        </table>
+      </div>
       <div id="resultsEmpty" class="empty-state hidden">No permits found. Try another search phrase or create a permit from the desktop module.</div>
     </section>
   </main>
 
   <script>
     (function () {
+      const resultsWrapper = document.getElementById('resultsWrapper');
       const resultsContainer = document.getElementById('permitResults');
       const emptyState = document.getElementById('resultsEmpty');
       const searchForm = document.getElementById('permitSearchForm');
       const queryInput = document.getElementById('permitQuery');
+      const downloadBtn = document.getElementById('downloadBtn');
+      const EXPORT_LIMIT = 500;
       let isLoading = false;
+      let lastQuery = '';
+
+      if (downloadBtn) {
+        downloadBtn.disabled = true;
+        downloadBtn.addEventListener('click', () => {
+          const url = new URL('/api/permits/export', window.location.origin);
+          if (lastQuery) {
+            url.searchParams.set('query', lastQuery);
+          }
+          url.searchParams.set('limit', String(EXPORT_LIMIT));
+          window.location.href = url.toString();
+        });
+      }
 
       const parseInitial = () => {
         try {
@@ -328,15 +376,6 @@
         return 'status-pill';
       };
 
-      const formatDateTime = (value) => {
-        if (!value) return '';
-        const date = new Date(value);
-        if (!Number.isNaN(date.getTime())) {
-          return date.toLocaleString();
-        }
-        return String(value);
-      };
-
       const formatDate = (value) => {
         if (!value) return '';
         const date = new Date(value);
@@ -346,66 +385,102 @@
         return String(value);
       };
 
+      const valueOrDash = (value) => {
+        if (value === undefined || value === null) return '-';
+        const text = String(value).trim();
+        return text ? text : '-';
+      };
+
+      const extractOutcome = (text, prefix) => {
+        if (typeof text !== 'string' || !text.trim()) return null;
+        const loweredPrefix = prefix.toLowerCase();
+        const segments = text.split('|');
+        for (const segment of segments) {
+          const part = segment.trim();
+          if (!part.toLowerCase().startsWith(loweredPrefix)) continue;
+          const delimiterIndex = part.indexOf(':');
+          if (delimiterIndex === -1) continue;
+          const trimmed = part.slice(delimiterIndex + 1).trim();
+          if (trimmed) return trimmed;
+        }
+        return null;
+      };
+
+      const renderDate = (primary, fallback) => {
+        const formattedPrimary = formatDate(primary);
+        if (formattedPrimary) return formattedPrimary;
+        const formattedFallback = formatDate(fallback);
+        return formattedFallback || '—';
+      };
+
+      const buildStatusCell = (value, fallback) => {
+        const statusValue = value || fallback;
+        const badge = document.createElement('span');
+        badge.className = statusClass(statusValue);
+        badge.textContent = statusValue;
+        const cell = document.createElement('td');
+        cell.appendChild(badge);
+        return cell;
+      };
+
       const renderResults = (items) => {
         resultsContainer.innerHTML = '';
         if (!Array.isArray(items) || items.length === 0) {
+          resultsWrapper.classList.add('hidden');
           emptyState.classList.remove('hidden');
+          if (downloadBtn) {
+            downloadBtn.classList.add('hidden');
+            downloadBtn.disabled = true;
+          }
           return;
         }
         emptyState.classList.add('hidden');
+        resultsWrapper.classList.remove('hidden');
+        if (downloadBtn) {
+          downloadBtn.classList.remove('hidden');
+          downloadBtn.disabled = false;
+        }
         items.forEach((item) => {
-          const wrapper = document.createElement('article');
-          wrapper.className = 'result-item';
+          const row = document.createElement('tr');
 
-          const header = document.createElement('div');
-          header.className = 'result-header';
-          const title = document.createElement('strong');
-          title.textContent = item.permit_ref || 'Unknown permit';
-          header.appendChild(title);
-
-          const actions = document.createElement('div');
-          actions.className = 'result-actions';
-          const viewBtn = document.createElement('a');
-          viewBtn.className = 'nav-btn';
-          viewBtn.href = `/permits/${encodeURIComponent(item.permit_ref || '')}/view`;
-          viewBtn.textContent = 'View details';
-          actions.appendChild(viewBtn);
-          header.appendChild(actions);
-          wrapper.appendChild(header);
-
-          const statuses = document.createElement('div');
-          statuses.className = 'status-row';
-          const desktop = document.createElement('span');
-          desktop.className = statusClass(item.desktop_status);
-          desktop.textContent = `Desktop: ${item.desktop_status || 'Pending'}`;
-          statuses.appendChild(desktop);
-          const site = document.createElement('span');
-          site.className = statusClass(item.site_status);
-          site.textContent = `Site: ${item.site_status || 'Not started'}`;
-          statuses.appendChild(site);
-          wrapper.appendChild(statuses);
-
-          if (item.desktop_outcome || item.site_outcome) {
-            const outcomes = document.createElement('div');
-            outcomes.className = 'meta';
-            const parts = [];
-            if (item.desktop_outcome) parts.push(`Desktop outcome: ${item.desktop_outcome}`);
-            if (item.site_outcome) parts.push(`Site results: ${item.site_outcome}`);
-            outcomes.textContent = parts.join(' | ');
-            wrapper.appendChild(outcomes);
+          const permitCell = document.createElement('td');
+          if (item.permit_ref) {
+            const link = document.createElement('a');
+            link.href = `/permits/${encodeURIComponent(item.permit_ref)}/view`;
+            link.textContent = item.permit_ref;
+            permitCell.appendChild(link);
+          } else {
+            permitCell.textContent = '—';
           }
+          row.appendChild(permitCell);
 
-          if (item.updated_at || item.created_at) {
-            const meta = document.createElement('div');
-            meta.className = 'meta';
-            const pieces = [];
-            if (item.updated_at) pieces.push(`Updated ${formatDateTime(item.updated_at)}`);
-            if (item.created_at) pieces.push(`Created ${formatDate(item.created_at)}`);
-            meta.textContent = pieces.join(' | ');
-            wrapper.appendChild(meta);
-          }
+          row.appendChild(buildStatusCell(item.desktop_status, 'Pending'));
 
-          resultsContainer.appendChild(wrapper);
+          const desktopOutcomeCell = document.createElement('td');
+          desktopOutcomeCell.textContent = valueOrDash(item.desktop_outcome);
+          row.appendChild(desktopOutcomeCell);
+
+          row.appendChild(buildStatusCell(item.site_status, 'Not started'));
+
+          const bituminousCell = document.createElement('td');
+          const bituminousValue = item.site_bituminous || extractOutcome(item.site_outcome, 'bituminous');
+          bituminousCell.textContent = valueOrDash(bituminousValue);
+          row.appendChild(bituminousCell);
+
+          const subBaseCell = document.createElement('td');
+          const subBaseValue = item.site_sub_base || extractOutcome(item.site_outcome, 'sub-base');
+          subBaseCell.textContent = valueOrDash(subBaseValue);
+          row.appendChild(subBaseCell);
+
+          const desktopDateCell = document.createElement('td');
+          desktopDateCell.textContent = renderDate(item.desktop_date, item.created_at);
+          row.appendChild(desktopDateCell);
+
+          const siteDateCell = document.createElement('td');
+          siteDateCell.textContent = renderDate(item.site_date, item.updated_at);
+          row.appendChild(siteDateCell);
+
+          resultsContainer.appendChild(row);
         });
       };
 
@@ -434,7 +509,8 @@
 
       searchForm.addEventListener('submit', (event) => {
         event.preventDefault();
-        fetchResults(queryInput.value.trim());
+        lastQuery = queryInput.value.trim();
+        fetchResults(lastQuery);
       });
 
       renderResults(parseInitial());

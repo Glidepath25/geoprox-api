@@ -9,20 +9,21 @@ import smtplib
 import ssl
 import mimetypes
 from email.message import EmailMessage
-from datetime import datetime
-from io import StringIO
+from datetime import datetime, timezone
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.datastructures import UploadFile
 from pydantic import BaseModel, Field
+import pandas as pd
 
 from geoprox import history_store, user_store, permit_store
 from geoprox.site_assessment_pdf import generate_site_assessment_pdf
@@ -1267,8 +1268,12 @@ class PermitSearchItem(BaseModel):
     updated_at: Optional[str] = None
     desktop_status: Optional[str] = None
     desktop_outcome: Optional[str] = None
+    desktop_date: Optional[str] = None
     site_status: Optional[str] = None
     site_outcome: Optional[str] = None
+    site_bituminous: Optional[str] = None
+    site_sub_base: Optional[str] = None
+    site_date: Optional[str] = None
 
 class SearchReq(BaseModel):
     location: str = Field(..., description="lat,lon or ///what.three.words")
@@ -2080,6 +2085,83 @@ def api_search_permits(request: Request, query: str = "", limit: int = 20):
     username = _require_user(request)
     items = permit_store.search_permits(username, query, limit)
     return [PermitSearchItem(**item) for item in items]
+
+
+@app.get("/api/permits/export")
+def api_export_permits(request: Request, query: str = "", limit: int = 500):
+    username = _require_user(request)
+    try:
+        safe_limit = int(limit or 500)
+    except (TypeError, ValueError):
+        safe_limit = 500
+    safe_limit = max(1, min(safe_limit, 2000))
+    items = permit_store.search_permits(username, query, safe_limit)
+
+    columns = [
+        "Permit",
+        "Desktop Status",
+        "Desktop Outcome",
+        "Field Status",
+        "Bituminous Outcome",
+        "Sub-base Outcome",
+        "Desktop Date",
+        "Site Date",
+    ]
+
+    def _format_date(primary: Any, fallback: Any = None) -> str:
+        candidate = primary or fallback
+        if not candidate:
+            return ""
+        if isinstance(candidate, datetime):
+            dt = candidate
+        else:
+            text = str(candidate).strip()
+            if not text:
+                return ""
+            try:
+                iso_text = text
+                if iso_text.endswith("Z"):
+                    iso_text = iso_text[:-1] + "+00:00"
+                dt = datetime.fromisoformat(iso_text)
+            except ValueError:
+                return text
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.strftime("%Y-%m-%d %H:%M")
+
+    rows: List[Dict[str, Any]] = []
+    for item in items:
+        rows.append(
+            {
+                "Permit": item.get("permit_ref") or "",
+                "Desktop Status": item.get("desktop_status") or "",
+                "Desktop Outcome": item.get("desktop_outcome") or "",
+                "Field Status": item.get("site_status") or "",
+                "Bituminous Outcome": item.get("site_bituminous") or item.get("site_outcome") or "",
+                "Sub-base Outcome": item.get("site_sub_base") or item.get("site_outcome") or "",
+                "Desktop Date": _format_date(item.get("desktop_date"), item.get("created_at")),
+                "Site Date": _format_date(item.get("site_date"), item.get("updated_at")),
+            }
+        )
+
+    if rows:
+        df = pd.DataFrame(rows, columns=columns)
+    else:
+        df = pd.DataFrame(columns=columns)
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
+
+    filename = f"permit_export_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.xlsx"
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
 
 @app.post("/api/permits", response_model=PermitRecordResp)
 def api_save_permit_record(request: Request, payload: PermitSaveReq):

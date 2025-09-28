@@ -7,7 +7,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from geoprox.db import USE_POSTGRES, get_postgres_conn
 
@@ -331,7 +331,7 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
         if USE_POSTGRES:
             if query:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
                     FROM permit_records
                     WHERE username = %s AND permit_ref ILIKE %s
                     ORDER BY updated_at DESC
@@ -339,7 +339,7 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
                 """, (username, pattern, limit)).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
                     FROM permit_records
                     WHERE username = %s
                     ORDER BY updated_at DESC
@@ -348,7 +348,7 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
         else:
             if query:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
                     FROM permit_records
                     WHERE username = ? AND LOWER(permit_ref) LIKE ?
                     ORDER BY updated_at DESC
@@ -356,24 +356,71 @@ def search_permits(username: str, query: str = "", limit: int = 20) -> List[Dict
                 """, (username, pattern_lower, limit)).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome
+                    SELECT permit_ref, created_at, updated_at, desktop_status, desktop_outcome, site_status, site_outcome, site_payload
                     FROM permit_records
                     WHERE username = ?
                     ORDER BY updated_at DESC
                     LIMIT ?
                 """, (username, limit)).fetchall()
+    def _parse_site_payload(raw: Any) -> Dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    def _parse_outcome_parts(outcome_text: Any) -> Tuple[Optional[str], Optional[str]]:
+        if not isinstance(outcome_text, str):
+            return None, None
+        bituminous: Optional[str] = None
+        sub_base: Optional[str] = None
+        for segment in outcome_text.split("|"):
+            part = segment.strip()
+            lowered = part.lower()
+            if lowered.startswith("bituminous") and ":" in part:
+                bituminous = part.split(":", 1)[1].strip() or None
+            if lowered.startswith("sub-base") and ":" in part:
+                sub_base = part.split(":", 1)[1].strip() or None
+        return bituminous, sub_base
+
     results: List[Dict[str, Any]] = []
     for row in rows:
         record = dict(row)
-        results.append({
+        payload = _parse_site_payload(record.get("site_payload"))
+        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        form = payload.get("form") if isinstance(payload.get("form"), dict) else {}
+
+        site_bituminous = (summary.get("bituminous") or form.get("result_bituminous") or "").strip() or None
+        site_sub_base = (summary.get("sub_base") or form.get("result_sub_base") or "").strip() or None
+
+        if not site_bituminous or not site_sub_base:
+            parsed_bituminous, parsed_sub_base = _parse_outcome_parts(record.get("site_outcome"))
+            site_bituminous = site_bituminous or parsed_bituminous
+            site_sub_base = site_sub_base or parsed_sub_base
+
+        site_date = form.get("assessment_date") if isinstance(form.get("assessment_date"), str) else None
+        if site_date:
+            site_date = site_date.strip() or None
+        if not site_date:
+            site_date = _normalize_timestamp(record.get("updated_at")) if record.get("site_status") and record.get("site_status") != "Not started" else None
+
+        result_item = {
             "permit_ref": record.get("permit_ref"),
             "created_at": _normalize_timestamp(record.get("created_at")),
             "updated_at": _normalize_timestamp(record.get("updated_at")),
             "desktop_status": record.get("desktop_status"),
             "desktop_outcome": record.get("desktop_outcome"),
+            "desktop_date": _normalize_timestamp(record.get("created_at")),
             "site_status": record.get("site_status"),
             "site_outcome": record.get("site_outcome"),
-        })
+            "site_bituminous": site_bituminous,
+            "site_sub_base": site_sub_base,
+            "site_date": site_date,
+        }
+        results.append(result_item)
     return results
 
 
