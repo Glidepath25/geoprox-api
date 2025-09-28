@@ -8,6 +8,7 @@ import csv
 import smtplib
 import ssl
 import mimetypes
+import re
 from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
@@ -263,24 +264,150 @@ def _normalise_location(s: str) -> str:
     """Normalise/validate location string."""
     if not s:
         raise HTTPException(status_code=400, detail="Location is required.")
-    s = s.strip()
-    if s.startswith("///"):
-        return s
+    value = s.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Location is required.")
+    if value.startswith("///"):
+        return value
 
+    decimal_pair = _try_parse_decimal_location(value)
+    if decimal_pair:
+        lat, lon = decimal_pair
+        return f"{lat},{lon}"
+
+    tokens = _split_location_tokens(value)
+    if tokens and len(tokens) == 2:
+        try:
+            lat = _parse_dms_coordinate(tokens[0], is_lat=True)
+            lon = _parse_dms_coordinate(tokens[1], is_lat=False)
+            return f"{lat},{lon}"
+        except ValueError:
+            pass
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Invalid location. Use decimal lat/lon (e.g. 54.35,-6.65), "
+            "DMS (e.g. 54?53'13\"N, 002?55'40\"W), "
+            'or a "///what.three.words" address.'
+        ),
+    )
+
+
+_DMS_CARDINALS = {"N", "S", "E", "W"}
+
+
+def _try_parse_decimal_location(value: str) -> Optional[Tuple[float, float]]:
+    cleaned = re.sub(r"\s+", "", value)
+    parts = cleaned.split(",")
+    if len(parts) != 2:
+        return None
     try:
-        parts = s.replace(" ", "").split(",")
-        if len(parts) != 2:
-            raise ValueError("Need two comma-separated numbers.")
         lat = float(parts[0])
         lon = float(parts[1])
-        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
-            raise ValueError("Lat/lon out of range.")
-        return f"{lat},{lon}"
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid location. Use 'lat,lon' (e.g. '54.35,-6.65') or a '///what.three.words' address.",
-        )
+    except (TypeError, ValueError):
+        return None
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return None
+    return lat, lon
+
+
+def _normalise_dms_symbols(value: str) -> str:
+    replacements = {
+        "\u00BA": "\u00B0",
+        "\u02DA": "\u00B0",
+        "\u2019": "'",
+        "\u2032": "'",
+        "\u201D": '"',
+        "\u201C": '"',
+        "\u2033": '"',
+    }
+    for src, dst in replacements.items():
+        value = value.replace(src, dst)
+    return value
+
+
+def _split_location_tokens(value: str) -> Optional[List[str]]:
+    normalised = _normalise_dms_symbols(value)
+    comma_parts = [part.strip() for part in re.split(r"\s*,\s*", normalised) if part.strip()]
+    if len(comma_parts) == 2:
+        return comma_parts
+
+    tokens: List[str] = []
+    buffer: List[str] = []
+    for ch in normalised:
+        buffer.append(ch)
+        if ch.upper() in _DMS_CARDINALS:
+            token = "".join(buffer).strip()
+            if token:
+                tokens.append(token)
+            buffer = []
+            if len(tokens) == 2:
+                break
+    if len(tokens) == 2:
+        remainder = "".join(buffer).strip()
+        if remainder:
+            tokens[-1] = f"{tokens[-1]} {remainder}".strip()
+        return tokens
+    return None
+
+
+def _parse_dms_coordinate(token: str, is_lat: bool) -> float:
+    cleaned = _normalise_dms_symbols((token or "")).strip()
+    if not cleaned:
+        raise ValueError("Empty coordinate")
+
+    upper = cleaned.upper()
+    sign = 1
+    if upper.startswith("-"):
+        sign = -1
+        upper = upper[1:].strip()
+    elif upper.startswith("+"):
+        upper = upper[1:].strip()
+
+    direction: Optional[str] = None
+    if upper and upper[-1] in _DMS_CARDINALS:
+        direction = upper[-1]
+        upper = upper[:-1].strip()
+
+    numeric = upper
+    numeric = numeric.replace("\u00B0", " ")
+    numeric = numeric.replace("'", " ")
+    numeric = numeric.replace('"', " ")
+    numeric = re.sub(r"[\u2019\u2032]", " ", numeric)
+    numeric = re.sub(r"[\u201C\u201D\u2033]", " ", numeric)
+    numeric = re.sub(r"\s+", " ", numeric).strip()
+    if not numeric:
+        raise ValueError("Missing numeric component")
+
+    parts = numeric.split(" ")
+    if len(parts) > 3:
+        raise ValueError("Too many coordinate components")
+
+    try:
+        deg = float(parts[0])
+        minutes = float(parts[1]) if len(parts) >= 2 else 0.0
+        seconds = float(parts[2]) if len(parts) >= 3 else 0.0
+    except ValueError as exc:
+        raise ValueError("Invalid DMS component") from exc
+
+    if minutes >= 60 or seconds >= 60:
+        raise ValueError("Minutes/seconds out of range")
+
+    value = abs(deg) + minutes / 60.0 + seconds / 3600.0
+
+    if direction:
+        if direction in {"S", "W"}:
+            value = -value
+    elif sign < 0 or deg < 0:
+        value = -value
+
+    limit = 90.0 if is_lat else 180.0
+    if not (-limit <= value <= limit):
+        raise ValueError("Coordinate out of range")
+
+    return value
+
 
 
 
