@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GeoProx - Unidentified Reports</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:#0b1724; color:#e6f1ff; margin:0; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#12263a; border-bottom:1px solid rgba(255,255,255,0.08); }
+    header h1 { margin:0; font-size:1.2rem; letter-spacing:0.05em; text-transform:uppercase; }
+    main { padding:2rem; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.5rem; }
+    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; display:inline-block; font-size:0.85rem; }
+    .btn:hover { background:rgba(255,255,255,0.08); }
+    .btn.primary { background:#2b7cff; border-color:#2b7cff; color:#fff; }
+    .muted { color:#9fb3c7; font-size:0.85rem; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:0.6rem 0.75rem; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; vertical-align:top; font-size:0.86rem; }
+    th { background:#18344d; text-transform:uppercase; letter-spacing:0.04em; font-size:0.72rem; }
+    tbody tr:nth-child(even) td { background:#112436; }
+    .no-data { padding:1.2rem 1.4rem; border-radius:10px; border:1px dashed rgba(255,255,255,0.18); color:#9fb3c7; background:rgba(255,255,255,0.04); }
+    .cards { display:flex; gap:1rem; flex-wrap:wrap; }
+    .card { background:#12263a; border-radius:12px; padding:1.1rem 1.3rem; border:1px solid rgba(255,255,255,0.08); min-width:200px; }
+    .card h2 { margin:0 0 0.35rem; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.05em; color:#9fb3c7; }
+    .card strong { font-size:1.4rem; }
+    .note { font-size:0.78rem; color:#9fb3c7; }
+    @media (max-width:720px) {
+      header, main { padding:1.25rem; }
+      table { font-size:0.78rem; }
+      th, td { padding:0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Unidentified location reports</h1>
+    <div class="actions" style="display:flex; gap:0.75rem; align-items:center;">
+      <a class="btn" href="/admin/users">Manage users</a>
+      <a class="btn" href="/dashboard">Dashboard</a>
+      <form method="post" action="/logout" style="margin:0;">
+        <button class="btn" type="submit">Sign out</button>
+      </form>
+    </div>
+  </header>
+  <main>
+    <div class="cards">
+      <div class="card">
+        <h2>Total reports</h2>
+        <strong>{{ record_count }}</strong>
+      </div>
+      <div class="card">
+        <h2>Viewing scope</h2>
+        {% if is_global_admin %}
+          <div class="muted">All organisations</div>
+        {% else %}
+          <div class="muted">{{ company_label or 'Company users only' }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if records %}
+    <table>
+      <thead>
+        <tr>
+          <th>Recorded</th>
+          <th>Category</th>
+          <th>Name</th>
+          <th>Coordinates</th>
+          <th>Address</th>
+          <th>Notes</th>
+          <th>Submitted by</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in records %}
+        <tr>
+          <td>{{ item.created_at_display }}</td>
+          <td>{{ item.category_label }}</td>
+          <td>{{ item.name }}</td>
+          <td>{% if item.latitude_display and item.longitude_display %}{{ item.latitude_display }}, {{ item.longitude_display }}{% else %}&mdash;{% endif %}</td>
+          <td>{% if item.address %}{{ item.address }}{% else %}&mdash;{% endif %}</td>
+          <td>{% if item.notes %}{{ item.notes }}{% else %}&mdash;{% endif %}</td>
+          <td>{{ item.submitted_display }}{% if item.submitted_company %}<br><span class="note">{{ item.submitted_company }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="no-data">No unidentified location reports have been submitted yet.</div>
+    {% endif %}
+  </main>
+</body>
+</html>
+

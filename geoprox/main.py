@@ -33,7 +33,7 @@ from starlette.datastructures import UploadFile
 from pydantic import BaseModel, Field
 import pandas as pd
 
-from geoprox import history_store, user_store, permit_store
+from geoprox import history_store, user_store, permit_store, report_store
 from geoprox.site_assessment_pdf import generate_site_assessment_pdf
 from geoprox.sample_testing_pdf import generate_sample_testing_pdf
 from geoprox.core import run_geoprox_search
@@ -176,6 +176,15 @@ SAMPLE_TESTING_ATTACHMENT_CATEGORIES = [
     ('general', 'General attachment'),
 ]
 SAMPLE_TESTING_ATTACHMENT_LABELS = {key: label for key, label in SAMPLE_TESTING_ATTACHMENT_CATEGORIES}
+UNIDENTIFIED_REPORT_CATEGORY_OPTIONS = [
+    ("industrial", "Industrial site"),
+    ("gas_holder", "Gas holder"),
+    ("mining", "Mining or quarry site"),
+    ("petrol_station", "Petrol station"),
+    ("other", "Other"),
+]
+UNIDENTIFIED_REPORT_CATEGORY_LABELS = {key: label for key, label in UNIDENTIFIED_REPORT_CATEGORY_OPTIONS}
+
 SAMPLE_TESTING_FIELD_LABELS = [
     ('sampling_date', 'Sampling date'),
     ('sampled_by_name', 'Sampled by'),
@@ -201,7 +210,6 @@ S3_BUCKET = os.environ.get("GEOPROX_BUCKET", "").strip()
 S3_ARTIFACT_PREFIX = os.environ.get("GEOPROX_ARTIFACT_PREFIX", "").strip()
 _S3_CLIENT = None
 
-PROMO_PDF_URL = os.environ.get("LOGIN_PROMO_PDF", "/static/geoprox-intro.pdf")
 SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@geoprox.co.uk")
 
 DEFAULT_W3W_KEY = "OXT6XQ19"
@@ -965,7 +973,6 @@ def _render_login(
         "upgrade_success": upgrade_success,
         "upgrade_data": upgrade_data or {},
         "open_modal": open_modal or "",
-        "promo_pdf_url": PROMO_PDF_URL,
         "upgrade_options": upgrade_options,
     }
     return templates.TemplateResponse("login.html", context, status_code=status)
@@ -1039,6 +1046,18 @@ def _parse_optional_int(value: Optional[str]) -> Optional[int]:
         return None
     try:
         return int(stripped)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_optional_float(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    if not stripped:
+        return None
+    try:
+        return float(stripped)
     except (TypeError, ValueError):
         return None
 
@@ -3035,6 +3054,191 @@ def history_page(request: Request) -> HTMLResponse:
         "allow_desktop": allow_desktop,
     })
 
+
+@app.get("/report-unidentified", response_class=HTMLResponse)
+async def report_unidentified_page(request: Request) -> HTMLResponse:
+    _require_user(request)
+    context = {
+        "request": request,
+        "categories": UNIDENTIFIED_REPORT_CATEGORY_OPTIONS,
+        "category_labels": UNIDENTIFIED_REPORT_CATEGORY_LABELS,
+        "form": {
+            "category": "",
+            "name": "",
+            "latitude": "",
+            "longitude": "",
+            "address": "",
+            "notes": "",
+        },
+        "errors": [],
+        "success": False,
+    }
+    return templates.TemplateResponse("report_unidentified.html", context)
+
+
+@app.post("/report-unidentified", response_class=HTMLResponse)
+async def report_unidentified_submit(request: Request) -> HTMLResponse:
+    username = _require_user(request)
+    form = await request.form()
+    category = (form.get("category") or "").strip()
+    name = (form.get("name") or "").strip()
+    latitude_raw = (form.get("latitude") or "").strip()
+    longitude_raw = (form.get("longitude") or "").strip()
+    address = (form.get("address") or "").strip()
+    notes = (form.get("notes") or "").strip()
+    errors: List[str] = []
+    valid_categories = set(UNIDENTIFIED_REPORT_CATEGORY_LABELS)
+    if not category:
+        errors.append("Select a category.")
+    elif category not in valid_categories:
+        errors.append("Select a valid category.")
+    if not name:
+        errors.append("Enter a name for the location.")
+    if not latitude_raw or not longitude_raw:
+        errors.append("Enter both latitude and longitude.")
+    latitude = _parse_optional_float(latitude_raw) if latitude_raw else None
+    longitude = _parse_optional_float(longitude_raw) if longitude_raw else None
+    if latitude_raw and latitude is None:
+        errors.append("Latitude must be a number.")
+    if longitude_raw and longitude is None:
+        errors.append("Longitude must be a number.")
+    if not address:
+        errors.append("Enter the address.")
+    context_form = {
+        "category": category,
+        "name": name,
+        "latitude": latitude_raw,
+        "longitude": longitude_raw,
+        "address": address,
+        "notes": notes,
+    }
+    if errors:
+        return templates.TemplateResponse("report_unidentified.html", {
+            "request": request,
+            "categories": UNIDENTIFIED_REPORT_CATEGORY_OPTIONS,
+            "category_labels": UNIDENTIFIED_REPORT_CATEGORY_LABELS,
+            "form": context_form,
+            "errors": errors,
+            "success": False,
+        })
+    record = report_store.create_report(
+        category=category,
+        name=name,
+        latitude=latitude,
+        longitude=longitude,
+        address=address,
+        notes=notes,
+        submitted_by=username,
+    )
+    display_record = dict(record)
+    display_record["name"] = display_record.get("name") or ""
+    display_record["address"] = display_record.get("address") or ""
+    display_record["notes"] = display_record.get("notes") or ""
+    display_record["category_label"] = UNIDENTIFIED_REPORT_CATEGORY_LABELS.get(
+        display_record.get("category"),
+        str(display_record.get("category") or "").title(),
+    )
+    display_record["created_at_display"] = _format_ddmmyy(display_record.get("created_at"), include_time=True)
+    latitude_value = display_record.get("latitude")
+    longitude_value = display_record.get("longitude")
+    try:
+        display_record["latitude_display"] = f"{float(latitude_value):.6f}" if latitude_value is not None else ""
+    except (TypeError, ValueError):
+        display_record["latitude_display"] = str(latitude_value or "")
+    try:
+        display_record["longitude_display"] = f"{float(longitude_value):.6f}" if longitude_value is not None else ""
+    except (TypeError, ValueError):
+        display_record["longitude_display"] = str(longitude_value or "")
+    submitted_label = user_store.get_user_by_username(username)
+    if submitted_label:
+        display_record["submitted_display"] = submitted_label.get("name") or submitted_label.get("username") or username
+        display_record["submitted_company"] = submitted_label.get("company") or ""
+    else:
+        display_record["submitted_display"] = username
+        display_record["submitted_company"] = ""
+    return templates.TemplateResponse("report_unidentified.html", {
+        "request": request,
+        "categories": UNIDENTIFIED_REPORT_CATEGORY_OPTIONS,
+        "category_labels": UNIDENTIFIED_REPORT_CATEGORY_LABELS,
+        "form": {
+            "category": "",
+            "name": "",
+            "latitude": "",
+            "longitude": "",
+            "address": "",
+            "notes": "",
+        },
+        "errors": [],
+        "success": True,
+        "record": display_record,
+    })
+
+
+@app.get("/admin/reports/unidentified", response_class=HTMLResponse)
+async def admin_unidentified_reports_page(request: Request) -> HTMLResponse:
+    username, is_global_admin, managed_company_id = _require_user_management_scope(request)
+    if not (is_global_admin or managed_company_id):
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    scope_usernames, user_map = _resolve_company_scope(username)
+    if is_global_admin:
+        try:
+            for entry in user_store.list_users(include_disabled=True):
+                candidate = str(entry.get("username") or "").strip()
+                if not candidate or candidate in user_map:
+                    continue
+                normalized = dict(entry)
+                normalized["name"] = normalized.get("name") or ""
+                normalized["company"] = normalized.get("company") or ""
+                user_map[candidate] = normalized
+        except Exception:
+            log.exception("Failed to list users for unidentified reports view")
+    records = report_store.list_reports()
+    if not is_global_admin:
+        allowed = set(scope_usernames)
+        records = [record for record in records if record.get("submitted_by") in allowed]
+    rows: List[Dict[str, Any]] = []
+    for record in records:
+        item = dict(record)
+        item["name"] = item.get("name") or ""
+        item["address"] = item.get("address") or ""
+        item["notes"] = item.get("notes") or ""
+        item["category_label"] = UNIDENTIFIED_REPORT_CATEGORY_LABELS.get(
+            item.get("category"),
+            str(item.get("category") or "").title(),
+        )
+        item["created_at_display"] = _format_ddmmyy(item.get("created_at"), include_time=True)
+        latitude_value = item.get("latitude")
+        longitude_value = item.get("longitude")
+        try:
+            item["latitude_display"] = f"{float(latitude_value):.6f}" if latitude_value is not None else ""
+        except (TypeError, ValueError):
+            item["latitude_display"] = str(latitude_value or "")
+        try:
+            item["longitude_display"] = f"{float(longitude_value):.6f}" if longitude_value is not None else ""
+        except (TypeError, ValueError):
+            item["longitude_display"] = str(longitude_value or "")
+        submitter = str(item.get("submitted_by") or "")
+        submitter_info = user_map.get(submitter)
+        if submitter_info:
+            item["submitted_display"] = submitter_info.get("name") or submitter_info.get("username") or submitter
+            item["submitted_company"] = submitter_info.get("company") or ""
+        else:
+            item["submitted_display"] = submitter or ""
+            item["submitted_company"] = ""
+        rows.append(item)
+    base_user = user_map.get(username, {})
+    company_label = base_user.get("company") or ""
+    context = {
+        "request": request,
+        "records": rows,
+        "record_count": len(rows),
+        "category_labels": UNIDENTIFIED_REPORT_CATEGORY_LABELS,
+        "is_global_admin": is_global_admin,
+        "current_user": username,
+        "company_label": company_label,
+    }
+    return templates.TemplateResponse("admin_unidentified_reports.html", context)
+
 @app.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(request: Request, company_id: Optional[str] = None) -> HTMLResponse:
     company_id_value = _parse_optional_int(company_id)
@@ -4027,20 +4231,4 @@ def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
 
     if changed:
         payload["artifacts"] = updated
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

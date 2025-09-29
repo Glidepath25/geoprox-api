@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Report Unidentified Locations</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1724;
+      --panel: #12263a;
+      --text: #e6f1ff;
+      --muted: #9fb3c7;
+      --accent: #2b7cff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.2rem 2rem;
+      background: rgba(18, 38, 58, 0.92);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    header .actions {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .btn {
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .btn:hover {
+      background: rgba(43, 124, 255, 0.2);
+      border-color: rgba(43, 124, 255, 0.45);
+    }
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2rem 1.75rem 4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .intro {
+      background: var(--panel);
+      padding: 1.5rem;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      line-height: 1.55;
+      color: var(--muted);
+    }
+    form {
+      background: var(--panel);
+      padding: 1.75rem;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+    label {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    select, input[type=text], textarea {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #0f1f31;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    .grid { display: grid; gap: 1rem; }
+    @media (min-width: 680px) {
+      .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .submit-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .alerts { display: flex; flex-direction: column; gap: 0.75rem; }
+    .alert {
+      padding: 0.9rem 1.1rem;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      line-height: 1.5;
+    }
+    .alert.error { background: rgba(231, 76, 60, 0.14); border-color: rgba(231, 76, 60, 0.45); color: #ffb3b3; }
+    .alert.success { background: rgba(39, 174, 96, 0.16); border-color: rgba(39, 174, 96, 0.4); color: #b6f4d0; }
+    ul.error-list { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.9rem;
+    }
+    th { color: var(--muted); font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 1.5rem 1rem 2.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Report unidentified locations</h1>
+    <div class="actions">
+      <a class="btn" href="/app">Back to desktop</a>
+      <a class="btn" href="/dashboard">Dashboard</a>
+    </div>
+  </header>
+  <main>
+    <section class="intro">
+      <p>
+        Help us keep the GeoProx map complete. Use this form to flag industrial sites, gas holders, mining areas,
+        petrol stations, or any other significant locations that are missing from the desktop map. Provide the best
+        details you have and our data team will review and incorporate verified sites.
+      </p>
+    </section>
+
+    {% if errors %}
+    <div class="alerts">
+      <div class="alert error">
+        <strong>Please fix the issues below:</strong>
+        <ul class="error-list">
+          {% for msg in errors %}
+          <li>{{ msg }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alerts">
+      <div class="alert success">
+        <strong>Thank you!</strong> Your report has been saved for review.
+        <table>
+          <tbody>
+            <tr><th>Category</th><td>{{ record.category_label }}</td></tr>
+            <tr><th>Name</th><td>{{ record.name }}</td></tr>
+            <tr><th>Latitude</th><td>{{ record.latitude_display }}</td></tr>
+            <tr><th>Longitude</th><td>{{ record.longitude_display }}</td></tr>
+            <tr><th>Address</th><td>{{ record.address }}</td></tr>
+            {% if record.notes %}<tr><th>Notes</th><td>{{ record.notes }}</td></tr>{% endif %}
+            <tr><th>Submitted by</th><td>{{ record.submitted_display }}{% if record.submitted_company %} ({{ record.submitted_company }}){% endif %}</td></tr>
+            <tr><th>Recorded</th><td>{{ record.created_at_display }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/report-unidentified">
+      <div>
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          <option value="">Select a category</option>
+          {% for key, label in categories %}
+          <option value="{{ key }}" {% if form.category == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="name">Location name</label>
+        <input id="name" name="name" type="text" value="{{ form.name }}" required>
+      </div>
+      <div class="grid two">
+        <div>
+          <label for="latitude">Latitude</label>
+          <input id="latitude" name="latitude" type="text" value="{{ form.latitude }}" placeholder="e.g. 54.612345" required>
+        </div>
+        <div>
+          <label for="longitude">Longitude</label>
+          <input id="longitude" name="longitude" type="text" value="{{ form.longitude }}" placeholder="e.g. -5.933210" required>
+        </div>
+      </div>
+      <div>
+        <label for="address">Address</label>
+        <textarea id="address" name="address" required>{{ form.address }}</textarea>
+      </div>
+      <div>
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes" name="notes" placeholder="Add any extra detail that will help us locate or classify the site.">{{ form.notes }}</textarea>
+      </div>
+      <div class="submit-row">
+        <button class="btn primary" type="submit">Submit report</button>
+      </div>
+    </form>
+  </main>
+  <footer>
+    Reports are routed to the GeoProx data team for validation. Verified locations will surface in the desktop map on future data refreshes.
+  </footer>
+</body>
+</html>

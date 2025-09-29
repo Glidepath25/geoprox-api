@@ -68,29 +68,81 @@
       font-size: 0.95rem;
       line-height: 1.5;
     }
-    .promo-frame {
+    .promo-showcase {
       flex: 1;
-      min-height: 540px;
-      max-height: 80vh;
+      padding: 1.6rem 1.8rem;
       border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: var(--panel-alt);
-    }
-    .promo-frame iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .promo-placeholder {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(135deg, rgba(43,124,255,0.25), rgba(17,59,99,0.85));
       display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--muted);
-      padding: 24px;
-      text-align: center;
-      font-size: 0.9rem;
+      flex-direction: column;
+      gap: 1.6rem;
+      box-shadow: 0 14px 48px rgba(11, 23, 36, 0.55);
+    }
+    .promo-header h3 {
+      margin: 0;
+      font-size: 1.45rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .promo-header p {
+      margin: 0.65rem 0 0;
+      color: rgba(230, 241, 255, 0.78);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+    .promo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    .promo-feature {
+      background: rgba(6, 17, 27, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+    }
+    .promo-feature h4 {
+      margin: 0 0 0.4rem;
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .promo-feature p {
+      margin: 0;
+      color: rgba(230, 241, 255, 0.75);
+      font-size: 0.85rem;
+      line-height: 1.55;
+    }
+    .promo-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .promo-metric {
+      flex: 1;
+      min-width: 120px;
+      padding: 0.9rem 1rem;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .promo-metric strong {
+      display: block;
+      font-size: 1.2rem;
+      color: #ffffff;
+      margin-bottom: 0.25rem;
+    }
+    .promo-metric span {
+      color: rgba(230, 241, 255, 0.72);
+      font-size: 0.82rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    @media (max-width: 720px) {
+      .promo-showcase {
+        padding: 1.25rem 1.3rem;
+      }
     }
     .cta-group {
       display: flex;
@@ -227,7 +279,7 @@
     @media (max-width: 960px) {
       .layout { flex-direction: column; }
       .left-panel, .right-panel { max-width: none; }
-      .promo-frame { min-height: 400px; }
+      .promo-showcase { min-height: auto; }
     }
   </style>
 </head>
@@ -255,14 +307,39 @@
         <div class="alert error">{{ upgrade_error }}</div>
       {% endif %}
 
-      <div class="promo-frame">
-        {% if promo_pdf_url %}
-          <iframe src="{{ promo_pdf_url }}#toolbar=0&navpanes=0" title="GeoProx overview"></iframe>
-        {% else %}
-          <div class="promo-placeholder">
-            Add a promotional PDF by setting the LOGIN_PROMO_PDF environment variable.
+      <div class="promo-showcase">
+        <div class="promo-header">
+          <h3>Hazard intelligence for every permit</h3>
+          <p>GeoProx centralises your desktop assessments, field inspections, and sampling evidence so project teams can trust the data behind every dig. No more chasing email threads or dusty folders&mdash;everything you need is ready the moment you sign in.</p>
+        </div>
+        <div class="promo-grid">
+          <div class="promo-feature">
+            <h4>Instant desktop searches</h4>
+            <p>Run point or polygon proximity checks against the latest utility, environmental, and historical hazard datasets in seconds.</p>
           </div>
-        {% endif %}
+          <div class="promo-feature">
+            <h4>Site evidence that sticks</h4>
+            <p>Capture field photos, lab results, and sign-offs straight into the permit record&mdash;backed by tamper-evident PDFs.</p>
+          </div>
+          <div class="promo-feature">
+            <h4>Company-wide visibility</h4>
+            <p>See every permit your organisation has produced, complete with named contributors and a full audit trail.</p>
+          </div>
+        </div>
+        <div class="promo-metrics">
+          <div class="promo-metric">
+            <strong>5 min</strong>
+            <span>average desktop decision time</span>
+          </div>
+          <div class="promo-metric">
+            <strong>100&#43;</strong>
+            <span>hazard layers harmonised</span>
+          </div>
+          <div class="promo-metric">
+            <strong>24/7</strong>
+            <span>secure access across devices</span>
+          </div>
+        </div>
       </div>
 
       <div class="cta-group">
@@ -297,7 +374,7 @@
         <a href="/forgot-password">Forgot your password?</a>
       </div>
       <div class="footer">
-        Need help? <a href="mailto:geoprox@glidepathsolutions.co.uk">Contact your GeoProx administrator</a>.
+        Need help? <a href="mailto:useradmin@geoprox.co.uk">Contact your GeoProx administrator</a>.
       </div>
     </section>
   </div>
