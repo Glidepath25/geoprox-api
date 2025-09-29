@@ -16,6 +16,7 @@
     th { background:#18344d; text-transform:uppercase; font-size:0.8rem; letter-spacing:0.05em; }
     tr:last-child td { border-bottom:none; }
     .muted { color:#9fb3c7; }
+    .scope-note { margin-top:0.5rem; color:#9fb3c7; font-size:0.85rem; }
     .empty { margin-top:2rem; color:#9fb3c7; }
     .chip { display:inline-block; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.75rem; font-weight:600; }
     .chip-high { background:#6b1111; color:#fff; }
@@ -41,6 +42,9 @@
   </header>
   <main>
     <div class="muted">Signed in as {{ user }}</div>
+    {% if has_company_scope %}
+    <div class="scope-note">Showing searches from {{ visible_usernames | join(', ') }}.</div>
+    {% endif %}
     {% if items %}
     <table>
       <thead>
@@ -50,6 +54,7 @@
           <th>Radius (m)</th>
           <th>Outcome</th>
           <th>Permit</th>
+          <th>Created By</th>
           <th>Artifacts</th>
         </tr>
       </thead>
@@ -68,6 +73,13 @@
             {% endif %}
           </td>
           <td>{{ row.permit or '-' }}</td>
+          <td>
+            {% if row.owner_username %}
+              <span{% if row.owner_display_name and row.owner_display_name != row.owner_username %} title="{{ row.owner_display_name }}"{% endif %}>{{ row.owner_username }}</span>
+            {% else %}
+              <span class="muted">-</span>
+            {% endif %}
+          </td>
           <td>
             {% set pdf = row.pdf_path %}
             {% set map = row.map_path %}

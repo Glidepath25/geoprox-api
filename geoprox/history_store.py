@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from geoprox.db import USE_POSTGRES, get_postgres_conn
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 try:
     import boto3
@@ -228,18 +228,44 @@ def delete_history(username: str) -> None:
         conn.execute("DELETE FROM search_history WHERE username = ?", (username,))
 
 
-def get_history(username: str, limit: Optional[int] = 100) -> List[Dict[str, Any]]:
-    query = (
+
+def get_history(
+    username: str,
+    limit: Optional[int] = 100,
+    *,
+    visible_usernames: Optional[Iterable[str]] = None,
+) -> List[Dict[str, Any]]:
+    scope: List[str] = []
+    seen: Set[str] = set()
+
+    def _add_user(value: Optional[str]) -> None:
+        if not value or value in seen:
+            return
+        seen.add(value)
+        scope.append(value)
+
+    _add_user(username)
+    if visible_usernames is not None:
+        for value in visible_usernames:
+            _add_user(value)
+
+    if not scope:
+        return []
+
+    placeholder = "%s" if USE_POSTGRES else "?"
+    user_placeholders = ", ".join([placeholder] * len(scope))
+    sql = (
         "SELECT username, timestamp, location, radius_m, outcome, permit, pdf_path, map_path, result_json "
-        "FROM search_history WHERE username = ? ORDER BY timestamp DESC"
+        f"FROM search_history WHERE username IN ({user_placeholders}) ORDER BY timestamp DESC"
     )
+    params: List[Any] = list(scope)
     if limit is not None:
-        query += " LIMIT ?"
-        params: Iterable[Any] = (username, limit)
-    else:
-        params = (username,)
+        sql += f" LIMIT {placeholder}"
+        params.append(limit)
+
     with _get_conn() as conn:
-        rows = conn.execute(query, params).fetchall()
+        rows = conn.execute(sql, tuple(params)).fetchall()
+
     items: List[Dict[str, Any]] = []
     for row in rows:
         data = dict(row)

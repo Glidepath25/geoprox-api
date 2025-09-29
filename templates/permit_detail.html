@@ -134,6 +134,11 @@
     .summary-card {
       gap: 1.6rem;
     }
+    .scope-note {
+      margin: 0 0 1rem;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.85rem;
+    }
     .summary-meta-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -149,7 +154,10 @@
       border-radius: 16px;
       border: 1px solid rgba(255,255,255,0.12);
       padding: 1rem;
-      display: grid;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: stretch;
       gap: 0.8rem;
     }
     .summary-panel h3 {
@@ -466,6 +474,9 @@
 
     <section class="card summary-card">
       <h2>Summary</h2>
+      {% if has_company_scope %}
+      <p class="scope-note">Company members with access: {{ visible_usernames | join(', ') }}.</p>
+      {% endif %}
       {% set desktop_status = permit.desktop.status or 'Pending' %}
       {% set desktop_class = 'status-chip' %}
       {% if 'complete' in desktop_status.lower() %}{% set desktop_class = 'status-chip done' %}{% elif 'progress' in desktop_status.lower() %}{% set desktop_class = 'status-chip progress' %}{% elif 'pending' in desktop_status.lower() or 'start' in desktop_status.lower() %}{% set desktop_class = 'status-chip pending' %}{% endif %}
@@ -490,6 +501,17 @@
           <dt>Last updated</dt>
           <dd>{{ updated_at_display or '-' }}</dd>
         </div>
+        {% if permit.owner_username %}
+        <div>
+          <dt>Created by</dt>
+          <dd>
+            {{ permit.owner_display_name or permit.owner_username }}
+            {% if permit.owner_display_name and permit.owner_display_name != permit.owner_username %}
+              <span class="muted">({{ permit.owner_username }})</span>
+            {% endif %}
+          </dd>
+        </div>
+        {% endif %}
         <div>
           <dt>Location</dt>
           <dd>

@@ -548,7 +548,12 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
     request.session["user_id"] = user["id"]
     request.session["is_admin"] = bool(user["is_admin"])
     request.session["display_name"] = user["name"]
-    history_rows = history_store.get_history(user["username"], limit=5)
+    scope_usernames, _ = _resolve_company_scope(user["username"])
+    history_rows = history_store.get_history(
+        user["username"],
+        limit=5,
+        visible_usernames=scope_usernames,
+    )
     session_history = []
     for row in reversed(history_rows):
         session_history.append({
@@ -560,6 +565,56 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
             "mode": "point",
         })
     request.session["history"] = session_history
+
+
+
+
+def _resolve_company_scope(username: str) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
+    '''Return the usernames a viewer can access plus a lookup of user records.'''
+    record = user_store.get_user_by_username(username)
+    if not record:
+        return [username], {}
+
+    company_id = record.get('company_id')
+    members: List[Dict[str, Any]] = []
+    if company_id:
+        try:
+            members = user_store.list_users(include_disabled=True, company_id=company_id)
+        except Exception:
+            members = []
+    seen: Set[str] = set()
+    scope: List[str] = []
+    user_map: Dict[str, Dict[str, Any]] = {}
+
+    def _register(member: Dict[str, Any]) -> None:
+        raw_username = member.get('username')
+        if not raw_username:
+            return
+        uname = str(raw_username).strip()
+        if not uname or uname in seen:
+            return
+        seen.add(uname)
+        scope.append(uname)
+        user_map[uname] = member
+
+    for member in members:
+        if isinstance(member, dict):
+            _register(member)
+
+    if isinstance(record, dict):
+        _register(record)
+
+    if username and username not in seen:
+        scope.append(username)
+        user_map[username] = record
+
+    ordered: List[str] = []
+    if username and username in user_map:
+        ordered.append(username)
+    for uname in sorted(u for u in scope if u != username):
+        ordered.append(uname)
+
+    return ordered or [username], user_map
 
 
 def _render_login(
@@ -1272,7 +1327,7 @@ async def _save_sample_attachment(permit_ref: str, category: str, upload: Upload
 
 
 
-def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
+def _permit_to_response(record: Dict[str, Any], owner_display_name: Optional[str] = None) -> PermitRecordResp:
     location = record.get("location") or {}
     desktop = record.get("desktop") or {}
     site = record.get("site") or {}
@@ -1309,6 +1364,10 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
     site_notes = site.get("notes") if isinstance(site.get("notes"), str) else None
     sample_notes = sample.get("notes") if isinstance(sample.get("notes"), str) else None
 
+    owner_username_raw = record.get("username")
+    owner_username = str(owner_username_raw).strip() if owner_username_raw else None
+    owner_display = owner_display_name or owner_username
+
     return PermitRecordResp(
         permit_ref=str(record.get("permit_ref", "")),
         created_at=_to_iso(record.get("created_at")),
@@ -1339,6 +1398,8 @@ def _permit_to_response(record: Dict[str, Any]) -> PermitRecordResp:
             summary=sample_summary,
             payload=sample_payload,
         ),
+        owner_username=owner_username,
+        owner_display_name=owner_display,
         search_result=search_payload,
     )
 
@@ -1754,6 +1815,8 @@ class PermitRecordResp(BaseModel):
     desktop: PermitStage
     site: PermitStage
     sample: PermitStage
+    owner_username: Optional[str] = None
+    owner_display_name: Optional[str] = None
     search_result: Optional[Dict[str, Any]] = None
 
     class Config:
@@ -1802,6 +1865,8 @@ class PermitSearchItem(BaseModel):
     sample_status: Optional[str] = None
     sample_outcome: Optional[str] = None
     sample_date: Optional[str] = None
+    owner_username: Optional[str] = None
+    owner_display_name: Optional[str] = None
 
 class SearchReq(BaseModel):
     location: str = Field(..., description="lat,lon or ///what.three.words")
@@ -1838,8 +1903,24 @@ def auth_status(request: Request):
 @app.get("/api/history")
 def api_history(request: Request):
     username = _require_user(request)
-    items = history_store.get_history(username, limit=20)
-    return {"history": items}
+    scope_usernames, user_map = _resolve_company_scope(username)
+    items = history_store.get_history(
+        username,
+        limit=20,
+        visible_usernames=scope_usernames,
+    )
+    enriched: List[Dict[str, Any]] = []
+    for item in items:
+        entry = dict(item)
+        owner = entry.get("username")
+        entry["owner_username"] = owner
+        owner_record = user_map.get(owner) if owner else None
+        if owner_record and owner_record.get("name"):
+            entry["owner_display_name"] = owner_record.get("name")
+        else:
+            entry["owner_display_name"] = owner
+        enriched.append(entry)
+    return {"history": enriched}
 
 
 
@@ -1865,8 +1946,24 @@ async def permits_page(request: Request) -> HTMLResponse:
     if not username:
         return RedirectResponse(url="/", status_code=303)
     flashes = _consume_flashes(request)
-    raw_results = permit_store.search_permits(username, "", limit=20)
-    initial_results = [PermitSearchItem(**item).model_dump() for item in raw_results]
+    scope_usernames, user_map = _resolve_company_scope(username)
+    raw_results = permit_store.search_permits(
+        username,
+        "",
+        limit=20,
+        visible_usernames=scope_usernames,
+    )
+    initial_results: List[Dict[str, Any]] = []
+    for item in raw_results:
+        enriched = dict(item)
+        owner = enriched.pop("username", None)
+        enriched["owner_username"] = owner
+        owner_record = user_map.get(owner) if owner else None
+        if owner_record and owner_record.get("name"):
+            enriched["owner_display_name"] = owner_record.get("name")
+        else:
+            enriched["owner_display_name"] = owner
+        initial_results.append(PermitSearchItem(**enriched).model_dump())
     return templates.TemplateResponse(
         "permits.html",
         {
@@ -1875,6 +1972,8 @@ async def permits_page(request: Request) -> HTMLResponse:
             "display_name": request.session.get("display_name") or username,
             "initial_results": initial_results,
             "flashes": flashes,
+            "has_company_scope": len(scope_usernames) > 1,
+            "visible_usernames": scope_usernames,
         },
     )
 
@@ -1882,10 +1981,28 @@ async def permits_page(request: Request) -> HTMLResponse:
 @app.get("/permits/{permit_ref}/view", response_class=HTMLResponse)
 async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     username = _require_user(request)
-    record = permit_store.get_permit(username, permit_ref)
+    scope_usernames, user_map = _resolve_company_scope(username)
+    owner_param = request.query_params.get("owner")
+    if owner_param:
+        owner_param = owner_param.strip() or None
+    if owner_param and owner_param not in scope_usernames:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    record = permit_store.get_permit(
+        username,
+        permit_ref,
+        owner_username=owner_param,
+        allowed_usernames=scope_usernames,
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
-    permit = _permit_to_response(record)
+    owner_username = record.get("username")
+    owner_record = user_map.get(owner_username) if owner_username else None
+    owner_display = None
+    if owner_record and owner_record.get("name"):
+        owner_display = owner_record.get("name")
+    elif owner_username:
+        owner_display = owner_username
+    permit = _permit_to_response(record, owner_display_name=owner_display)
     flashes = _consume_flashes(request)
     site_payload = permit.site.payload or {}
     if not isinstance(site_payload, dict):
@@ -1943,6 +2060,10 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
             "site_payload": site_payload,
             "site_form_items": site_form_items,
             "site_form": form_payload or {},
+            "has_company_scope": len(scope_usernames) > 1,
+            "visible_usernames": scope_usernames,
+            "owner_username": permit.owner_username,
+            "owner_display_name": permit.owner_display_name,
             "detail_fields": SITE_ASSESSMENT_DETAIL_FIELDS,
             "question_meta": SITE_ASSESSMENT_QUESTIONS,
             "question_sections": SITE_ASSESSMENT_QUESTION_SECTIONS,
@@ -1973,10 +2094,28 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
 @app.get("/permits/{permit_ref}/site-assessment", response_class=HTMLResponse)
 async def site_assessment_page(request: Request, permit_ref: str) -> HTMLResponse:
     username = _require_user(request)
-    record = permit_store.get_permit(username, permit_ref)
+    scope_usernames, user_map = _resolve_company_scope(username)
+    owner_param = request.query_params.get("owner")
+    if owner_param:
+        owner_param = owner_param.strip() or None
+    if owner_param and owner_param not in scope_usernames:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    record = permit_store.get_permit(
+        username,
+        permit_ref,
+        owner_username=owner_param,
+        allowed_usernames=scope_usernames,
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
-    permit = _permit_to_response(record)
+    owner_username = record.get("username")
+    owner_record = user_map.get(owner_username) if owner_username else None
+    owner_display = None
+    if owner_record and owner_record.get("name"):
+        owner_display = owner_record.get("name")
+    elif owner_username:
+        owner_display = owner_username
+    permit = _permit_to_response(record, owner_display_name=owner_display)
     flashes = _consume_flashes(request)
     site_payload = permit.site.payload or {}
     if not isinstance(site_payload, dict):
@@ -2204,10 +2343,28 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
 @app.get("/permits/{permit_ref}/sample-testing", response_class=HTMLResponse)
 async def sample_testing_page(request: Request, permit_ref: str) -> HTMLResponse:
     username = _require_user(request)
-    record = permit_store.get_permit(username, permit_ref)
+    scope_usernames, user_map = _resolve_company_scope(username)
+    owner_param = request.query_params.get("owner")
+    if owner_param:
+        owner_param = owner_param.strip() or None
+    if owner_param and owner_param not in scope_usernames:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    record = permit_store.get_permit(
+        username,
+        permit_ref,
+        owner_username=owner_param,
+        allowed_usernames=scope_usernames,
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
-    permit = _permit_to_response(record)
+    owner_username = record.get("username")
+    owner_record = user_map.get(owner_username) if owner_username else None
+    owner_display = None
+    if owner_record and owner_record.get("name"):
+        owner_display = owner_record.get("name")
+    elif owner_username:
+        owner_display = owner_username
+    permit = _permit_to_response(record, owner_display_name=owner_display)
     flashes = _consume_flashes(request)
 
     sample_payload = permit.sample.payload or {}
@@ -2477,7 +2634,12 @@ def get_artifact(request: Request, path: str):
 @app.get("/history", response_class=HTMLResponse)
 def history_page(request: Request) -> HTMLResponse:
     user = _require_user(request)
-    raw_items = history_store.get_history(user, limit=200)
+    scope_usernames, user_map = _resolve_company_scope(user)
+    raw_items = history_store.get_history(
+        user,
+        limit=200,
+        visible_usernames=scope_usernames,
+    )
     items: List[Dict[str, Any]] = []
     for row in raw_items:
         entry = dict(row)
@@ -2494,12 +2656,21 @@ def history_page(request: Request) -> HTMLResponse:
             entry.get("map_path"),
             entry.get("map_relative_path"),
         )
+        owner = entry.get("username")
+        owner_record = user_map.get(owner) if owner else None
+        entry["owner_username"] = owner
+        if owner_record and owner_record.get("name"):
+            entry["owner_display_name"] = owner_record.get("name")
+        else:
+            entry["owner_display_name"] = owner
         items.append(entry)
     return templates.TemplateResponse("history.html", {
         "request": request,
         "user": user,
         "items": items,
         "is_admin": bool(request.session.get("is_admin")),
+        "has_company_scope": len(scope_usernames) > 1,
+        "visible_usernames": scope_usernames,
     })
 
 @app.get("/admin/users", response_class=HTMLResponse)
@@ -2968,23 +3139,60 @@ async def api_admin_update_company(request: Request, company_id: int, payload: A
 @app.get("/api/permits/search", response_model=List[PermitSearchItem])
 def api_search_permits(request: Request, query: str = "", limit: int = 20):
     username = _require_user(request)
-    items = permit_store.search_permits(username, query, limit)
-    return [PermitSearchItem(**item) for item in items]
+    scope_usernames, user_map = _resolve_company_scope(username)
+    items = permit_store.search_permits(
+        username,
+        query,
+        limit,
+        visible_usernames=scope_usernames,
+    )
+    results: List[PermitSearchItem] = []
+    for item in items:
+        enriched = dict(item)
+        owner = enriched.pop("username", None)
+        enriched["owner_username"] = owner
+        owner_record = user_map.get(owner) if owner else None
+        if owner_record and owner_record.get("name"):
+            enriched["owner_display_name"] = owner_record.get("name")
+        else:
+            enriched["owner_display_name"] = owner
+        results.append(PermitSearchItem(**enriched))
+    return results
 
 
 @app.get("/api/permits/export")
 def api_export_permits(request: Request, query: str = "", limit: int = 500):
     username = _require_user(request)
+    scope_usernames, user_map = _resolve_company_scope(username)
     try:
         safe_limit = int(limit or 500)
     except (TypeError, ValueError):
         safe_limit = 500
     safe_limit = max(1, min(safe_limit, 2000))
-    items = permit_store.search_permits(username, query, safe_limit)
+    items = permit_store.search_permits(
+        username,
+        query,
+        safe_limit,
+        visible_usernames=scope_usernames,
+    )
+
+    enriched_items: List[Dict[str, Any]] = []
+    for item in items:
+        enriched = dict(item)
+        owner = enriched.pop("username", None)
+        enriched["owner_username"] = owner
+        owner_record = user_map.get(owner) if owner else None
+        if owner_record and owner_record.get("name"):
+            enriched["owner_display_name"] = owner_record.get("name")
+        else:
+            enriched["owner_display_name"] = owner
+        enriched_items.append(enriched)
+    items = enriched_items
 
     EMPTY_TOKEN = "__EMPTY__"
     filter_fields = [
         "permit_ref",
+        "owner_username",
         "desktop_status",
         "desktop_outcome",
         "site_status",
@@ -2995,6 +3203,7 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
     ]
     column_map = {
         "permit_ref": "Permit",
+        "owner_username": "Created By",
         "desktop_status": "Desktop Status",
         "desktop_outcome": "Desktop Outcome",
         "site_status": "Field Status",
@@ -3012,6 +3221,7 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
 
     columns = [
         "Permit",
+        "Created By",
         "Desktop Status",
         "Desktop Outcome",
         "Field Status",
@@ -3057,6 +3267,7 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
         rows.append(
             {
                 "Permit": item.get("permit_ref") or "",
+                "Created By": item.get("owner_username") or "",
                 "Desktop Status": item.get("desktop_status") or "",
                 "Desktop Outcome": item.get("desktop_outcome") or "",
                 "Field Status": item.get("site_status") or "",
@@ -3125,15 +3336,31 @@ def api_save_permit_record(request: Request, payload: PermitSaveReq):
 
 
 @app.get("/api/permits/{permit_ref}", response_model=PermitRecordResp)
-def api_get_permit_record(request: Request, permit_ref: str):
+def api_get_permit_record(request: Request, permit_ref: str, owner: Optional[str] = None):
     username = _require_user(request)
     ref = (permit_ref or "").strip()
     if not ref:
         raise HTTPException(status_code=400, detail="Permit reference is required.")
-    record = permit_store.get_permit(username, ref)
+    scope_usernames, user_map = _resolve_company_scope(username)
+    owner_param = owner.strip() if owner else None
+    if owner_param == "":
+        owner_param = None
+    record = permit_store.get_permit(
+        username,
+        ref,
+        owner_username=owner_param,
+        allowed_usernames=scope_usernames,
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Permit record not found.")
-    return _permit_to_response(record)
+    owner_username = record.get("username")
+    owner_record = user_map.get(owner_username) if owner_username else None
+    owner_display = None
+    if owner_record and owner_record.get("name"):
+        owner_display = owner_record.get("name")
+    elif owner_username:
+        owner_display = owner_username
+    return _permit_to_response(record, owner_display_name=owner_display)
 
 
 @app.post("/api/permits/{permit_ref}/site-assessment", response_model=PermitRecordResp)

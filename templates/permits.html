@@ -155,6 +155,11 @@
       color: var(--muted);
       font-size: 0.85rem;
     }
+    .scope-note {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
     .flash-list {
       display: grid;
       gap: 0.6rem;
@@ -404,11 +409,15 @@
         <h2>Matching permits</h2>
         <button id="downloadBtn" type="button" class="nav-btn hidden">Download data</button>
       </div>
+      {% if has_company_scope %}
+      <p class="scope-note">Showing permits created by {{ visible_usernames | join(', ') }}.</p>
+      {% endif %}
       <div id="resultsWrapper" class="table-wrapper hidden">
         <table class="results-table">
           <thead>
             <tr>
               <th scope="col">Permit</th>
+              <th scope="col">Created By</th>
               <th scope="col">Desktop Status</th>
               <th scope="col">Desktop Outcome</th>
               <th scope="col">Field Status</th>
@@ -422,6 +431,7 @@
             </tr>
             <tr class="filter-row">
               <th><div class="filter-anchor" data-field="permit_ref"></div></th>
+              <th><div class="filter-anchor" data-field="owner_username"></div></th>
               <th><div class="filter-anchor" data-field="desktop_status"></div></th>
               <th><div class="filter-anchor" data-field="desktop_outcome"></div></th>
               <th><div class="filter-anchor" data-field="site_status"></div></th>
@@ -469,6 +479,7 @@
 
       const filterConfig = [
         { field: 'permit_ref', accessor: (item) => item.permit_ref || '' },
+        { field: 'owner_username', accessor: (item) => item.owner_username || '' },
         { field: 'desktop_status', accessor: (item) => item.desktop_status || '' },
         { field: 'desktop_outcome', accessor: (item) => item.desktop_outcome || '' },
         { field: 'site_status', accessor: (item) => item.site_status || '' },
@@ -737,13 +748,25 @@
           const permitCell = document.createElement('td');
           if (item.permit_ref) {
             const link = document.createElement('a');
-            link.href = `/permits/${encodeURIComponent(item.permit_ref)}/view`;
+            let href = `/permits/${encodeURIComponent(item.permit_ref)}/view`;
+            if (item.owner_username) {
+              href += `?owner=${encodeURIComponent(item.owner_username)}`;
+            }
+            link.href = href;
             link.textContent = item.permit_ref;
             permitCell.appendChild(link);
           } else {
             permitCell.textContent = '-';
           }
           row.appendChild(permitCell);
+
+          const ownerCell = document.createElement('td');
+          const ownerLabel = item.owner_username || '-';
+          ownerCell.textContent = ownerLabel;
+          if (item.owner_display_name && item.owner_display_name !== ownerLabel) {
+            ownerCell.title = item.owner_display_name;
+          }
+          row.appendChild(ownerCell);
 
           row.appendChild(buildStatusCell(item.desktop_status, 'Pending'));
 
