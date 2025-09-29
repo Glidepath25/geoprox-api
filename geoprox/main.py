@@ -13,7 +13,7 @@ from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 try:
     import boto3  # type: ignore
     from botocore.exceptions import BotoCoreError, ClientError  # type: ignore
@@ -549,11 +549,7 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
     request.session["is_admin"] = bool(user["is_admin"])
     request.session["display_name"] = user["name"]
     scope_usernames, _ = _resolve_company_scope(user["username"])
-    history_rows = history_store.get_history(
-        user["username"],
-        limit=5,
-        visible_usernames=scope_usernames,
-    )
+    history_rows = _collect_history_rows(user["username"], scope_usernames, 5)
     session_history = []
     for row in reversed(history_rows):
         session_history.append({
@@ -615,6 +611,193 @@ def _resolve_company_scope(username: str) -> Tuple[List[str], Dict[str, Dict[str
         ordered.append(uname)
 
     return ordered or [username], user_map
+
+
+MIN_TIMESTAMP = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _parse_timestamp(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        dt = value
+    elif value is None:
+        return None
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            dt = datetime.fromisoformat(text)
+        except ValueError:
+            try:
+                dt = datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return None
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _sort_permit_rows(rows: List[Dict[str, Any]], limit: Optional[int]) -> List[Dict[str, Any]]:
+    seen: Set[Tuple[Optional[str], Optional[str]]] = set()
+    unique: List[Dict[str, Any]] = []
+    for entry in rows:
+        key = (entry.get("username"), entry.get("permit_ref"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(entry)
+    unique.sort(
+        key=lambda item: _parse_timestamp(item.get("updated_at") or item.get("created_at")) or MIN_TIMESTAMP,
+        reverse=True,
+    )
+    if limit is not None:
+        unique = unique[:limit]
+    return unique
+
+
+def _collect_permit_records(username: str, query: str, limit: int, scope_usernames: List[str]) -> List[Dict[str, Any]]:
+    scope = scope_usernames or [username]
+    try:
+        items = permit_store.search_permits(
+            username,
+            query,
+            limit,
+            visible_usernames=scope,
+        )
+        records = []
+        for item in items:
+            entry = dict(item)
+            if not entry.get("username"):
+                entry["username"] = username
+            records.append(entry)
+        return _sort_permit_rows(records, limit)
+    except TypeError:
+        combined: List[Dict[str, Any]] = []
+        for candidate in scope:
+            rows = permit_store.search_permits(candidate, query, limit)
+            for row in rows:
+                entry = dict(row)
+                if not entry.get("username"):
+                    entry["username"] = candidate
+                combined.append(entry)
+        return _sort_permit_rows(combined, limit)
+
+
+def _enrich_permit_items(records: List[Dict[str, Any]], user_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    enriched: List[Dict[str, Any]] = []
+    for record in records:
+        entry = dict(record)
+        owner_username = entry.get("username")
+        owner_display = None
+        if owner_username:
+            owner_record = user_map.get(owner_username)
+            if owner_record and owner_record.get("name"):
+                owner_display = owner_record.get("name")
+        entry["owner_username"] = owner_username
+        entry["owner_display_name"] = owner_display or owner_username
+        enriched.append(entry)
+    return enriched
+
+
+def _merge_history_rows(rows: List[Dict[str, Any]], limit: Optional[int]) -> List[Dict[str, Any]]:
+    seen: Set[Tuple[Optional[str], Optional[str], Optional[str]]] = set()
+    unique: List[Dict[str, Any]] = []
+    for entry in rows:
+        key = (entry.get("username"), entry.get("timestamp"), entry.get("permit"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(entry)
+    unique.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or MIN_TIMESTAMP, reverse=True)
+    if limit is not None:
+        unique = unique[:limit]
+    return unique
+
+
+def _collect_history_rows(username: str, scope_usernames: List[str], limit: Optional[int]) -> List[Dict[str, Any]]:
+    scope = scope_usernames or [username]
+    try:
+        rows = history_store.get_history(
+            username,
+            limit=limit,
+            visible_usernames=scope,
+        )
+        prepared: List[Dict[str, Any]] = []
+        for row in rows:
+            entry = dict(row)
+            if not entry.get("username"):
+                entry["username"] = username
+            prepared.append(entry)
+        return _merge_history_rows(prepared, limit)
+    except TypeError:
+        combined: List[Dict[str, Any]] = []
+        for candidate in scope:
+            rows = history_store.get_history(candidate, limit=limit)
+            for row in rows:
+                entry = dict(row)
+                if not entry.get("username"):
+                    entry["username"] = candidate
+                combined.append(entry)
+        return _merge_history_rows(combined, limit)
+
+
+def _annotate_history_rows(rows: List[Dict[str, Any]], user_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    annotated: List[Dict[str, Any]] = []
+    for row in rows:
+        entry = dict(row)
+        owner_username = entry.get("username")
+        owner_display = None
+        if owner_username:
+            owner_record = user_map.get(owner_username)
+            if owner_record and owner_record.get("name"):
+                owner_display = owner_record.get("name")
+        entry["owner_username"] = owner_username
+        entry["owner_display_name"] = owner_display or owner_username
+        annotated.append(entry)
+    return annotated
+
+
+def _get_permit_record(
+    username: str,
+    permit_ref: str,
+    owner_username: Optional[str],
+    scope_usernames: List[str],
+) -> Optional[Dict[str, Any]]:
+    scope = scope_usernames or [username]
+    try:
+        record = permit_store.get_permit(
+            username,
+            permit_ref,
+            owner_username=owner_username,
+            allowed_usernames=scope,
+        )
+        if record and not record.get("username"):
+            record = dict(record)
+            record["username"] = owner_username or username
+        return record
+    except TypeError:
+        candidates: List[str] = []
+        if owner_username:
+            candidates.append(owner_username)
+        candidates.extend(scope)
+        seen: Set[str] = set()
+        for candidate in candidates or [username]:
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            candidate_record = permit_store.get_permit(candidate, permit_ref)
+            if candidate_record:
+                record = dict(candidate_record)
+                if not record.get("username"):
+                    record["username"] = candidate
+                return record
+    return None
 
 
 def _render_login(
@@ -1904,23 +2087,9 @@ def auth_status(request: Request):
 def api_history(request: Request):
     username = _require_user(request)
     scope_usernames, user_map = _resolve_company_scope(username)
-    items = history_store.get_history(
-        username,
-        limit=20,
-        visible_usernames=scope_usernames,
-    )
-    enriched: List[Dict[str, Any]] = []
-    for item in items:
-        entry = dict(item)
-        owner = entry.get("username")
-        entry["owner_username"] = owner
-        owner_record = user_map.get(owner) if owner else None
-        if owner_record and owner_record.get("name"):
-            entry["owner_display_name"] = owner_record.get("name")
-        else:
-            entry["owner_display_name"] = owner
-        enriched.append(entry)
-    return {"history": enriched}
+    rows = _collect_history_rows(username, scope_usernames, 20)
+    annotated = _annotate_history_rows(rows, user_map)
+    return {"history": annotated}
 
 
 
@@ -1947,23 +2116,13 @@ async def permits_page(request: Request) -> HTMLResponse:
         return RedirectResponse(url="/", status_code=303)
     flashes = _consume_flashes(request)
     scope_usernames, user_map = _resolve_company_scope(username)
-    raw_results = permit_store.search_permits(
-        username,
-        "",
-        limit=20,
-        visible_usernames=scope_usernames,
-    )
-    initial_results: List[Dict[str, Any]] = []
-    for item in raw_results:
-        enriched = dict(item)
-        owner = enriched.pop("username", None)
-        enriched["owner_username"] = owner
-        owner_record = user_map.get(owner) if owner else None
-        if owner_record and owner_record.get("name"):
-            enriched["owner_display_name"] = owner_record.get("name")
-        else:
-            enriched["owner_display_name"] = owner
-        initial_results.append(PermitSearchItem(**enriched).model_dump())
+    permit_records = _collect_permit_records(username, "", 20, scope_usernames)
+    annotated_results = _enrich_permit_items(permit_records, user_map)
+    field_names = PermitSearchItem.model_fields.keys()
+    initial_results: List[Dict[str, Any]] = [
+        PermitSearchItem(**{field: entry.get(field) for field in field_names}).model_dump()
+        for entry in annotated_results
+    ]
     return templates.TemplateResponse(
         "permits.html",
         {
@@ -1982,26 +2141,21 @@ async def permits_page(request: Request) -> HTMLResponse:
 async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     username = _require_user(request)
     scope_usernames, user_map = _resolve_company_scope(username)
-    owner_param = request.query_params.get("owner")
-    if owner_param:
-        owner_param = owner_param.strip() or None
+    owner_param_raw = request.query_params.get("owner")
+    owner_param = owner_param_raw.strip() or None if owner_param_raw else None
     if owner_param and owner_param not in scope_usernames:
         raise HTTPException(status_code=404, detail="Permit not found")
-    record = permit_store.get_permit(
-        username,
-        permit_ref,
-        owner_username=owner_param,
-        allowed_usernames=scope_usernames,
-    )
+    record = _get_permit_record(username, permit_ref, owner_param, scope_usernames)
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
     owner_username = record.get("username")
-    owner_record = user_map.get(owner_username) if owner_username else None
     owner_display = None
-    if owner_record and owner_record.get("name"):
-        owner_display = owner_record.get("name")
-    elif owner_username:
-        owner_display = owner_username
+    if owner_username:
+        owner_record = user_map.get(owner_username)
+        if owner_record and owner_record.get("name"):
+            owner_display = owner_record.get("name")
+        else:
+            owner_display = owner_username
     permit = _permit_to_response(record, owner_display_name=owner_display)
     flashes = _consume_flashes(request)
     site_payload = permit.site.payload or {}
@@ -2635,13 +2789,10 @@ def get_artifact(request: Request, path: str):
 def history_page(request: Request) -> HTMLResponse:
     user = _require_user(request)
     scope_usernames, user_map = _resolve_company_scope(user)
-    raw_items = history_store.get_history(
-        user,
-        limit=200,
-        visible_usernames=scope_usernames,
-    )
+    raw_items = _collect_history_rows(user, scope_usernames, 200)
+    annotated_rows = _annotate_history_rows(raw_items, user_map)
     items: List[Dict[str, Any]] = []
-    for row in raw_items:
+    for row in annotated_rows:
         entry = dict(row)
         entry["timestamp_display"] = _format_ddmmyy(entry.get("timestamp"), include_time=True)
         entry["pdf_path"] = _resolve_artifact_url(
@@ -2656,13 +2807,6 @@ def history_page(request: Request) -> HTMLResponse:
             entry.get("map_path"),
             entry.get("map_relative_path"),
         )
-        owner = entry.get("username")
-        owner_record = user_map.get(owner) if owner else None
-        entry["owner_username"] = owner
-        if owner_record and owner_record.get("name"):
-            entry["owner_display_name"] = owner_record.get("name")
-        else:
-            entry["owner_display_name"] = owner
         items.append(entry)
     return templates.TemplateResponse("history.html", {
         "request": request,
@@ -3140,24 +3284,13 @@ async def api_admin_update_company(request: Request, company_id: int, payload: A
 def api_search_permits(request: Request, query: str = "", limit: int = 20):
     username = _require_user(request)
     scope_usernames, user_map = _resolve_company_scope(username)
-    items = permit_store.search_permits(
-        username,
-        query,
-        limit,
-        visible_usernames=scope_usernames,
-    )
-    results: List[PermitSearchItem] = []
-    for item in items:
-        enriched = dict(item)
-        owner = enriched.pop("username", None)
-        enriched["owner_username"] = owner
-        owner_record = user_map.get(owner) if owner else None
-        if owner_record and owner_record.get("name"):
-            enriched["owner_display_name"] = owner_record.get("name")
-        else:
-            enriched["owner_display_name"] = owner
-        results.append(PermitSearchItem(**enriched))
-    return results
+    permit_records = _collect_permit_records(username, query, limit, scope_usernames)
+    annotated = _enrich_permit_items(permit_records, user_map)
+    field_names = PermitSearchItem.model_fields.keys()
+    return [
+        PermitSearchItem(**{field: entry.get(field) for field in field_names})
+        for entry in annotated
+    ]
 
 
 @app.get("/api/permits/export")
@@ -3169,25 +3302,8 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
     except (TypeError, ValueError):
         safe_limit = 500
     safe_limit = max(1, min(safe_limit, 2000))
-    items = permit_store.search_permits(
-        username,
-        query,
-        safe_limit,
-        visible_usernames=scope_usernames,
-    )
-
-    enriched_items: List[Dict[str, Any]] = []
-    for item in items:
-        enriched = dict(item)
-        owner = enriched.pop("username", None)
-        enriched["owner_username"] = owner
-        owner_record = user_map.get(owner) if owner else None
-        if owner_record and owner_record.get("name"):
-            enriched["owner_display_name"] = owner_record.get("name")
-        else:
-            enriched["owner_display_name"] = owner
-        enriched_items.append(enriched)
-    items = enriched_items
+    permit_records = _collect_permit_records(username, query, safe_limit, scope_usernames)
+    annotated_items = _enrich_permit_items(permit_records, user_map)
 
     EMPTY_TOKEN = "__EMPTY__"
     filter_fields = [
@@ -3259,7 +3375,7 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
         return EMPTY_TOKEN if not text else text
 
     rows: List[Dict[str, Any]] = []
-    for item in items:
+    for item in annotated_items:
         bituminous_value = item.get("site_bituminous") or item.get("site_outcome") or ""
         sub_base_value = item.get("site_sub_base") or item.get("site_outcome") or ""
         desktop_date_value = _format_date(item.get("desktop_date"), item.get("created_at"))
@@ -3345,21 +3461,17 @@ def api_get_permit_record(request: Request, permit_ref: str, owner: Optional[str
     owner_param = owner.strip() if owner else None
     if owner_param == "":
         owner_param = None
-    record = permit_store.get_permit(
-        username,
-        ref,
-        owner_username=owner_param,
-        allowed_usernames=scope_usernames,
-    )
+    record = _get_permit_record(username, ref, owner_param, scope_usernames)
     if not record:
         raise HTTPException(status_code=404, detail="Permit record not found.")
     owner_username = record.get("username")
-    owner_record = user_map.get(owner_username) if owner_username else None
     owner_display = None
-    if owner_record and owner_record.get("name"):
-        owner_display = owner_record.get("name")
-    elif owner_username:
-        owner_display = owner_username
+    if owner_username:
+        owner_record = user_map.get(owner_username)
+        if owner_record and owner_record.get("name"):
+            owner_display = owner_record.get("name")
+        else:
+            owner_display = owner_username
     return _permit_to_response(record, owner_display_name=owner_display)
 
 
