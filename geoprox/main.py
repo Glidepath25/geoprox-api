@@ -3036,13 +3036,14 @@ def history_page(request: Request) -> HTMLResponse:
     })
 
 @app.get("/admin/users", response_class=HTMLResponse)
-async def admin_users_page(request: Request, company_id: Optional[int] = None) -> HTMLResponse:
+async def admin_users_page(request: Request, company_id: Optional[str] = None) -> HTMLResponse:
+    company_id_value = _parse_optional_int(company_id)
     _, is_global_admin, managed_company_id = _require_user_management_scope(request)
     if not is_global_admin:
         if not managed_company_id:
             raise HTTPException(status_code=403, detail="Company access required")
-        company_id = managed_company_id
-    selected_company_id = company_id if is_global_admin else managed_company_id
+        company_id_value = managed_company_id
+    selected_company_id = company_id_value if is_global_admin else managed_company_id
     if is_global_admin:
         companies = user_store.list_companies(include_inactive=False)
     else:
@@ -4026,7 +4027,6 @@ def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
 
     if changed:
         payload["artifacts"] = updated
-
 
 
 

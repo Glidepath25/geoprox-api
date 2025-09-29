@@ -80,7 +80,7 @@
     <div class="muted">Signed in as {{ current_user }}</div>
 
     {% if is_global_admin %}
-    <section class="card collapsible" data-collapsible>
+    <section class="card collapsible" data-collapsible data-start-collapsed="true">
       <div class="collapsible-header">
         <h2>Companies</h2>
         <button type="button" class="collapsible-toggle" aria-expanded="true">Hide</button>
@@ -448,13 +448,14 @@
       const toggle = section.querySelector('.collapsible-toggle');
       const content = section.querySelector('.collapsible-content');
       if (!toggle || !content) { return; }
+      const startCollapsed = section.dataset.startCollapsed === "true";
       const setState = (collapsed) => {
         content.style.display = collapsed ? 'none' : '';
         section.classList.toggle('collapsed', collapsed);
         toggle.textContent = collapsed ? 'Show' : 'Hide';
         toggle.setAttribute('aria-expanded', (!collapsed).toString());
       };
-      setState(false);
+      setState(startCollapsed);
       const handle = (event) => {
         event.preventDefault();
         const collapsed = content.style.display !== 'none' ? true : false;
