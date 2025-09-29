@@ -3055,6 +3055,74 @@ def history_page(request: Request) -> HTMLResponse:
     })
 
 
+
+
+@app.get("/history/export")
+def history_export(request: Request, limit: int = 200):
+    username = _require_user(request)
+    scope_usernames, user_map = _resolve_company_scope(username)
+    try:
+        requested_limit = int(limit or 200)
+    except (TypeError, ValueError):
+        requested_limit = 200
+    safe_limit = max(1, min(requested_limit, 5000))
+    raw_items = _collect_history_rows(username, scope_usernames, safe_limit)
+    annotated_rows = _annotate_history_rows(raw_items, user_map)
+
+    buffer = StringIO()
+    fieldnames = [
+        "timestamp",
+        "timestamp_display",
+        "location",
+        "radius_m",
+        "outcome",
+        "permit",
+        "owner_username",
+        "owner_display_name",
+        "pdf_url",
+        "map_url",
+    ]
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+
+    for row in annotated_rows:
+        entry = dict(row)
+        timestamp_value = entry.get("timestamp") or ""
+        pdf_url = _resolve_artifact_url(
+            entry.get("pdf_path"),
+            entry.get("pdf_s3_key"),
+            entry.get("pdf_path"),
+            entry.get("pdf_relative_path"),
+        )
+        map_url = _resolve_artifact_url(
+            entry.get("map_path"),
+            entry.get("map_s3_key"),
+            entry.get("map_path"),
+            entry.get("map_relative_path"),
+        )
+        writer.writerow({
+            "timestamp": timestamp_value,
+            "timestamp_display": _format_ddmmyy(timestamp_value, include_time=True),
+            "location": entry.get("location") or "",
+            "radius_m": entry.get("radius_m") if entry.get("radius_m") is not None else "",
+            "outcome": entry.get("outcome") or "",
+            "permit": entry.get("permit") or "",
+            "owner_username": entry.get("owner_username") or "",
+            "owner_display_name": entry.get("owner_display_name") or "",
+            "pdf_url": pdf_url or "",
+            "map_url": map_url or "",
+        })
+
+    content = buffer.getvalue().encode("utf-8-sig")
+    filename = f"search_history_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.csv"
+    headers = {
+        "Content-Disposition": f"attachment; filename={filename}",
+        "Cache-Control": "no-store, max-age=0",
+        "Pragma": "no-cache",
+    }
+    return Response(content=content, media_type="text/csv; charset=utf-8", headers=headers)
+
+
 @app.get("/report-unidentified", response_class=HTMLResponse)
 async def report_unidentified_page(request: Request) -> HTMLResponse:
     _require_user(request)

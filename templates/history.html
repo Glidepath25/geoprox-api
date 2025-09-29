@@ -33,6 +33,8 @@
     <h1>Search History</h1>
     <div class="actions">
       <a class="btn" href="/app">Back to app</a>
+      {% set export_limit = items|length %}
+      <a class="btn" href="/history/export{% if export_limit %}?limit={{ export_limit }}{% endif %}" download>Download CSV</a>
       <a class="btn" href="/change-password">Change password</a>
       {% if is_admin %}<a class="btn" href="/admin/users">Manage users</a>{% endif %}
       <form method="post" action="/logout">
