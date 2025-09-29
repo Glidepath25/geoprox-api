@@ -1,4 +1,4 @@
-﻿# geoprox/main.py
+# geoprox/main.py
 from __future__ import annotations
 
 import os
@@ -3142,8 +3142,9 @@ async def admin_export_users(request: Request) -> Response:
         ])
     csv_content = buffer.getvalue()
     buffer.close()
-    filename = f"geoprox-users-{datetime.utcnow().strftime("%Y%m%d")}.csv"
+    filename = f"geoprox-users-{datetime.utcnow().strftime('%Y%m%d')}.csv"
     return Response(csv_content, media_type='text/csv', headers={"Content-Disposition": f"attachment; filename={filename}"})
+
 @app.post("/admin/users/create")
 async def admin_create_user(request: Request):
     manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
@@ -4025,7 +4026,6 @@ def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
 
     if changed:
         payload["artifacts"] = updated
-
 
 
 
