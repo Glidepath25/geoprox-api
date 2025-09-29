@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -76,6 +76,11 @@
       transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
       min-height: 160px;
     }
+    .option-card.disabled {
+      pointer-events: none;
+      opacity: 0.55;
+      border-style: dashed;
+    }
     .option-card:hover {
       transform: translateY(-4px);
       border-color: rgba(43,124,255,0.45);
@@ -106,6 +111,15 @@
       gap: .75rem;
     }
     .actions form { margin: 0; }
+    .role-chip {
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.2);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
     .nav-btn {
       background: rgba(255,255,255,0.08);
       color: var(--text);
@@ -135,6 +149,7 @@
     </div>
     <div class="actions">
       <div class="muted">{{ display_name }}</div>
+      <span class="role-chip">{{ user_type_label }}</span>
       <form method="post" action="/logout">
         <button class="nav-btn" type="submit">Sign out</button>
       </form>
@@ -142,12 +157,19 @@
   </header>
   <main>
     <h1>Welcome back, {{ display_name }}.</h1>
-    <p class="subtitle">Choose how you want to continue your proximity workflows.</p>
+    <p class="subtitle">{{ user_type_label }} access. Choose how you want to continue your proximity workflows.</p>
     <div class="option-grid">
+      {% if allow_desktop %}
       <a class="option-card primary" href="/app">
         <h2>Complete desktop proximity check</h2>
         <p>Launch the interactive map to perform a new search, review nearby hazards, and generate your desktop assessment pack.</p>
       </a>
+      {% else %}
+      <div class="option-card primary disabled">
+        <h2>Desktop proximity check</h2>
+        <p>Desktop workflows are available to desktop users only. Please contact your administrator if you need this access.</p>
+      </div>
+      {% endif %}
       <a class="option-card" href="/permits">
         <h2>Open an existing permit record</h2>
         <p>Search for a permit reference to review saved desktop outcomes, update assessment statuses, or capture a site inspection.</p>
@@ -162,3 +184,4 @@
   </main>
 </body>
 </html>
+

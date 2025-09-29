@@ -23,6 +23,12 @@ LICENSE_TIERS: Dict[str, Dict[str, Optional[int]]] = {
 }
 DEFAULT_LICENSE_TIER = "basic"
 
+USER_TYPES: Dict[str, str] = {
+    "desktop": "Desktop user",
+    "site": "Site user",
+}
+DEFAULT_USER_TYPE = "desktop"
+
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "users.db"
@@ -125,6 +131,21 @@ def get_license_monthly_limit(tier: str) -> Optional[int]:
 
 
 # ---------------------------------------------------------------------------
+# User type helpers
+# ---------------------------------------------------------------------------
+
+
+
+def normalize_user_type(user_type: Optional[str]) -> str:
+    if not user_type:
+        return DEFAULT_USER_TYPE
+    key = str(user_type).strip().lower()
+    if key not in USER_TYPES:
+        raise ValueError(f"Unknown user type '{user_type}'")
+    return key
+
+
+# ---------------------------------------------------------------------------
 # Password helpers
 # ---------------------------------------------------------------------------
 
@@ -188,6 +209,8 @@ def init_db() -> None:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_users_company ON users(company_id)")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT NOT NULL DEFAULT 'desktop'")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token TEXT")
         return
 
     with _get_conn() as conn:
@@ -250,6 +273,10 @@ def _ensure_additional_user_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN require_password_change INTEGER NOT NULL DEFAULT 0")
     if "license_tier" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN license_tier TEXT NOT NULL DEFAULT 'basic'")
+    if "user_type" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN user_type TEXT NOT NULL DEFAULT 'desktop'")
+    if "session_token" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN session_token TEXT")
 
 
 def _ensure_company(
@@ -334,12 +361,14 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "company_number": row["company_number"],
         "phone": row["phone"],
         "company_id": row["company_id"],
+        "user_type": row["user_type"] if "user_type" in row.keys() else DEFAULT_USER_TYPE,
         "license_tier": row["license_tier"] if "license_tier" in row.keys() else DEFAULT_LICENSE_TIER,
         "salt": row["salt"],
         "password_hash": row["password_hash"],
         "is_admin": bool(row["is_admin"]),
         "is_active": bool(row["is_active"]),
         "require_password_change": bool(row["require_password_change"]) if "require_password_change" in row.keys() else False,
+        "session_token": row["session_token"] if "session_token" in row.keys() else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -524,6 +553,7 @@ def create_user(
     company_number: str = "",
     phone: str = "",
     company_id: Optional[int] = None,
+    user_type: str = DEFAULT_USER_TYPE,
     is_admin: bool = False,
     is_active: bool = True,
     require_password_change: bool = True,
@@ -534,9 +564,10 @@ def create_user(
     password_hash = hash_password_hex(password, salt=salt)
     now = _now()
     normalized_tier = normalize_license_tier(license_tier)
+    normalized_user_type = normalize_user_type(user_type)
     sql = """
-        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, user_type, session_token, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     params = (
         username,
@@ -552,11 +583,13 @@ def create_user(
         _coerce_bool(is_active),
         _coerce_bool(require_password_change),
         normalized_tier,
+        normalized_user_type,
+        None,
         now,
         now,
     )
     if USE_POSTGRES:
-        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at"
+        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, user_type, session_token, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at"
         created_row: Optional[Dict[str, Any]] = None
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
@@ -611,6 +644,7 @@ def update_user(user_id: int, **fields: Any) -> None:
         "company_number",
         "phone",
         "company_id",
+        "user_type",
         "is_admin",
         "is_active",
         "require_password_change",
@@ -635,6 +669,10 @@ def update_user(user_id: int, **fields: Any) -> None:
             if value is None:
                 continue
             updates[key] = normalize_license_tier(value)
+        elif key == "user_type":
+            if value is None:
+                continue
+            updates[key] = normalize_user_type(value)
         elif key in {"is_admin", "is_active", "require_password_change"}:
             updates[key] = _coerce_bool(value)
         else:
@@ -664,6 +702,24 @@ def set_password(user_id: int, password: str, *, require_change: Optional[bool] 
             f"UPDATE users SET {', '.join(columns)} WHERE id = ?",
             values,
         )
+
+
+def set_session_token(user_id: int, token: Optional[str] = None) -> str:
+    value = token or secrets.token_urlsafe(32)
+    now = _now()
+    with _get_conn() as conn:
+        conn.execute("UPDATE users SET session_token = ?, updated_at = ? WHERE id = ?", (value, now, user_id))
+    return value
+
+
+def clear_session_token(username: str, *, expected_token: Optional[str] = None) -> None:
+    now = _now()
+    with _get_conn() as conn:
+        if expected_token is None:
+            conn.execute("UPDATE users SET session_token = NULL, updated_at = ? WHERE username = ?", (now, username))
+        else:
+            conn.execute("UPDATE users SET session_token = NULL, updated_at = ? WHERE username = ? AND session_token = ?", (now, username, expected_token))
+
 
 
 def verify_credentials(username: str, password: str, *, include_disabled: bool = False) -> Optional[Dict[str, Any]]:
@@ -751,8 +807,11 @@ import_legacy_users()
 __all__ = [
     "DEFAULT_LICENSE_TIER",
     "LICENSE_TIERS",
+    "DEFAULT_USER_TYPE",
+    "USER_TYPES",
     "get_license_monthly_limit",
     "normalize_license_tier",
+    "normalize_user_type",
     "create_company",
     "create_user",
     "delete_user",
@@ -767,6 +826,8 @@ __all__ = [
     "list_companies",
     "list_users",
     "set_password",
+    "set_session_token",
+    "clear_session_token",
     "update_company",
     "update_user",
     "verify_credentials",

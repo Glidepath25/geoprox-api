@@ -232,6 +232,14 @@
                 {% endfor %}
               </select>
             </div>
+            <div>
+              <label for="user_type">User type</label>
+              <select id="user_type" name="user_type">
+                {% for key, label in user_types.items() %}
+                  <option value="{{ key }}" {% if key == default_user_type %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <div class="checkbox" style="margin-top:1.9rem;">
               <input type="checkbox" id="user_is_admin" name="is_admin">
               <label for="user_is_admin" style="margin-bottom:0;">Administrator</label>
@@ -273,6 +281,7 @@
               <th>Email</th>
               <th>Company</th>
               <th>License</th>
+              <th>User Type</th>
               <th>Role</th>
               <th>Status</th>
               <th>Searches</th>
@@ -300,6 +309,7 @@
                   {% endif %}
                 </div>
               </td>
+              <td>{{ user_types.get(user.user_type, user.user_type | title) }}</td>
               <td>{{ 'Admin' if user.is_admin else 'User' }}</td>
               <td>
                 <span class="status-chip {{ 'status-active' if user.is_active else 'status-disabled' }}">{{ 'Active' if user.is_active else 'Disabled' }}</span>
@@ -328,7 +338,7 @@
               </td>
             </tr>
             <tr class="user-detail">
-              <td colspan="9">
+              <td colspan="10">
                 <form class="inline" method="post" action="/admin/users/{{ user.id }}/update">
                   <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                   <div>
@@ -365,6 +375,14 @@
                       {% endfor %}
                     </select>
                   </div>
+                  <div>
+                    <label>User type</label>
+                    <select name="user_type">
+                      {% for key, label in user_types.items() %}
+                        <option value="{{ key }}" {% if user.user_type == key %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
                   <div class="checkbox">
                     <input type="checkbox" id="admin_{{ user.id }}" name="is_admin" {% if user.is_admin %}checked{% endif %}>
                     <label for="admin_{{ user.id }}" style="margin-bottom:0;">Administrator</label>
@@ -379,7 +397,7 @@
               </td>
             </tr>
             {% if not loop.last %}
-            <tr><td colspan="9"><div class="row-divider"></div></td></tr>
+            <tr><td colspan="10"><div class="row-divider"></div></td></tr>
             {% endif %}
             {% endfor %}
           </tbody>

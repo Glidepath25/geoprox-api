@@ -1,4 +1,4 @@
-# geoprox/main.py
+﻿# geoprox/main.py
 from __future__ import annotations
 
 import os
@@ -9,6 +9,7 @@ import smtplib
 import ssl
 import mimetypes
 import re
+import secrets
 from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
@@ -529,277 +530,371 @@ def _safe_artifact(path: str, request: Request) -> Path:
 
 
 def _require_user(request: Request) -> str:
-    user = request.session.get("user")
-    if not user:
+
+    username = request.session.get("user")
+
+    session_token = request.session.get("session_token")
+
+    current = getattr(request.state, "current_user", None)
+
+    if not username or not session_token:
+
+        request.session.clear()
+
         raise HTTPException(status_code=401, detail="Authentication required")
-    return user
+
+    record: Optional[Dict[str, Any]] = None
+
+    if isinstance(current, dict) and current.get("username") == username:
+
+        record = current
+
+    if not record or record.get("session_token") != session_token:
+
+        record = user_store.get_user_by_username(username)
+
+    if not record or not record.get("is_active"):
+
+        request.session.clear()
+
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    stored_token = record.get("session_token")
+
+    if not stored_token or stored_token != session_token:
+
+        request.session.clear()
+
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    request.session["user_type"] = user_store.normalize_user_type(record.get("user_type"))
+
+    request.state.current_user = record
+
+    return username
+
+
+
 
 
 def _require_admin(request: Request) -> str:
+
     user = _require_user(request)
+
     if not request.session.get("is_admin"):
+
         raise HTTPException(status_code=403, detail="Administrator access required")
+
     return user
 
 
+
+
+
+def _get_user_type(request: Request) -> str:
+
+    value = request.session.get("user_type")
+
+    try:
+
+        normalized = user_store.normalize_user_type(value)
+
+    except ValueError:
+
+        normalized = user_store.DEFAULT_USER_TYPE
+
+    request.session["user_type"] = normalized
+
+    return normalized
+
+
+
+
+
+def _require_desktop_user(request: Request) -> str:
+
+    username = _require_user(request)
+
+    if _get_user_type(request) != "desktop":
+
+        raise HTTPException(status_code=403, detail="Desktop access required")
+
+    return username
+
+
+
+
+
 def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
+
     request.session.clear()
+
     request.session["user"] = user["username"]
+
     request.session["user_id"] = user["id"]
+
     request.session["is_admin"] = bool(user["is_admin"])
+
     request.session["display_name"] = user["name"]
+
+    token = user.get("session_token")
+
+    if not token:
+
+        token = user_store.set_session_token(user["id"])
+
+        user["session_token"] = token
+
+    request.session["session_token"] = token
+
+    request.session["user_type"] = user_store.normalize_user_type(user.get("user_type"))
+
     scope_usernames, _ = _resolve_company_scope(user["username"])
+
     history_rows = _collect_history_rows(user["username"], scope_usernames, 5)
+
     session_history = []
+
     for row in reversed(history_rows):
+
         session_history.append({
+
             "timestamp": row["timestamp"],
+
             "location": (row.get("location") or "")[:80],
+
             "radius_m": int(row.get("radius_m", 0)),
+
             "outcome": row.get("outcome"),
+
             "permit": row.get("permit"),
+
             "mode": "point",
+
         })
+
     request.session["history"] = session_history
 
 
 
 
-def _resolve_company_scope(username: str) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
-    '''Return the usernames a viewer can access plus a lookup of user records.'''
-    record = user_store.get_user_by_username(username)
-    if not record:
-        return [username], {}
 
-    company_id = record.get('company_id')
-    members: List[Dict[str, Any]] = []
-    if company_id:
-        try:
-            members = user_store.list_users(include_disabled=True, company_id=company_id)
-        except Exception:
-            members = []
-    seen: Set[str] = set()
+
+
+def _resolve_company_scope(username: str) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
     scope: List[str] = []
     user_map: Dict[str, Dict[str, Any]] = {}
+    seen: Set[str] = set()
 
-    def _register(member: Dict[str, Any]) -> None:
-        raw_username = member.get('username')
-        if not raw_username:
-            return
-        uname = str(raw_username).strip()
-        if not uname or uname in seen:
-            return
-        seen.add(uname)
-        scope.append(uname)
-        user_map[uname] = member
-
-    for member in members:
-        if isinstance(member, dict):
-            _register(member)
-
-    if isinstance(record, dict):
-        _register(record)
-
-    if username and username not in seen:
-        scope.append(username)
-        user_map[username] = record
-
-    ordered: List[str] = []
-    if username and username in user_map:
-        ordered.append(username)
-    for uname in sorted(u for u in scope if u != username):
-        ordered.append(uname)
-
-    return ordered or [username], user_map
-
-
-MIN_TIMESTAMP = datetime.min.replace(tzinfo=timezone.utc)
-
-
-def _parse_timestamp(value: Any) -> Optional[datetime]:
-    if isinstance(value, datetime):
-        dt = value
-    elif value is None:
-        return None
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
+    def _normalize_user_type(value: Optional[str]) -> str:
         try:
-            if text.endswith("Z"):
-                text = text[:-1] + "+00:00"
-            dt = datetime.fromisoformat(text)
+            return user_store.normalize_user_type(value)
         except ValueError:
+            return user_store.DEFAULT_USER_TYPE
+
+    def _add(record: Optional[Dict[str, Any]]) -> None:
+        if not record:
+            return
+        username_value = record.get("username") if isinstance(record, dict) else None
+        if not username_value:
+            return
+        candidate = str(username_value).strip()
+        if not candidate:
+            return
+        normalized = dict(record)
+        normalized["user_type"] = _normalize_user_type(record.get("user_type") if isinstance(record, dict) else None)
+        normalized["name"] = normalized.get("name") or ""
+        normalized["is_active"] = bool(normalized.get("is_active"))
+        user_map[candidate] = normalized
+        if candidate not in seen:
+            scope.append(candidate)
+            seen.add(candidate)
+
+    base = user_store.get_user_by_username(username)
+    if base:
+        _add(base)
+        company_id = base.get("company_id")
+        members: List[Dict[str, Any]] = []
+        if company_id:
             try:
-                dt = datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return None
-            dt = dt.replace(tzinfo=timezone.utc)
+                members = user_store.list_users(include_disabled=True, company_id=company_id)
+            except Exception:
+                members = []
+                log.exception("Failed to list users for company_id=%s", company_id)
         else:
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+            company_name = str(base.get("company") or "").strip()
+            if company_name:
+                lowered = company_name.lower()
+                try:
+                    members = [
+                        member
+                        for member in user_store.list_users(include_disabled=True)
+                        if str(member.get("company") or "").strip().lower() == lowered
+                    ]
+                except Exception:
+                    members = []
+                    log.exception("Failed to list users for company '%s'", company_name)
+        for member in members:
+            _add(member)
+    if not scope:
+        fallback = {
+            "username": username,
+            "name": username,
+            "user_type": user_store.DEFAULT_USER_TYPE,
+            "is_active": True,
+        }
+        _add(fallback)
+    else:
+        if username not in seen:
+            scope.insert(0, username)
+            seen.add(username)
+    if scope:
+        first = scope[0]
+        rest = sorted(scope[1:], key=lambda value: value.lower())
+        ordered = [first, *rest]
+    else:
+        ordered = [username]
+    return ordered, user_map
 
 
-def _sort_permit_rows(rows: List[Dict[str, Any]], limit: Optional[int]) -> List[Dict[str, Any]]:
-    seen: Set[Tuple[Optional[str], Optional[str]]] = set()
-    unique: List[Dict[str, Any]] = []
-    for entry in rows:
-        key = (entry.get("username"), entry.get("permit_ref"))
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(entry)
-    unique.sort(
-        key=lambda item: _parse_timestamp(item.get("updated_at") or item.get("created_at")) or MIN_TIMESTAMP,
-        reverse=True,
-    )
-    if limit is not None:
-        unique = unique[:limit]
-    return unique
-
-
-def _collect_permit_records(username: str, query: str, limit: int, scope_usernames: List[str]) -> List[Dict[str, Any]]:
-    scope = scope_usernames or [username]
+def _collect_history_rows(username: str, scope_usernames: Sequence[str], limit: int) -> List[Dict[str, Any]]:
     try:
-        items = permit_store.search_permits(
-            username,
-            query,
-            limit,
-            visible_usernames=scope,
-        )
-        records = []
-        for item in items:
-            entry = dict(item)
-            if not entry.get("username"):
-                entry["username"] = username
-            records.append(entry)
-        return _sort_permit_rows(records, limit)
-    except TypeError:
-        combined: List[Dict[str, Any]] = []
-        for candidate in scope:
-            rows = permit_store.search_permits(candidate, query, limit)
-            for row in rows:
-                entry = dict(row)
-                if not entry.get("username"):
-                    entry["username"] = candidate
-                combined.append(entry)
-        return _sort_permit_rows(combined, limit)
-
-
-def _enrich_permit_items(records: List[Dict[str, Any]], user_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    enriched: List[Dict[str, Any]] = []
-    for record in records:
-        entry = dict(record)
-        owner_username = entry.get("username")
-        owner_display = None
-        if owner_username:
-            owner_record = user_map.get(owner_username)
-            if owner_record and owner_record.get("name"):
-                owner_display = owner_record.get("name")
-        entry["owner_username"] = owner_username
-        entry["owner_display_name"] = owner_display or owner_username
-        enriched.append(entry)
-    return enriched
-
-
-def _merge_history_rows(rows: List[Dict[str, Any]], limit: Optional[int]) -> List[Dict[str, Any]]:
-    seen: Set[Tuple[Optional[str], Optional[str], Optional[str]]] = set()
-    unique: List[Dict[str, Any]] = []
-    for entry in rows:
-        key = (entry.get("username"), entry.get("timestamp"), entry.get("permit"))
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(entry)
-    unique.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or MIN_TIMESTAMP, reverse=True)
-    if limit is not None:
-        unique = unique[:limit]
-    return unique
-
-
-def _collect_history_rows(username: str, scope_usernames: List[str], limit: Optional[int]) -> List[Dict[str, Any]]:
-    scope = scope_usernames or [username]
+        safe_limit = max(1, int(limit or 1))
+    except (TypeError, ValueError):
+        safe_limit = 1
+    allowed = list(dict.fromkeys(scope_usernames or []))
+    if username not in allowed:
+        allowed.insert(0, username)
     try:
-        rows = history_store.get_history(
-            username,
-            limit=limit,
-            visible_usernames=scope,
-        )
-        prepared: List[Dict[str, Any]] = []
-        for row in rows:
-            entry = dict(row)
-            if not entry.get("username"):
-                entry["username"] = username
-            prepared.append(entry)
-        return _merge_history_rows(prepared, limit)
-    except TypeError:
-        combined: List[Dict[str, Any]] = []
-        for candidate in scope:
-            rows = history_store.get_history(candidate, limit=limit)
-            for row in rows:
-                entry = dict(row)
-                if not entry.get("username"):
-                    entry["username"] = candidate
-                combined.append(entry)
-        return _merge_history_rows(combined, limit)
+        return history_store.get_history(username, limit=safe_limit, visible_usernames=allowed)
+    except Exception:
+        log.exception("Failed to load search history for user=%s", username)
+        return []
 
 
-def _annotate_history_rows(rows: List[Dict[str, Any]], user_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _annotate_history_rows(rows: Iterable[Dict[str, Any]], user_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     annotated: List[Dict[str, Any]] = []
     for row in rows:
         entry = dict(row)
-        owner_username = entry.get("username")
-        owner_display = None
-        if owner_username:
-            owner_record = user_map.get(owner_username)
-            if owner_record and owner_record.get("name"):
-                owner_display = owner_record.get("name")
+        owner_username = str(entry.get("username") or "").strip()
+        if not owner_username:
+            entry["owner_username"] = None
+            entry["owner_display_name"] = None
+            entry["owner_user_type"] = None
+            annotated.append(entry)
+            continue
         entry["owner_username"] = owner_username
-        entry["owner_display_name"] = owner_display or owner_username
+        owner_record = user_map.get(owner_username)
+        if owner_record:
+            entry["owner_display_name"] = owner_record.get("name") or owner_username
+            entry["owner_user_type"] = owner_record.get("user_type") or user_store.DEFAULT_USER_TYPE
+        else:
+            entry["owner_display_name"] = owner_username
+            entry["owner_user_type"] = None
         annotated.append(entry)
     return annotated
+
+
+def _collect_permit_records(
+    username: str,
+    query: str,
+    limit: int,
+    scope_usernames: Sequence[str],
+) -> List[Dict[str, Any]]:
+    try:
+        safe_limit = max(1, int(limit or 20))
+    except (TypeError, ValueError):
+        safe_limit = 20
+    allowed = list(dict.fromkeys(scope_usernames or []))
+    if username not in allowed:
+        allowed.insert(0, username)
+    try:
+        return permit_store.search_permits(
+            username=username,
+            query=query or "",
+            limit=safe_limit,
+            visible_usernames=allowed,
+        )
+    except TypeError:
+        try:
+            return permit_store.search_permits(username, query or "", safe_limit)
+        except Exception:
+            log.exception("Permit search fallback failed for user=%s", username)
+            return []
+    except Exception:
+        log.exception("Failed to search permits for user=%s", username)
+        return []
+
+
+def _enrich_permit_items(
+    items: Iterable[Dict[str, Any]],
+    user_map: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    enriched: List[Dict[str, Any]] = []
+    for item in items:
+        entry = dict(item)
+        owner_username = str(entry.get("owner_username") or entry.get("username") or "").strip()
+        entry["owner_username"] = owner_username or None
+        owner_record = user_map.get(owner_username) if owner_username else None
+        if owner_record:
+            entry["owner_display_name"] = owner_record.get("name") or owner_username
+            entry["owner_user_type"] = owner_record.get("user_type") or user_store.DEFAULT_USER_TYPE
+        else:
+            entry["owner_display_name"] = owner_username or None
+            entry["owner_user_type"] = None
+        for field in (
+            "desktop_status",
+            "desktop_outcome",
+            "site_status",
+            "site_outcome",
+            "site_bituminous",
+            "site_sub_base",
+            "sample_status",
+            "sample_outcome",
+        ):
+            value = entry.get(field)
+            if isinstance(value, str):
+                entry[field] = value.strip() or None
+            elif value is None:
+                entry[field] = None
+            else:
+                entry[field] = str(value)
+        for field in ("desktop_date", "site_date", "sample_date", "created_at", "updated_at"):
+            value = entry.get(field)
+            if isinstance(value, datetime):
+                entry[field] = value.isoformat()
+            elif isinstance(value, str):
+                entry[field] = value.strip() or None
+            elif value is not None:
+                entry[field] = str(value)
+        enriched.append(entry)
+    return enriched
 
 
 def _get_permit_record(
     username: str,
     permit_ref: str,
     owner_username: Optional[str],
-    scope_usernames: List[str],
+    scope_usernames: Sequence[str],
 ) -> Optional[Dict[str, Any]]:
-    scope = scope_usernames or [username]
+    allowed = list(dict.fromkeys(scope_usernames or []))
+    if username not in allowed:
+        allowed.insert(0, username)
     try:
-        record = permit_store.get_permit(
+        return permit_store.get_permit(
             username,
             permit_ref,
             owner_username=owner_username,
-            allowed_usernames=scope,
+            allowed_usernames=allowed,
         )
-        if record and not record.get("username"):
-            record = dict(record)
-            record["username"] = owner_username or username
-        return record
-    except TypeError:
-        candidates: List[str] = []
-        if owner_username:
-            candidates.append(owner_username)
-        candidates.extend(scope)
-        seen: Set[str] = set()
-        for candidate in candidates or [username]:
-            if not candidate or candidate in seen:
-                continue
-            seen.add(candidate)
-            candidate_record = permit_store.get_permit(candidate, permit_ref)
-            if candidate_record:
-                record = dict(candidate_record)
-                if not record.get("username"):
-                    record["username"] = candidate
-                return record
-    return None
-
-
+    except Exception:
+        log.exception(
+            "Failed to load permit record permit_ref=%s user=%s owner=%s",
+            permit_ref,
+            username,
+            owner_username,
+        )
+        return None
 def _render_login(
     request: Request,
     *,
@@ -970,6 +1065,12 @@ def _user_to_out(
     monthly_limit = user_store.get_license_monthly_limit(normalized_tier)
     monthly_used = int(monthly.get(user["username"], 0))
     tier_label = user_store.LICENSE_TIERS[normalized_tier]["label"]
+    raw_user_type = user.get("user_type") or user_store.DEFAULT_USER_TYPE
+    try:
+        normalized_user_type = user_store.normalize_user_type(raw_user_type)
+    except ValueError:
+        normalized_user_type = user_store.DEFAULT_USER_TYPE
+    user_type_label = user_store.USER_TYPES.get(normalized_user_type, normalized_user_type.title())
     return AdminUserOut(
         id=user["id"],
         username=user["username"],
@@ -984,6 +1085,8 @@ def _user_to_out(
         require_password_change=bool(user.get("require_password_change")),
         license_tier=normalized_tier,
         license_label=tier_label,
+        user_type=normalized_user_type,
+        user_type_label=user_type_label,
         monthly_search_limit=monthly_limit,
         monthly_search_count=monthly_used,
         search_count=int(search_counts.get(user["username"], 0)),
@@ -1613,6 +1716,7 @@ async def login_action(request: Request, username: str = Form(...), password: st
             request.session["pending_username"] = username
             log.info("User %s must change password on next login", username)
             return RedirectResponse(url="/change-password", status_code=303)
+        user["session_token"] = user_store.set_session_token(user["id"])
         _start_session_for_user(request, user)
         log.info("User %s logged in", username)
         return RedirectResponse(url="/dashboard", status_code=303)
@@ -1684,6 +1788,7 @@ async def signup_free_trial(
     if not user_record:
         return render_error("Something went wrong creating your account. Please try again.")
 
+    user_record["session_token"] = user_store.set_session_token(user_record["id"])
     _start_session_for_user(request, user_record)
     log.info("Created free trial account for %s", username)
     return RedirectResponse(url="/dashboard", status_code=303)
@@ -1752,6 +1857,10 @@ async def request_upgrade(
 
 @app.post("/logout")
 async def logout(request: Request):
+    username = request.session.get("user")
+    token = request.session.get("session_token")
+    if username:
+        user_store.clear_session_token(username, expected_token=token)
     request.session.clear()
     return RedirectResponse(url="/", status_code=303)
 
@@ -1813,6 +1922,7 @@ async def change_password_action(
     if not updated:
         request.session.clear()
         return RedirectResponse(url="/", status_code=303)
+    updated["session_token"] = user_store.set_session_token(updated["id"])
     _start_session_for_user(request, updated)
     log.info("User %s changed password", username)
     request.session.pop("pending_user_id", None)
@@ -1860,6 +1970,7 @@ async def forgot_password_action(
                 user_store.set_password(user["id"], new_password, require_change=False)
                 updated = user_store.get_user_by_id(user["id"])
                 if updated:
+                    updated["session_token"] = user_store.set_session_token(updated["id"])
                     _start_session_for_user(request, updated)
                     log.info("User %s reset password via self-service", username)
                     return RedirectResponse(url="/dashboard", status_code=303)
@@ -1894,6 +2005,8 @@ class AdminUserOut(BaseModel):
     require_password_change: bool
     license_tier: str
     license_label: str
+    user_type: str
+    user_type_label: str
     monthly_search_limit: Optional[int]
     monthly_search_count: int
     search_count: int
@@ -1914,6 +2027,7 @@ class AdminUserCreate(BaseModel):
     is_active: bool = True
     require_password_change: bool = True
     license_tier: str = Field(default=user_store.DEFAULT_LICENSE_TIER)
+    user_type: str = Field(default=user_store.DEFAULT_USER_TYPE)
 
 
 class AdminUserUpdate(BaseModel):
@@ -1927,6 +2041,7 @@ class AdminUserUpdate(BaseModel):
     is_active: Optional[bool] = None
     require_password_change: Optional[bool] = None
     license_tier: Optional[str] = None
+    user_type: Optional[str] = None
 
 
 class AdminPasswordReset(BaseModel):
@@ -2094,52 +2209,103 @@ def api_history(request: Request):
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request) -> HTMLResponse:
-    user = request.session.get("user")
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "user": user,
-            "display_name": request.session.get("display_name") or user,
-            "is_admin": bool(request.session.get("is_admin")),
-        },
-    )
 
+async def dashboard_page(request: Request) -> HTMLResponse:
+
+    username = _require_user(request)
+
+    user_type = _get_user_type(request)
+
+    display_name = request.session.get("display_name") or username
+
+    user_type_label = user_store.USER_TYPES.get(user_type, user_type.title())
+
+    return templates.TemplateResponse(
+
+        "dashboard.html",
+
+        {
+
+            "request": request,
+
+            "user": username,
+
+            "display_name": display_name,
+
+            "is_admin": bool(request.session.get("is_admin")),
+
+            "user_type": user_type,
+
+            "user_type_label": user_type_label,
+
+            "allow_desktop": user_type == "desktop",
+
+        },
+
+    )
 
 @app.get("/permits", response_class=HTMLResponse)
-async def permits_page(request: Request) -> HTMLResponse:
-    username = request.session.get("user")
-    if not username:
-        return RedirectResponse(url="/", status_code=303)
-    flashes = _consume_flashes(request)
-    scope_usernames, user_map = _resolve_company_scope(username)
-    permit_records = _collect_permit_records(username, "", 20, scope_usernames)
-    annotated_results = _enrich_permit_items(permit_records, user_map)
-    field_names = PermitSearchItem.model_fields.keys()
-    initial_results: List[Dict[str, Any]] = [
-        PermitSearchItem(**{field: entry.get(field) for field in field_names}).model_dump()
-        for entry in annotated_results
-    ]
-    return templates.TemplateResponse(
-        "permits.html",
-        {
-            "request": request,
-            "user": username,
-            "display_name": request.session.get("display_name") or username,
-            "initial_results": initial_results,
-            "flashes": flashes,
-            "has_company_scope": len(scope_usernames) > 1,
-            "visible_usernames": scope_usernames,
-        },
-    )
 
+async def permits_page(request: Request) -> HTMLResponse:
+
+    username = _require_user(request)
+
+    user_type = _get_user_type(request)
+
+    user_type_label = user_store.USER_TYPES.get(user_type, user_type.title())
+
+    flashes = _consume_flashes(request)
+
+    scope_usernames, user_map = _resolve_company_scope(username)
+
+    permit_records = _collect_permit_records(username, "", 20, scope_usernames)
+
+    annotated_results = _enrich_permit_items(permit_records, user_map)
+
+    field_names = PermitSearchItem.model_fields.keys()
+
+    initial_results: List[Dict[str, Any]] = [
+
+        PermitSearchItem(**{field: entry.get(field) for field in field_names}).model_dump()
+
+        for entry in annotated_results
+
+    ]
+
+    return templates.TemplateResponse(
+
+        "permits.html",
+
+        {
+
+            "request": request,
+
+            "user": username,
+
+            "display_name": request.session.get("display_name") or username,
+
+            "initial_results": initial_results,
+
+            "flashes": flashes,
+
+            "has_company_scope": len(scope_usernames) > 1,
+
+            "visible_usernames": scope_usernames,
+
+            "user_type": user_type,
+
+            "user_type_label": user_type_label,
+
+            "allow_desktop": user_type == "desktop",
+
+        },
+
+    )
 
 @app.get("/permits/{permit_ref}/view", response_class=HTMLResponse)
 async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     username = _require_user(request)
+    user_type = _get_user_type(request)
     scope_usernames, user_map = _resolve_company_scope(username)
     owner_param_raw = request.query_params.get("owner")
     owner_param = owner_param_raw.strip() or None if owner_param_raw else None
@@ -2240,6 +2406,8 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
             "desktop_details": desktop_details,
             "created_at_display": created_at_display,
             "updated_at_display": updated_at_display,
+            "user_type": user_type,
+            "allow_desktop": user_type == "desktop",
             "flashes": flashes,
         },
     )
@@ -2759,8 +2927,7 @@ def api_update_sample_testing(request: Request, permit_ref: str, payload: Permit
 
 @app.get("/app")
 async def app_page(request: Request):
-    if not request.session.get("user"):
-        return RedirectResponse(url="/", status_code=303)
+    _require_desktop_user(request)
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
         return JSONResponse({"status": "ok"})
@@ -2808,6 +2975,9 @@ def history_page(request: Request) -> HTMLResponse:
             entry.get("map_relative_path"),
         )
         items.append(entry)
+    user_type = _get_user_type(request)
+    user_type_label = user_store.USER_TYPES.get(user_type, user_type.title())
+    allow_desktop = user_type == "desktop"
     return templates.TemplateResponse("history.html", {
         "request": request,
         "user": user,
@@ -2815,6 +2985,9 @@ def history_page(request: Request) -> HTMLResponse:
         "is_admin": bool(request.session.get("is_admin")),
         "has_company_scope": len(scope_usernames) > 1,
         "visible_usernames": scope_usernames,
+        "user_type": user_type,
+        "user_type_label": user_type_label,
+        "allow_desktop": allow_desktop,
     })
 
 @app.get("/admin/users", response_class=HTMLResponse)
@@ -2837,6 +3010,8 @@ async def admin_users_page(request: Request, company_id: Optional[int] = None) -
             "search_counts": search_counts,
             "monthly_counts": monthly_counts,
             "license_tiers": user_store.LICENSE_TIERS,
+            "user_types": user_store.USER_TYPES,
+            "default_user_type": user_store.DEFAULT_USER_TYPE,
         },
     )
 
@@ -2849,7 +3024,24 @@ async def admin_export_users(request: Request) -> Response:
     monthly_counts = history_store.get_user_monthly_search_counts()
     buffer = StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["Username", "Name", "Email", "Company", "Company Number", "Phone", "Is Admin", "Is Active", "Require Password Change", "Total Searches", "Monthly Searches", "Monthly Limit", "License Tier", "Created At", "Updated At"])
+    writer.writerow([
+        "Username",
+        "Name",
+        "Email",
+        "Company",
+        "Company Number",
+        "Phone",
+        "Is Admin",
+        "Is Active",
+        "Require Password Change",
+        "Total Searches",
+        "Monthly Searches",
+        "Monthly Limit",
+        "License Tier",
+        "User Type",
+        "Created At",
+        "Updated At",
+    ])
     for user in users:
         tier_key = user.get("license_tier") or user_store.DEFAULT_LICENSE_TIER
         try:
@@ -2858,6 +3050,12 @@ async def admin_export_users(request: Request) -> Response:
             normalized_tier = user_store.DEFAULT_LICENSE_TIER
         tier_meta = user_store.LICENSE_TIERS[normalized_tier]
         monthly_limit = tier_meta.get("monthly_limit")
+        raw_user_type = user.get("user_type") or user_store.DEFAULT_USER_TYPE
+        try:
+            normalized_user_type = user_store.normalize_user_type(raw_user_type)
+        except ValueError:
+            normalized_user_type = user_store.DEFAULT_USER_TYPE
+        user_type_label = user_store.USER_TYPES.get(normalized_user_type, normalized_user_type.title())
         writer.writerow([
             user.get("username"),
             user.get("name"),
@@ -2872,6 +3070,7 @@ async def admin_export_users(request: Request) -> Response:
             int(monthly_counts.get(user.get("username"), 0)),
             "unlimited" if monthly_limit is None else monthly_limit,
             tier_meta.get("label", normalized_tier.title()),
+            user_type_label,
             user.get("created_at"),
             user.get("updated_at"),
         ])
@@ -2879,7 +3078,6 @@ async def admin_export_users(request: Request) -> Response:
     buffer.close()
     filename = f"geoprox-users-{datetime.utcnow().strftime('%Y%m%d')}.csv"
     return Response(csv_content, media_type='text/csv', headers={'Content-Disposition': f'attachment; filename={filename}'})
-
 
 @app.post("/admin/users/create")
 async def admin_create_user(request: Request):
@@ -2894,6 +3092,7 @@ async def admin_create_user(request: Request):
     company_number = (form.get("company_number") or "").strip()
     phone = (form.get("phone") or "").strip()
     license_tier_raw = (form.get("license_tier") or user_store.DEFAULT_LICENSE_TIER).strip()
+    user_type_raw = (form.get("user_type") or user_store.DEFAULT_USER_TYPE).strip()
     is_admin = form.get("is_admin") == "on"
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     if not username or not password or not name:
@@ -2905,35 +3104,41 @@ async def admin_create_user(request: Request):
             _add_flash(request, "Select a valid license tier.", "error")
         else:
             try:
-                log.info("admin_create_user debug: USE_POSTGRES=%s DB_HOST=%s", user_store.USE_POSTGRES, os.environ.get("DB_HOST"))
-                created = user_store.create_user(
-                    username=username,
-                    password=password,
-                    name=name,
-                    email=email,
-                    company=company,
-                    company_number=company_number,
-                    phone=phone,
-                    company_id=company_id,
-                    is_admin=is_admin,
-                    license_tier=license_tier,
-                )
-                log.info("admin_create_user result truthy=%s data=%s", bool(created), created)
-                if created:
-                    log.info("Admin created user %s (id=%s, company_id=%s, is_admin=%s, is_active=%s)",
-                             username,
-                             created.get("id"),
-                             created.get("company_id"),
-                             created.get("is_admin"),
-                             created.get("is_active"))
-                    log.info("admin_check persisted: %s", user_store.get_user_by_username(username))
-                else:
-                    log.warning("Admin create user returned no record for %s", username)
-                _add_flash(request, f"User '{username}' created.", "success")
-            except sqlite3.IntegrityError:
-                _add_flash(request, "Username or email already exists.", "error")
-            except ValueError as exc:
-                _add_flash(request, str(exc) or "Invalid company selection.", "error")
+                user_type = user_store.normalize_user_type(user_type_raw)
+            except ValueError:
+                _add_flash(request, "Select a valid user type.", "error")
+            else:
+                try:
+                    log.info("admin_create_user debug: USE_POSTGRES=%s DB_HOST=%s", user_store.USE_POSTGRES, os.environ.get("DB_HOST"))
+                    created = user_store.create_user(
+                        username=username,
+                        password=password,
+                        name=name,
+                        email=email,
+                        company=company,
+                        company_number=company_number,
+                        phone=phone,
+                        company_id=company_id,
+                        is_admin=is_admin,
+                        license_tier=license_tier,
+                        user_type=user_type,
+                    )
+                    log.info("admin_create_user result truthy=%s data=%s", bool(created), created)
+                    if created:
+                        log.info("Admin created user %s (id=%s, company_id=%s, is_admin=%s, is_active=%s)",
+                                 username,
+                                 created.get("id"),
+                                 created.get("company_id"),
+                                 created.get("is_admin"),
+                                 created.get("is_active"))
+                        log.info("admin_check persisted: %s", user_store.get_user_by_username(username))
+                    else:
+                        log.warning("Admin create user returned no record for %s", username)
+                    _add_flash(request, f"User '{username}' created.", "success")
+                except sqlite3.IntegrityError:
+                    _add_flash(request, "Username or email already exists.", "error")
+                except ValueError as exc:
+                    _add_flash(request, str(exc) or "Invalid company selection.", "error")
     return _redirect_admin_users(redirect_company_id)
 
 
@@ -2966,6 +3171,13 @@ async def admin_update_user(request: Request, user_id: int):
         except ValueError:
             _add_flash(request, "Select a valid license tier.", "error")
             return _redirect_admin_users(redirect_company_id)
+    user_type_choice = (form.get("user_type") or "").strip()
+    if user_type_choice:
+        try:
+            updates["user_type"] = user_store.normalize_user_type(user_type_choice)
+        except ValueError:
+            _add_flash(request, "Select a valid user type.", "error")
+            return _redirect_admin_users(redirect_company_id)
     is_admin_flag = form.get("is_admin") == "on"
     updates["is_admin"] = is_admin_flag
     require_values = form.getlist("require_password_change")
@@ -2982,10 +3194,7 @@ async def admin_update_user(request: Request, user_id: int):
         _add_flash(request, str(exc) or "Invalid company selection.", "error")
         return _redirect_admin_users(redirect_company_id)
     _add_flash(request, f"Updated profile for '{user['username']}'.", "success")
-    return _redirect_admin_users(redirect_company_id)
-
-
-@app.post("/admin/users/{user_id}/toggle")
+    return _redirect_admin_users(redirect_company_id)@app.post("/admin/users/{user_id}/toggle")
 async def admin_toggle_user(request: Request, user_id: int):
     _require_admin(request)
     form = await request.form()
@@ -3144,6 +3353,10 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
     if not username or not name:
         raise HTTPException(status_code=400, detail="Username and name are required.")
     try:
+        user_type = user_store.normalize_user_type(payload.user_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user type.")
+    try:
         record = user_store.create_user(
             username=username,
             password=payload.password,
@@ -3157,6 +3370,7 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
             is_active=payload.is_active,
             require_password_change=payload.require_password_change,
             license_tier=payload.license_tier,
+            user_type=user_type,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="Username already exists.")
@@ -3165,7 +3379,6 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
     counts = history_store.get_user_search_counts()
     monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
     return _user_to_out(record, counts, monthly_counts)
-
 
 @app.patch("/api/admin/users/{user_id}", response_model=AdminUserOut)
 async def api_admin_update_user(request: Request, user_id: int, payload: AdminUserUpdate) -> AdminUserOut:
@@ -3184,13 +3397,18 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         updates["company_id"] = data["company_id"]
         if data["company_id"] is None and "company" not in updates:
             updates["company"] = ""
+    if "license_tier" in data:
+        updates["license_tier"] = data["license_tier"]
+    if "user_type" in data:
+        try:
+            updates["user_type"] = user_store.normalize_user_type(data["user_type"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user type.")
     if "is_admin" in data:
         _ensure_can_change_admin_flag(request, record, data["is_admin"])
         updates["is_admin"] = data["is_admin"]
     if "require_password_change" in data:
         updates["require_password_change"] = data["require_password_change"]
-    if "license_tier" in data:
-        updates["license_tier"] = data["license_tier"]
     target_is_admin = updates.get("is_admin", record["is_admin"])
     if "is_active" in data:
         _ensure_can_change_active_status(
@@ -3214,7 +3432,6 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
     counts = history_store.get_user_search_counts()
     monthly_counts = {updated['username']: history_store.get_monthly_search_count(updated['username'])}
     return _user_to_out(updated, counts, monthly_counts)
-
 
 @app.post("/api/admin/users/{user_id}/reset-password", response_model=AdminActionResult)
 async def api_admin_reset_password(request: Request, user_id: int, payload: AdminPasswordReset) -> AdminActionResult:
@@ -3431,7 +3648,7 @@ def api_export_permits(request: Request, query: str = "", limit: int = 500):
 
 @app.post("/api/permits", response_model=PermitRecordResp)
 def api_save_permit_record(request: Request, payload: PermitSaveReq):
-    username = _require_user(request)
+    username = _require_desktop_user(request)
     permit_ref = (payload.permit_ref or "").strip()
     if not permit_ref:
         raise HTTPException(status_code=400, detail="Permit reference is required.")
@@ -3499,7 +3716,7 @@ def api_update_site_assessment(request: Request, permit_ref: str, payload: Permi
 
 @app.post("/api/search", response_model=SearchResp)
 def api_search(request: Request, req: SearchReq):
-    username = _require_user(request)
+    username = _require_desktop_user(request)
     user_record = user_store.get_user_by_username(username)
     if not user_record:
         raise HTTPException(status_code=401, detail="User account not found")
@@ -3674,3 +3891,21 @@ def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
 
     if changed:
         payload["artifacts"] = updated
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

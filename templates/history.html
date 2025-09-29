@@ -42,6 +42,10 @@
   </header>
   <main>
     <div class="muted">Signed in as {{ user }}</div>
+    <div class="muted">Access level: {{ user_type_label }}</div>
+    {% if not allow_desktop %}
+    <div class="scope-note">Desktop searches must be completed by a desktop user. You can review existing searches from your company.</div>
+    {% endif %}
     {% if has_company_scope %}
     <div class="scope-note">Showing searches from {{ visible_usernames | join(', ') }}.</div>
     {% endif %}

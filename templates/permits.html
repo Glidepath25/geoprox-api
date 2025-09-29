@@ -379,7 +379,7 @@
   <main>
     <section>
       <h1>Permit records</h1>
-      <p class="subtitle">Search for previously saved desktop proximity checks and open them for follow-up site work.</p>
+      <p class="subtitle">{{ user_type_label }} access. Search for saved desktop proximity checks and complete the remaining permit stages.</p>
     </section>
 
     {% if flashes %}
@@ -409,6 +409,9 @@
         <h2>Matching permits</h2>
         <button id="downloadBtn" type="button" class="nav-btn hidden">Download data</button>
       </div>
+      {% if not allow_desktop %}
+      <p class="scope-note">Desktop searches must be completed by a desktop user. You can view and update existing permits from your company.</p>
+      {% endif %}
       {% if has_company_scope %}
       <p class="scope-note">Showing permits created by {{ visible_usernames | join(', ') }}.</p>
       {% endif %}
