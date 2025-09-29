@@ -174,14 +174,13 @@
         <h2>Open an existing permit record</h2>
         <p>Search for a permit reference to review saved desktop outcomes, update assessment statuses, or capture a site inspection.</p>
       </a>
-      {% if is_admin %}
+      {% if is_admin or is_company_admin %}
       <a class="option-card" href="/admin/users">
         <h2>Manage users</h2>
-        <p>Invite team members, reset access, and manage company permissions from one place.</p>
+        <p>Invite team members, reset access, and manage {% if is_admin %}company permissions across all organisations{% else %}access for your company{% endif %}.</p>
       </a>
       {% endif %}
     </div>
   </main>
 </body>
 </html>
-

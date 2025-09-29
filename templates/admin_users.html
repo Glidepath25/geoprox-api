@@ -79,6 +79,7 @@
 
     <div class="muted">Signed in as {{ current_user }}</div>
 
+    {% if is_global_admin %}
     <section class="card collapsible" data-collapsible>
       <div class="collapsible-header">
         <h2>Companies</h2>
@@ -170,6 +171,7 @@
         {% endif %}
       </div>
     </section>
+    {% endif %}
 
     <section class="card collapsible" data-collapsible>
       <div class="collapsible-header">
@@ -203,6 +205,7 @@
               <input id="user_phone" name="phone" type="text">
             </div>
           </div>
+          {% if is_global_admin %}
           <div class="flex">
             <div>
               <label for="user_company">Company</label>
@@ -223,6 +226,17 @@
               <input id="user_company_number" name="company_number" type="text">
             </div>
           </div>
+          {% else %}
+          <input type="hidden" name="company_id" value="{{ managed_company.id if managed_company else '' }}">
+          <input type="hidden" name="company" value="">
+          <input type="hidden" name="company_number" value="">
+          <div class="flex">
+            <div>
+              <label>Company</label>
+              <div class="muted">{{ managed_company.name if managed_company else "Unassigned" }}</div>
+            </div>
+          </div>
+          {% endif %}
           <div class="flex">
             <div>
               <label for="user_license">License tier</label>
@@ -240,10 +254,16 @@
                 {% endfor %}
               </select>
             </div>
+            {% if is_global_admin %}
             <div class="checkbox" style="margin-top:1.9rem;">
               <input type="checkbox" id="user_is_admin" name="is_admin">
-              <label for="user_is_admin" style="margin-bottom:0;">Administrator</label>
+              <label for="user_is_admin" style="margin-bottom:0;">Platform administrator</label>
             </div>
+            <div class="checkbox" style="margin-top:1.9rem;">
+              <input type="checkbox" id="user_is_company_admin" name="is_company_admin">
+              <label for="user_is_company_admin" style="margin-bottom:0;">Company administrator</label>
+            </div>
+            {% endif %}
           </div>
           <button class="btn primary" type="submit">Create user</button>
         </form>
@@ -257,6 +277,7 @@
       </div>
       <div class="collapsible-content">
         <form class="filter-form" method="get" action="/admin/users">
+          {% if is_global_admin %}
           <div>
             <label for="filter_company">Filter by company</label>
             <select id="filter_company" name="company_id" onchange="this.form.submit()">
@@ -266,6 +287,12 @@
               {% endfor %}
             </select>
           </div>
+          {% else %}
+          <div>
+            <label>Company</label>
+            <div class="muted">{{ managed_company.name if managed_company else "Unassigned" }}</div>
+          </div>
+          {% endif %}
           <div class="checkbox" style="margin-bottom:0;">
             <input type="checkbox" id="filter_active" name="active_only" value="1" {% if active_only %}checked{% endif %} onchange="this.form.submit()">
             <label for="filter_active" style="margin-bottom:0;">Active only</label>
@@ -310,7 +337,7 @@
                 </div>
               </td>
               <td>{{ user_types.get(user.user_type, user.user_type | title) }}</td>
-              <td>{{ 'Admin' if user.is_admin else 'User' }}</td>
+              <td>{{ 'Platform admin' if user.is_admin else ('Company admin' if user.is_company_admin else 'User') }}</td>
               <td>
                 <span class="status-chip {{ 'status-active' if user.is_active else 'status-disabled' }}">{{ 'Active' if user.is_active else 'Disabled' }}</span>
                 {% if user.require_password_change %}
@@ -383,10 +410,16 @@
                       {% endfor %}
                     </select>
                   </div>
+                  {% if is_global_admin %}
                   <div class="checkbox">
                     <input type="checkbox" id="admin_{{ user.id }}" name="is_admin" {% if user.is_admin %}checked{% endif %}>
-                    <label for="admin_{{ user.id }}" style="margin-bottom:0;">Administrator</label>
+                    <label for="admin_{{ user.id }}" style="margin-bottom:0;">Platform administrator</label>
                   </div>
+                  <div class="checkbox">
+                    <input type="checkbox" id="company_admin_{{ user.id }}" name="is_company_admin" {% if user.is_company_admin %}checked{% endif %}>
+                    <label for="company_admin_{{ user.id }}" style="margin-bottom:0;">Company administrator</label>
+                  </div>
+                  {% endif %}
                   <div class="checkbox">
                     <input type="hidden" name="require_password_change" value="off">
                     <input type="checkbox" id="pwreset_{{ user.id }}" name="require_password_change" value="on" {% if user.require_password_change %}checked{% endif %}>

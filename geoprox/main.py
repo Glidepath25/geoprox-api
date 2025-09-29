@@ -568,12 +568,51 @@ def _require_user(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Authentication required")
 
     request.session["user_type"] = user_store.normalize_user_type(record.get("user_type"))
+    request.session["is_admin"] = bool(record.get("is_admin"))
+    request.session["is_company_admin"] = bool(record.get("is_company_admin"))
 
     request.state.current_user = record
 
     return username
 
 
+def _get_current_user_record(request: Request) -> Dict[str, Any]:
+    record = getattr(request.state, "current_user", None)
+    if isinstance(record, dict) and record.get("username"):
+        return record
+    username = request.session.get("user")
+    if not username:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    fresh = user_store.get_user_by_username(username)
+    if not fresh or not fresh.get("is_active"):
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Authentication required")
+    request.state.current_user = fresh
+    return fresh
+
+def _require_user_manager(request: Request) -> Tuple[Dict[str, Any], bool]:
+    username = _require_user(request)
+    record = _get_current_user_record(request)
+    is_global_admin = bool(record.get("is_admin"))
+    if is_global_admin:
+        return record, True
+    if bool(record.get("is_company_admin")) and record.get("company_id"):
+        return record, False
+    raise HTTPException(status_code=403, detail="User management access required")
+
+def _require_user_management_scope(request: Request) -> Tuple[Dict[str, Any], bool, Optional[int]]:
+    record, is_global_admin = _require_user_manager(request)
+    company_id = record.get("company_id") if not is_global_admin else None
+    return record, is_global_admin, company_id
+
+
+def _ensure_user_in_scope(manager_record: Dict[str, Any], target_user: Dict[str, Any]) -> None:
+    if manager_record.get("is_admin"):
+        return
+    manager_company_id = manager_record.get("company_id")
+    if manager_company_id and manager_company_id == target_user.get("company_id"):
+        return
+    raise HTTPException(status_code=403, detail="You can only manage users in your company.")
 
 
 
@@ -634,6 +673,7 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
     request.session["user_id"] = user["id"]
 
     request.session["is_admin"] = bool(user["is_admin"])
+    request.session["is_company_admin"] = bool(user.get("is_company_admin"))
 
     request.session["display_name"] = user["name"]
 
@@ -1081,6 +1121,7 @@ def _user_to_out(
         company_number=user["company_number"] or "",
         phone=user["phone"] or "",
         is_admin=bool(user["is_admin"]),
+        is_company_admin=bool(user.get("is_company_admin")),
         is_active=bool(user["is_active"]),
         require_password_change=bool(user.get("require_password_change")),
         license_tier=normalized_tier,
@@ -2001,6 +2042,7 @@ class AdminUserOut(BaseModel):
     company_number: str
     phone: str
     is_admin: bool
+    is_company_admin: bool
     is_active: bool
     require_password_change: bool
     license_tier: str
@@ -2024,6 +2066,7 @@ class AdminUserCreate(BaseModel):
     company_number: Optional[str] = Field(default="", max_length=64)
     phone: Optional[str] = Field(default="", max_length=64)
     is_admin: bool = False
+    is_company_admin: bool = False
     is_active: bool = True
     require_password_change: bool = True
     license_tier: str = Field(default=user_store.DEFAULT_LICENSE_TIER)
@@ -2038,6 +2081,7 @@ class AdminUserUpdate(BaseModel):
     company_number: Optional[str] = Field(default=None, max_length=64)
     phone: Optional[str] = Field(default=None, max_length=64)
     is_admin: Optional[bool] = None
+    is_company_admin: Optional[bool] = None
     is_active: Optional[bool] = None
     require_password_change: Optional[bool] = None
     license_tier: Optional[str] = None
@@ -2233,6 +2277,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
             "display_name": display_name,
 
             "is_admin": bool(request.session.get("is_admin")),
+            "is_company_admin": bool(request.session.get("is_company_admin")),
 
             "user_type": user_type,
 
@@ -2992,36 +3037,56 @@ def history_page(request: Request) -> HTMLResponse:
 
 @app.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(request: Request, company_id: Optional[int] = None) -> HTMLResponse:
-    _require_admin(request)
-    companies = user_store.list_companies(include_inactive=False)
-    users = user_store.list_users(include_disabled=True, company_id=company_id)
-    search_counts = history_store.get_user_search_counts()
-    monthly_counts = history_store.get_user_monthly_search_counts()
+    _, is_global_admin, managed_company_id = _require_user_management_scope(request)
+    if not is_global_admin:
+        if not managed_company_id:
+            raise HTTPException(status_code=403, detail="Company access required")
+        company_id = managed_company_id
+    selected_company_id = company_id if is_global_admin else managed_company_id
+    if is_global_admin:
+        companies = user_store.list_companies(include_inactive=False)
+    else:
+        company_record = user_store.get_company_by_id(managed_company_id) if managed_company_id else None
+        companies = [company_record] if company_record else []
+    users = user_store.list_users(include_disabled=True, company_id=selected_company_id)
+    visible_usernames = {user["username"] for user in users}
+    counts_all = history_store.get_user_search_counts()
+    monthly_all = history_store.get_user_monthly_search_counts()
+    search_counts = counts_all if is_global_admin else {username: counts_all.get(username, 0) for username in visible_usernames}
+    monthly_counts = monthly_all if is_global_admin else {username: monthly_all.get(username, 0) for username in visible_usernames}
     flashes = _consume_flashes(request)
-    return templates.TemplateResponse(
-        "admin_users.html",
-        {
-            "request": request,
-            "users": users,
-            "companies": companies,
-            "selected_company": company_id,
-            "flashes": flashes,
-            "current_user": request.session.get("user"),
-            "search_counts": search_counts,
-            "monthly_counts": monthly_counts,
-            "license_tiers": user_store.LICENSE_TIERS,
-            "user_types": user_store.USER_TYPES,
-            "default_user_type": user_store.DEFAULT_USER_TYPE,
-        },
-    )
-
+    managed_company = companies[0] if (not is_global_admin and companies) else None
+    context = {
+        "request": request,
+        "users": users,
+        "companies": companies,
+        "selected_company": selected_company_id,
+        "flashes": flashes,
+        "current_user": request.session.get("user"),
+        "search_counts": search_counts,
+        "monthly_counts": monthly_counts,
+        "license_tiers": user_store.LICENSE_TIERS,
+        "user_types": user_store.USER_TYPES,
+        "default_user_type": user_store.DEFAULT_USER_TYPE,
+        "is_global_admin": is_global_admin,
+        "managed_company": managed_company,
+    }
+    return templates.TemplateResponse("admin_users.html", context)
 
 @app.get("/admin/users/export.csv")
 async def admin_export_users(request: Request) -> Response:
-    _require_admin(request)
-    users = user_store.list_users(include_disabled=True)
-    counts = history_store.get_user_search_counts()
-    monthly_counts = history_store.get_user_monthly_search_counts()
+    _, is_global_admin, managed_company_id = _require_user_management_scope(request)
+    if is_global_admin:
+        users = user_store.list_users(include_disabled=True)
+    else:
+        if not managed_company_id:
+            raise HTTPException(status_code=403, detail="Company access required")
+        users = user_store.list_users(include_disabled=True, company_id=managed_company_id)
+    counts_all = history_store.get_user_search_counts()
+    monthly_all = history_store.get_user_monthly_search_counts()
+    visible_usernames = {user["username"] for user in users}
+    search_counts = counts_all if is_global_admin else {username: counts_all.get(username, 0) for username in visible_usernames}
+    monthly_counts = monthly_all if is_global_admin else {username: monthly_all.get(username, 0) for username in visible_usernames}
     buffer = StringIO()
     writer = csv.writer(buffer)
     writer.writerow([
@@ -3032,6 +3097,7 @@ async def admin_export_users(request: Request) -> Response:
         "Company Number",
         "Phone",
         "Is Admin",
+        "Is Company Admin",
         "Is Active",
         "Require Password Change",
         "Total Searches",
@@ -3048,14 +3114,13 @@ async def admin_export_users(request: Request) -> Response:
             normalized_tier = user_store.normalize_license_tier(tier_key)
         except ValueError:
             normalized_tier = user_store.DEFAULT_LICENSE_TIER
-        tier_meta = user_store.LICENSE_TIERS[normalized_tier]
-        monthly_limit = tier_meta.get("monthly_limit")
-        raw_user_type = user.get("user_type") or user_store.DEFAULT_USER_TYPE
+        user_type_key = user.get("user_type") or user_store.DEFAULT_USER_TYPE
         try:
-            normalized_user_type = user_store.normalize_user_type(raw_user_type)
+            normalized_user_type = user_store.normalize_user_type(user_type_key)
         except ValueError:
             normalized_user_type = user_store.DEFAULT_USER_TYPE
-        user_type_label = user_store.USER_TYPES.get(normalized_user_type, normalized_user_type.title())
+        tier_meta = user_store.LICENSE_TIERS[normalized_tier]
+        monthly_limit = tier_meta.get("monthly_limit")
         writer.writerow([
             user.get("username"),
             user.get("name"),
@@ -3064,24 +3129,24 @@ async def admin_export_users(request: Request) -> Response:
             user.get("company_number"),
             user.get("phone"),
             int(bool(user.get("is_admin"))),
+            int(bool(user.get("is_company_admin"))),
             int(bool(user.get("is_active"))),
             int(bool(user.get("require_password_change"))),
-            int(counts.get(user.get("username"), 0)),
+            int(search_counts.get(user.get("username"), 0)),
             int(monthly_counts.get(user.get("username"), 0)),
             "unlimited" if monthly_limit is None else monthly_limit,
             tier_meta.get("label", normalized_tier.title()),
-            user_type_label,
+            user_store.USER_TYPES.get(normalized_user_type, normalized_user_type.title()),
             user.get("created_at"),
             user.get("updated_at"),
         ])
     csv_content = buffer.getvalue()
     buffer.close()
-    filename = f"geoprox-users-{datetime.utcnow().strftime('%Y%m%d')}.csv"
-    return Response(csv_content, media_type='text/csv', headers={'Content-Disposition': f'attachment; filename={filename}'})
-
+    filename = f"geoprox-users-{datetime.utcnow().strftime("%Y%m%d")}.csv"
+    return Response(csv_content, media_type='text/csv', headers={"Content-Disposition": f"attachment; filename={filename}"})
 @app.post("/admin/users/create")
 async def admin_create_user(request: Request):
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     form = await request.form()
     username = (form.get("username") or "").strip()
     password = (form.get("password") or "").strip()
@@ -3093,77 +3158,89 @@ async def admin_create_user(request: Request):
     phone = (form.get("phone") or "").strip()
     license_tier_raw = (form.get("license_tier") or user_store.DEFAULT_LICENSE_TIER).strip()
     user_type_raw = (form.get("user_type") or user_store.DEFAULT_USER_TYPE).strip()
-    is_admin = form.get("is_admin") == "on"
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    if not is_global_admin:
+        if not managed_company_id:
+            _add_flash(request, "Your account is not linked to a company.", "error")
+            return _redirect_admin_users(None)
+        company_id = managed_company_id
+        company = manager.get("company") or ""
+        is_admin = False
+        is_company_admin = False
+        redirect_company_id = managed_company_id
+    else:
+        is_admin = form.get("is_admin") == "on"
+        is_company_admin = form.get("is_company_admin") == "on"
     if not username or not password or not name:
         _add_flash(request, "Username, name, and password are required.", "error")
-    else:
-        try:
-            license_tier = user_store.normalize_license_tier(license_tier_raw)
-        except ValueError:
-            _add_flash(request, "Select a valid license tier.", "error")
-        else:
-            try:
-                user_type = user_store.normalize_user_type(user_type_raw)
-            except ValueError:
-                _add_flash(request, "Select a valid user type.", "error")
-            else:
-                try:
-                    log.info("admin_create_user debug: USE_POSTGRES=%s DB_HOST=%s", user_store.USE_POSTGRES, os.environ.get("DB_HOST"))
-                    created = user_store.create_user(
-                        username=username,
-                        password=password,
-                        name=name,
-                        email=email,
-                        company=company,
-                        company_number=company_number,
-                        phone=phone,
-                        company_id=company_id,
-                        is_admin=is_admin,
-                        license_tier=license_tier,
-                        user_type=user_type,
-                    )
-                    log.info("admin_create_user result truthy=%s data=%s", bool(created), created)
-                    if created:
-                        log.info("Admin created user %s (id=%s, company_id=%s, is_admin=%s, is_active=%s)",
-                                 username,
-                                 created.get("id"),
-                                 created.get("company_id"),
-                                 created.get("is_admin"),
-                                 created.get("is_active"))
-                        log.info("admin_check persisted: %s", user_store.get_user_by_username(username))
-                    else:
-                        log.warning("Admin create user returned no record for %s", username)
-                    _add_flash(request, f"User '{username}' created.", "success")
-                except sqlite3.IntegrityError:
-                    _add_flash(request, "Username or email already exists.", "error")
-                except ValueError as exc:
-                    _add_flash(request, str(exc) or "Invalid company selection.", "error")
+        return _redirect_admin_users(redirect_company_id)
+    try:
+        license_tier = user_store.normalize_license_tier(license_tier_raw)
+    except ValueError:
+        _add_flash(request, "Select a valid license tier.", "error")
+        return _redirect_admin_users(redirect_company_id)
+    try:
+        user_type = user_store.normalize_user_type(user_type_raw)
+    except ValueError:
+        _add_flash(request, "Select a valid user type.", "error")
+        return _redirect_admin_users(redirect_company_id)
+    try:
+        created = user_store.create_user(
+            username=username,
+            password=password,
+            name=name,
+            email=email,
+            company=company,
+            company_number=company_number,
+            phone=phone,
+            company_id=company_id,
+            is_admin=is_admin,
+            is_company_admin=is_company_admin,
+            license_tier=license_tier,
+            user_type=user_type,
+        )
+        if created:
+            log.info(
+                "User %s created by %s (company_id=%s, is_admin=%s, is_company_admin=%s)",
+                username,
+                request.session.get("user"),
+                created.get("company_id"),
+                created.get("is_admin"),
+                created.get("is_company_admin"),
+            )
+        _add_flash(request, f"User '{username}' created.", "success")
+    except sqlite3.IntegrityError:
+        _add_flash(request, "Username or email already exists.", "error")
+    except ValueError as exc:
+        _add_flash(request, str(exc) or "Invalid company selection.", "error")
     return _redirect_admin_users(redirect_company_id)
-
-
 @app.post("/admin/users/{user_id}/update")
 async def admin_update_user(request: Request, user_id: int):
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     form = await request.form()
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, user)
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    if not is_global_admin:
+        redirect_company_id = managed_company_id
     updates: Dict[str, Any] = {}
     for field in ("name", "email", "company_number", "phone"):
         value = form.get(field)
         if value is not None:
             updates[field] = value.strip()
-    company_name = (form.get("company") or "").strip()
-    company_id_value = _parse_optional_int(form.get("company_id"))
-    if company_name:
-        updates["company"] = company_name
-        updates["company_id"] = company_id_value
-    elif form.get("company_id") is not None:
-        updates["company_id"] = company_id_value
-        if company_id_value is None:
-            updates["company"] = ""
+    if is_global_admin:
+        company_name = (form.get("company") or "").strip()
+        company_id_value = _parse_optional_int(form.get("company_id"))
+        if company_name:
+            updates["company"] = company_name
+            updates["company_id"] = company_id_value
+        elif form.get("company_id") is not None:
+            updates["company_id"] = company_id_value
+            if company_id_value is None:
+                updates["company"] = ""
     license_choice = (form.get("license_tier") or "").strip()
     if license_choice:
         try:
@@ -3178,15 +3255,20 @@ async def admin_update_user(request: Request, user_id: int):
         except ValueError:
             _add_flash(request, "Select a valid user type.", "error")
             return _redirect_admin_users(redirect_company_id)
-    is_admin_flag = form.get("is_admin") == "on"
-    updates["is_admin"] = is_admin_flag
+    if is_global_admin:
+        new_is_admin = form.get("is_admin") == "on"
+        updates["is_admin"] = new_is_admin
+        try:
+            _ensure_can_change_admin_flag(request, user, new_is_admin)
+        except HTTPException as exc:
+            _add_flash(request, exc.detail, "error")
+            return _redirect_admin_users(redirect_company_id)
+        updates["is_company_admin"] = form.get("is_company_admin") == "on"
     require_values = form.getlist("require_password_change")
     if require_values:
         updates["require_password_change"] = require_values[-1] == "on"
-    try:
-        _ensure_can_change_admin_flag(request, user, is_admin_flag)
-    except HTTPException as exc:
-        _add_flash(request, exc.detail, "error")
+    if not updates:
+        _add_flash(request, "Nothing to update.", "info")
         return _redirect_admin_users(redirect_company_id)
     try:
         user_store.update_user(user["id"], **updates)
@@ -3194,15 +3276,23 @@ async def admin_update_user(request: Request, user_id: int):
         _add_flash(request, str(exc) or "Invalid company selection.", "error")
         return _redirect_admin_users(redirect_company_id)
     _add_flash(request, f"Updated profile for '{user['username']}'.", "success")
-    return _redirect_admin_users(redirect_company_id)@app.post("/admin/users/{user_id}/toggle")
+    return _redirect_admin_users(redirect_company_id)
+@app.post("/admin/users/{user_id}/toggle")
 async def admin_toggle_user(request: Request, user_id: int):
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     form = await request.form()
     action = form.get("action", "disable")
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    if not is_global_admin:
+        redirect_company_id = managed_company_id
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, user)
+        if user.get("is_admin"):
+            _add_flash(request, "Only platform administrators can change global admin accounts.", "error")
+            return _redirect_admin_users(redirect_company_id)
     enable = action != "disable"
     try:
         _ensure_can_change_active_status(request, user, enable=enable)
@@ -3216,25 +3306,28 @@ async def admin_toggle_user(request: Request, user_id: int):
         user_store.disable_user(user["id"])
         _add_flash(request, f"Disabled '{user['username']}'.", "success")
     return _redirect_admin_users(redirect_company_id)
-
-
 @app.post("/admin/users/{user_id}/reset-password")
 async def admin_reset_password(request: Request, user_id: int):
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     form = await request.form()
     new_password = (form.get("new_password") or "").strip()
-    user = user_store.get_user_by_id(user_id)
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    if not is_global_admin:
+        redirect_company_id = managed_company_id
+    user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, user)
+        if user.get("is_admin"):
+            _add_flash(request, "Only platform administrators can reset global admin passwords.", "error")
+            return _redirect_admin_users(redirect_company_id)
     if not new_password:
         _add_flash(request, "Password cannot be empty.", "error")
     else:
         user_store.set_password(user["id"], new_password, require_change=True)
         _add_flash(request, f"Password updated for '{user['username']}'.", "success")
     return _redirect_admin_users(redirect_company_id)
-
-
 @app.post("/admin/users/{user_id}/delete")
 async def admin_delete_user(request: Request, user_id: int):
     _require_admin(request)
@@ -3327,27 +3420,41 @@ async def api_admin_list_users(
     company_id: Optional[int] = None,
     include_disabled: bool = True,
 ) -> List[AdminUserOut]:
-    _require_admin(request)
-    records = user_store.list_users(include_disabled=include_disabled, company_id=company_id)
-    counts = history_store.get_user_search_counts()
-    monthly_counts = history_store.get_user_monthly_search_counts()
+    _, is_global_admin, managed_company_id = _require_user_management_scope(request)
+    effective_company_id = company_id if is_global_admin else managed_company_id
+    if not is_global_admin and not managed_company_id:
+        raise HTTPException(status_code=403, detail="Company access required")
+    records = user_store.list_users(include_disabled=include_disabled, company_id=effective_company_id)
+    counts_all = history_store.get_user_search_counts()
+    monthly_all = history_store.get_user_monthly_search_counts()
+    if is_global_admin:
+        counts = counts_all
+        monthly_counts = monthly_all
+    else:
+        visible_usernames = {record["username"] for record in records}
+        counts = {username: counts_all.get(username, 0) for username in visible_usernames}
+        monthly_counts = {username: monthly_all.get(username, 0) for username in visible_usernames}
     return [_user_to_out(record, counts, monthly_counts) for record in records]
-
-
 @app.get("/api/admin/users/{user_id}", response_model=AdminUserOut)
 async def api_admin_get_user(request: Request, user_id: int) -> AdminUserOut:
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     record = user_store.get_user_by_id(user_id)
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
-    counts = history_store.get_user_search_counts()
-    monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, record)
+    counts_all = history_store.get_user_search_counts()
+    monthly_all = history_store.get_user_monthly_search_counts()
+    if is_global_admin:
+        counts = counts_all
+        monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+    else:
+        counts = {record['username']: counts_all.get(record['username'], 0)}
+        monthly_counts = {record['username']: monthly_all.get(record['username'], 0)}
     return _user_to_out(record, counts, monthly_counts)
-
-
 @app.post("/api/admin/users", response_model=AdminUserOut, status_code=201)
 async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> AdminUserOut:
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     username = payload.username.strip()
     name = payload.name.strip()
     if not username or not name:
@@ -3356,17 +3463,30 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
         user_type = user_store.normalize_user_type(payload.user_type)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user type.")
+    if not is_global_admin:
+        if not managed_company_id:
+            raise HTTPException(status_code=403, detail="Company access required")
+        target_company_id = managed_company_id
+        target_company_name = manager.get("company") or ""
+        is_admin = False
+        is_company_admin = False
+    else:
+        target_company_id = payload.company_id
+        target_company_name = (payload.company or "").strip()
+        is_admin = payload.is_admin
+        is_company_admin = payload.is_company_admin
     try:
         record = user_store.create_user(
             username=username,
             password=payload.password,
             name=name,
             email=(payload.email or "").strip(),
-            company=(payload.company or "").strip(),
+            company=target_company_name,
             company_number=(payload.company_number or "").strip(),
             phone=(payload.phone or "").strip(),
-            company_id=payload.company_id,
-            is_admin=payload.is_admin,
+            company_id=target_company_id,
+            is_admin=is_admin,
+            is_company_admin=is_company_admin,
             is_active=payload.is_active,
             require_password_change=payload.require_password_change,
             license_tier=payload.license_tier,
@@ -3376,41 +3496,51 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
         raise HTTPException(status_code=409, detail="Username already exists.")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc) or "Invalid company selection.")
-    counts = history_store.get_user_search_counts()
-    monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+    counts_all = history_store.get_user_search_counts()
+    monthly_all = history_store.get_user_monthly_search_counts()
+    counts = counts_all if is_global_admin else {record['username']: counts_all.get(record['username'], 0)}
+    monthly_counts = monthly_all if is_global_admin else {record['username']: monthly_all.get(record['username'], 0)}
     return _user_to_out(record, counts, monthly_counts)
-
 @app.patch("/api/admin/users/{user_id}", response_model=AdminUserOut)
 async def api_admin_update_user(request: Request, user_id: int, payload: AdminUserUpdate) -> AdminUserOut:
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     record = user_store.get_user_by_id(user_id)
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, record)
     data = payload.model_dump(exclude_unset=True)
+    if not is_global_admin:
+        for key in ("company", "company_id", "is_admin", "is_company_admin"):
+            data.pop(key, None)
     updates: Dict[str, Any] = {}
     for field in ("name", "email", "company_number", "phone"):
         if field in data and data[field] is not None:
             updates[field] = data[field].strip()
-    if "company" in data:
+    if is_global_admin and "company" in data:
         updates["company"] = (data["company"] or "").strip()
-    if "company_id" in data:
+    if is_global_admin and "company_id" in data:
         updates["company_id"] = data["company_id"]
         if data["company_id"] is None and "company" not in updates:
             updates["company"] = ""
-    if "license_tier" in data:
+    if "license_tier" in data and data["license_tier"] is not None:
         updates["license_tier"] = data["license_tier"]
     if "user_type" in data:
         try:
             updates["user_type"] = user_store.normalize_user_type(data["user_type"])
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user type.")
-    if "is_admin" in data:
+    if is_global_admin and "is_admin" in data:
         _ensure_can_change_admin_flag(request, record, data["is_admin"])
         updates["is_admin"] = data["is_admin"]
+    if is_global_admin and "is_company_admin" in data and data["is_company_admin"] is not None:
+        updates["is_company_admin"] = data["is_company_admin"]
     if "require_password_change" in data:
         updates["require_password_change"] = data["require_password_change"]
     target_is_admin = updates.get("is_admin", record["is_admin"])
     if "is_active" in data:
+        if not is_global_admin and record.get("is_admin") and not data["is_active"]:
+            raise HTTPException(status_code=403, detail="Only platform administrators can disable global admin accounts.")
         _ensure_can_change_active_status(
             request,
             record,
@@ -3419,8 +3549,10 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         )
         updates["is_active"] = data["is_active"]
     if not updates:
-        counts = history_store.get_user_search_counts()
-        monthly_counts = {record['username']: history_store.get_monthly_search_count(record['username'])}
+        counts_all = history_store.get_user_search_counts()
+        monthly_all = history_store.get_user_monthly_search_counts()
+        counts = counts_all if is_global_admin else {record['username']: counts_all.get(record['username'], 0)}
+        monthly_counts = monthly_all if is_global_admin else {record['username']: monthly_all.get(record['username'], 0)}
         return _user_to_out(record, counts, monthly_counts)
     try:
         user_store.update_user(record["id"], **updates)
@@ -3429,24 +3561,26 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
     updated = user_store.get_user_by_id(record["id"])
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
-    counts = history_store.get_user_search_counts()
-    monthly_counts = {updated['username']: history_store.get_monthly_search_count(updated['username'])}
+    counts_all = history_store.get_user_search_counts()
+    monthly_all = history_store.get_user_monthly_search_counts()
+    counts = counts_all if is_global_admin else {updated['username']: counts_all.get(updated['username'], 0)}
+    monthly_counts = monthly_all if is_global_admin else {updated['username']: monthly_all.get(updated['username'], 0)}
     return _user_to_out(updated, counts, monthly_counts)
-
 @app.post("/api/admin/users/{user_id}/reset-password", response_model=AdminActionResult)
 async def api_admin_reset_password(request: Request, user_id: int, payload: AdminPasswordReset) -> AdminActionResult:
-    _require_admin(request)
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
     new_password = payload.new_password.strip()
     if not new_password:
         raise HTTPException(status_code=400, detail="Password cannot be empty.")
     user = user_store.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, user)
+        if user.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Only platform administrators can reset global admin passwords.")
     user_store.set_password(user_id, new_password, require_change=True)
     return AdminActionResult(status="ok", message=f"Password updated for '{user['username']}'.")
-
-
-
 @app.get("/api/admin/companies", response_model=List[AdminCompanyOut])
 async def api_admin_list_companies(request: Request, include_inactive: bool = True) -> List[AdminCompanyOut]:
     _require_admin(request)
@@ -3891,6 +4025,7 @@ def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
 
     if changed:
         payload["artifacts"] = updated
+
 
 
 

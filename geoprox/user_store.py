@@ -200,6 +200,7 @@ def init_db() -> None:
                     password_hash TEXT NOT NULL,
                     license_tier TEXT NOT NULL DEFAULT 'basic',
                     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+                    is_company_admin BOOLEAN NOT NULL DEFAULT FALSE,
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -209,6 +210,7 @@ def init_db() -> None:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_users_company ON users(company_id)")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_company_admin BOOLEAN NOT NULL DEFAULT FALSE")
             conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT NOT NULL DEFAULT 'desktop'")
             conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token TEXT")
         return
@@ -246,6 +248,7 @@ def init_db() -> None:
                 password_hash TEXT NOT NULL,
                 license_tier TEXT NOT NULL DEFAULT 'basic',
                 is_admin INTEGER NOT NULL DEFAULT 0,
+                is_company_admin INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -273,6 +276,8 @@ def _ensure_additional_user_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN require_password_change INTEGER NOT NULL DEFAULT 0")
     if "license_tier" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN license_tier TEXT NOT NULL DEFAULT 'basic'")
+    if "is_company_admin" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN is_company_admin INTEGER NOT NULL DEFAULT 0")
     if "user_type" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN user_type TEXT NOT NULL DEFAULT 'desktop'")
     if "session_token" not in columns:
@@ -366,6 +371,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "salt": row["salt"],
         "password_hash": row["password_hash"],
         "is_admin": bool(row["is_admin"]),
+        "is_company_admin": bool(row["is_company_admin"]) if "is_company_admin" in row.keys() else False,
         "is_active": bool(row["is_active"]),
         "require_password_change": bool(row["require_password_change"]) if "require_password_change" in row.keys() else False,
         "session_token": row["session_token"] if "session_token" in row.keys() else None,
@@ -555,6 +561,7 @@ def create_user(
     company_id: Optional[int] = None,
     user_type: str = DEFAULT_USER_TYPE,
     is_admin: bool = False,
+    is_company_admin: bool = False,
     is_active: bool = True,
     require_password_change: bool = True,
     license_tier: str = DEFAULT_LICENSE_TIER,
@@ -566,8 +573,8 @@ def create_user(
     normalized_tier = normalize_license_tier(license_tier)
     normalized_user_type = normalize_user_type(user_type)
     sql = """
-        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, user_type, session_token, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, license_tier, user_type, session_token, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     params = (
         username,
@@ -580,6 +587,7 @@ def create_user(
         salt.hex(),
         password_hash,
         _coerce_bool(is_admin),
+        _coerce_bool(is_company_admin),
         _coerce_bool(is_active),
         _coerce_bool(require_password_change),
         normalized_tier,
@@ -589,7 +597,7 @@ def create_user(
         now,
     )
     if USE_POSTGRES:
-        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, user_type, session_token, salt, password_hash, is_admin, is_active, require_password_change, created_at, updated_at"
+        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, user_type, session_token, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, created_at, updated_at"
         created_row: Optional[Dict[str, Any]] = None
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
@@ -646,6 +654,7 @@ def update_user(user_id: int, **fields: Any) -> None:
         "company_id",
         "user_type",
         "is_admin",
+        "is_company_admin",
         "is_active",
         "require_password_change",
         "license_tier",
@@ -673,7 +682,7 @@ def update_user(user_id: int, **fields: Any) -> None:
             if value is None:
                 continue
             updates[key] = normalize_user_type(value)
-        elif key in {"is_admin", "is_active", "require_password_change"}:
+        elif key in {"is_admin", "is_company_admin", "is_active", "require_password_change"}:
             updates[key] = _coerce_bool(value)
         else:
             updates[key] = value
@@ -775,8 +784,8 @@ def import_legacy_users() -> None:
                 if not username or not salt or not pw_hash:
                     continue
                 sql = """
-                    INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_active, require_password_change, license_tier, created_at, updated_at)
-                    VALUES (?, ?, ?, '', '', '', NULL, ?, ?, ?, 1, 0, ?, ?, ?)
+                    INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, license_tier, created_at, updated_at)
+                    VALUES (?, ?, ?, '', '', '', NULL, ?, ?, ?, 0, 1, 0, ?, ?, ?)
                 """
                 if USE_POSTGRES:
                     sql += " ON CONFLICT (username) DO NOTHING"
@@ -832,7 +841,3 @@ __all__ = [
     "update_user",
     "verify_credentials",
 ]
-
-
-
-
