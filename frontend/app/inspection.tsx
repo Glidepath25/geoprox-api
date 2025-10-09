@@ -837,5 +837,28 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: 8,
+  },
+  buttonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#2563eb',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    color: '#2563eb',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
