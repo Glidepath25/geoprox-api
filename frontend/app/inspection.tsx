@@ -219,6 +219,59 @@ export default function InspectionScreen() {
     return true;
   };
 
+  const saveInspection = async () => {
+    setSaving(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      
+      const inspectionData = {
+        permit_id: permitId,
+        work_order_reference: workOrderRef || '',
+        excavation_site_number: excavationSiteNumber || '',
+        surface_location: surfaceLocation,
+        utility_type: utilityType || '',
+        q1_asbestos: questions[0].answer,
+        q1_notes: questions[0].notes,
+        q2_binder_shiny: questions[1].answer,
+        q2_notes: questions[1].notes,
+        q3_spray_pak: questions[2].answer,
+        q3_notes: questions[2].notes,
+        q4_soil_stained: questions[3].answer,
+        q4_notes: questions[3].notes,
+        q5_water_moisture: questions[4].answer,
+        q5_notes: questions[4].notes,
+        q6_pungent_odours: questions[5].answer,
+        q6_notes: questions[5].notes,
+        q7_litmus_paper: questions[6].answer,
+        q7_notes: questions[6].notes,
+        bituminous_result: bituminousResult,
+        sub_base_result: subBaseResult,
+        photos: photos,
+      };
+
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections/save`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(inspectionData),
+      });
+
+      if (response.ok) {
+        Alert.alert('Saved', 'Inspection saved as draft. You can complete it later.');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.detail || 'Failed to save inspection');
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      Alert.alert('Error', 'Network error saving inspection');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submitInspection = async () => {
     if (!validateForm()) return;
 
@@ -251,7 +304,7 @@ export default function InspectionScreen() {
         photos: photos,
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections/submit`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
