@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,10 +7,12 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 import uuid
 from datetime import datetime
-
+import hashlib
+import jwt
+from bson import ObjectId
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,42 +22,247 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
+# Create the main app
 app = FastAPI()
-
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+# Security
+security = HTTPBearer()
+JWT_SECRET = "geoprox-secret-key-2025"
 
-# Define Models
-class StatusCheck(BaseModel):
+# Models
+class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    username: str
+    email: str
+    password_hash: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
-# Add your routes to the router instead of directly to app
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+
+class Permit(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    permit_number: str
+    utility_type: str
+    works_type: str
+    location: str
+    address: str
+    highway_authority: str
+    status: str
+    created_by: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class SiteInspection(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    permit_id: str
+    inspector_id: str
+    inspection_date: datetime = Field(default_factory=datetime.utcnow)
+    work_order_reference: str
+    excavation_site_number: str
+    surface_location: str
+    
+    # Questionnaire answers
+    q1_asbestos: str  # Yes/No
+    q1_notes: str
+    q2_binder_shiny: str  # Yes/No
+    q2_notes: str
+    q3_spray_pak: str  # Yes/No
+    q3_notes: str
+    q4_soil_stained: str  # Yes/No
+    q4_notes: str
+    q5_water_moisture: str  # Yes/No
+    q5_notes: str
+    q6_pungent_odours: str  # Yes/No
+    q6_notes: str
+    q7_litmus_paper: str  # Yes/No
+    q7_notes: str
+    
+    # Assessment results
+    bituminous_result: str
+    sub_base_result: str
+    
+    # Photos (base64 encoded)
+    photos: List[str] = []
+    
+    status: str = "completed"
+
+class InspectionCreate(BaseModel):
+    permit_id: str
+    work_order_reference: str
+    excavation_site_number: str
+    surface_location: str
+    q1_asbestos: str
+    q1_notes: str = ""
+    q2_binder_shiny: str
+    q2_notes: str = ""
+    q3_spray_pak: str
+    q3_notes: str = ""
+    q4_soil_stained: str
+    q4_notes: str = ""
+    q5_water_moisture: str
+    q5_notes: str = ""
+    q6_pungent_odours: str
+    q6_notes: str = ""
+    q7_litmus_paper: str
+    q7_notes: str = ""
+    bituminous_result: str
+    sub_base_result: str
+    photos: List[str] = []
+
+# Helper functions
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password: str, hash: str) -> bool:
+    return hash_password(password) == hash
+
+def create_token(user_id: str) -> str:
+    payload = {"user_id": user_id, "exp": datetime.utcnow().timestamp() + 86400}  # 24 hours
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload.get("user_id")
+        user = await db.users.find_one({"id": user_id})
+        if user:
+            return User(**user)
+    except:
+        pass
+    raise HTTPException(status_code=401, detail="Invalid token")
+
+# Initialize sample data
+async def init_sample_data():
+    # Check if users exist
+    user_count = await db.users.count_documents({})
+    if user_count == 0:
+        # Create sample users
+        sample_users = [
+            {
+                "id": str(uuid.uuid4()),
+                "username": "john.smith",
+                "email": "john@geoprox.com",
+                "password_hash": hash_password("password123"),
+                "created_at": datetime.utcnow()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "username": "sarah.jones",
+                "email": "sarah@geoprox.com", 
+                "password_hash": hash_password("password123"),
+                "created_at": datetime.utcnow()
+            }
+        ]
+        await db.users.insert_many(sample_users)
+        
+        # Create sample permits
+        sample_permits = [
+            {
+                "id": str(uuid.uuid4()),
+                "permit_number": "K6004-HAW-VON-59848",
+                "utility_type": "Street Lighting",
+                "works_type": "Standard",
+                "location": "Public",
+                "address": "53.390323, -2.851263",
+                "highway_authority": "Howth",
+                "status": "Active",
+                "created_by": sample_users[0]["id"],
+                "created_at": datetime.utcnow()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "permit_number": "Test123-HAW-GAS-12345", 
+                "utility_type": "Gas",
+                "works_type": "Emergency",
+                "location": "Private",
+                "address": "54.123456, -3.234567",
+                "highway_authority": "Manchester",
+                "status": "Active",
+                "created_by": sample_users[0]["id"],
+                "created_at": datetime.utcnow()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "permit_number": "ELEC789-BIR-POW-67890",
+                "utility_type": "Electricity",
+                "works_type": "Planned",
+                "location": "Public",
+                "address": "52.987654, -1.876543",
+                "highway_authority": "Birmingham",
+                "status": "Active", 
+                "created_by": sample_users[1]["id"],
+                "created_at": datetime.utcnow()
+            }
+        ]
+        await db.permits.insert_many(sample_permits)
+        print("Sample data initialized")
+
+# Routes
+@api_router.post("/auth/login")
+async def login(user_login: UserLogin):
+    user = await db.users.find_one({"username": user_login.username})
+    if not user or not verify_password(user_login.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    token = create_token(user["id"])
+    return {
+        "token": token,
+        "user": UserResponse(id=user["id"], username=user["username"], email=user["email"])
+    }
+
+@api_router.get("/permits", response_model=List[Permit])
+async def get_permits(current_user: User = Depends(get_current_user)):
+    permits = await db.permits.find({"created_by": current_user.id}).to_list(1000)
+    return [Permit(**permit) for permit in permits]
+
+@api_router.get("/permits/{permit_id}", response_model=Permit)
+async def get_permit(permit_id: str, current_user: User = Depends(get_current_user)):
+    permit = await db.permits.find_one({"id": permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    return Permit(**permit)
+
+@api_router.post("/inspections", response_model=SiteInspection)
+async def create_inspection(inspection: InspectionCreate, current_user: User = Depends(get_current_user)):
+    # Verify permit exists and belongs to user
+    permit = await db.permits.find_one({"id": inspection.permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    inspection_data = inspection.dict()
+    inspection_data["id"] = str(uuid.uuid4())
+    inspection_data["inspector_id"] = current_user.id
+    inspection_data["inspection_date"] = datetime.utcnow()
+    
+    site_inspection = SiteInspection(**inspection_data)
+    await db.inspections.insert_one(site_inspection.dict())
+    return site_inspection
+
+@api_router.get("/inspections/{permit_id}", response_model=List[SiteInspection])
+async def get_inspections(permit_id: str, current_user: User = Depends(get_current_user)):
+    # Verify permit belongs to user
+    permit = await db.permits.find_one({"id": permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    inspections = await db.inspections.find({"permit_id": permit_id}).to_list(1000)
+    return [SiteInspection(**inspection) for inspection in inspections]
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "GeoProx Mobile API"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.dict()
-    status_obj = StatusCheck(**status_dict)
-    _ = await db.status_checks.insert_one(status_obj.dict())
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
-
-# Include the router in the main app
+# Include router
 app.include_router(api_router)
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -63,13 +271,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Startup event
+@app.on_event("startup")
+async def startup_db():
+    await init_sample_data()
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
