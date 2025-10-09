@@ -617,24 +617,50 @@ export default function SampleTestingScreen() {
               </View>
               
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>MATERIAL</Text>
-                <TextInput
-                  style={styles.input}
-                  value={sample2Material}
-                  onChangeText={setSample2Material}
-                  placeholder="Enter material"
-                />
+                <Text style={styles.inputLabel}>MATERIAL SAMPLED</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOption, sample2Material === 'Bituminous' && styles.radioSelected]}
+                    onPress={() => setSample2Material('Bituminous')}
+                  >
+                    <Text style={[styles.radioText, sample2Material === 'Bituminous' && styles.radioTextSelected]}>
+                      Bituminous
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.radioOption, sample2Material === 'Sub-base' && styles.radioSelected]}
+                    onPress={() => setSample2Material('Sub-base')}
+                  >
+                    <Text style={[styles.radioText, sample2Material === 'Sub-base' && styles.radioTextSelected]}>
+                      Sub-base
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
             
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>LAB ANALYSIS</Text>
-              <TextInput
-                style={styles.input}
-                value={sample2LabAnalysis}
-                onChangeText={setSample2LabAnalysis}
-                placeholder="Enter lab analysis"
-              />
+              <View style={styles.radioGroup}>
+                <TouchableOpacity
+                  style={[styles.radioOption, sample2LabAnalysis === 'Green' && styles.radioSelected]}
+                  onPress={() => setSample2LabAnalysis('Green')}
+                >
+                  <Text style={[styles.radioText, sample2LabAnalysis === 'Green' && styles.radioTextSelected]}>
+                    Green
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.radioOption, sample2LabAnalysis === 'Red' && styles.radioSelected]}
+                  onPress={() => setSample2LabAnalysis('Red')}
+                >
+                  <Text style={[styles.radioText, sample2LabAnalysis === 'Red' && styles.radioTextSelected]}>
+                    Red
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
