@@ -128,6 +128,26 @@ export default function PermitsScreen() {
     });
   };
 
+  const openGoogleMaps = (latitude: number, longitude: number) => {
+    const url = `https://www.google.com/maps?q=${latitude},${longitude}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Unable to open Google Maps');
+    });
+  };
+
+  const getRiskAssessmentColor = (risk: string) => {
+    switch (risk.toLowerCase()) {
+      case 'low':
+        return '#10b981';
+      case 'medium':
+        return '#f59e0b';
+      case 'high':
+        return '#ef4444';
+      default:
+        return '#6b7280';
+    }
+  };
+
   const renderPermitCard = ({ item }: { item: Permit }) => (
     <TouchableOpacity
       style={styles.permitCard}
