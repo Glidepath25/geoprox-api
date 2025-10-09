@@ -298,21 +298,25 @@ export default function PermitDetailsScreen() {
 
           {permit.sample_results && (
             <View style={styles.resultsContainer}>
-              {permit.sample_results.sample1 && (
-                <View style={styles.resultRow}>
-                  <Text style={styles.resultLabel}>Sample 1 ({permit.sample_results.sample1.material}):</Text>
-                  <View style={[styles.resultBadge, { backgroundColor: permit.sample_results.sample1.result === 'Green' ? '#10b981' : '#ef4444' }]}>
-                    <Text style={styles.resultText}>{permit.sample_results.sample1.result}</Text>
-                  </View>
+              {permit.sample_results.sample1_determinants && (
+                <View style={styles.sampleSection}>
+                  <Text style={styles.sampleTitle}>Sample 1:</Text>
+                  {permit.sample_results.sample1_determinants.map((det, index) => (
+                    <View key={index} style={styles.determinantRow}>
+                      <Text style={styles.determinantText}>{det.name} = {det.result} = {det.concentration}</Text>
+                    </View>
+                  ))}
                 </View>
               )}
               
-              {permit.sample_results.sample2 && (
-                <View style={styles.resultRow}>
-                  <Text style={styles.resultLabel}>Sample 2 ({permit.sample_results.sample2.material}):</Text>
-                  <View style={[styles.resultBadge, { backgroundColor: permit.sample_results.sample2.result === 'Green' ? '#10b981' : '#ef4444' }]}>
-                    <Text style={styles.resultText}>{permit.sample_results.sample2.result}</Text>
-                  </View>
+              {permit.sample_results.sample2_determinants && (
+                <View style={styles.sampleSection}>
+                  <Text style={styles.sampleTitle}>Sample 2:</Text>
+                  {permit.sample_results.sample2_determinants.map((det, index) => (
+                    <View key={index} style={styles.determinantRow}>
+                      <Text style={styles.determinantText}>{det.name} = {det.result} = {det.concentration}</Text>
+                    </View>
+                  ))}
                 </View>
               )}
             </View>
