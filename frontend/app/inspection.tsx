@@ -230,6 +230,7 @@ export default function InspectionScreen() {
         work_order_reference: workOrderRef,
         excavation_site_number: excavationSiteNumber,
         surface_location: surfaceLocation,
+        utility_type: utilityType,
         q1_asbestos: questions[0].answer,
         q1_notes: questions[0].notes,
         q2_binder_shiny: questions[1].answer,
