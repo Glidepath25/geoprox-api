@@ -115,6 +115,7 @@ export default function InspectionScreen() {
   useEffect(() => {
     loadPermit();
     requestPermissions();
+    loadExistingInspection();
   }, []);
 
   const requestPermissions = async () => {
