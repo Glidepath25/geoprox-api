@@ -247,24 +247,31 @@ export default function InspectionScreen() {
   };
 
   const validateForm = () => {
+    const missingFields = [];
+    
     if (!workOrderRef.trim()) {
-      Alert.alert('Validation Error', 'Work Order Reference is required');
-      return false;
+      missingFields.push('Work Order Reference');
     }
 
     if (!excavationSiteNumber.trim()) {
-      Alert.alert('Validation Error', 'Excavation Site Number is required');
-      return false;
+      missingFields.push('Excavation Site Number');
     }
 
     if (!utilityType.trim()) {
-      Alert.alert('Validation Error', 'Utility Type is required');
-      return false;
+      missingFields.push('Utility Type');
     }
 
     const unansweredQuestions = questions.filter(q => !q.answer);
     if (unansweredQuestions.length > 0) {
-      Alert.alert('Validation Error', 'Please answer all questions');
+      missingFields.push(`${unansweredQuestions.length} unanswered question(s)`);
+    }
+
+    if (missingFields.length > 0) {
+      Alert.alert(
+        'Submission Failed', 
+        `Please complete the following mandatory fields:\n\n• ${missingFields.join('\n• ')}`,
+        [{ text: 'OK', style: 'default' }]
+      );
       return false;
     }
 
