@@ -125,6 +125,57 @@ export default function InspectionScreen() {
     }
   };
 
+  const loadExistingInspection = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections/current/${permitId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const inspection = await response.json();
+        if (inspection) {
+          // Populate form fields with existing data
+          setWorkOrderRef(inspection.work_order_reference || '');
+          setExcavationSiteNumber(inspection.excavation_site_number || '');
+          setSurfaceLocation(inspection.surface_location || 'Footway / Footpath');
+          setUtilityType(inspection.utility_type || '');
+          setBituminousResult(inspection.bituminous_result || 'Red');
+          setSubBaseResult(inspection.sub_base_result || 'Green');
+          setPhotos(inspection.photos || []);
+          
+          // Populate questions
+          const updatedQuestions = questions.map((q, index) => {
+            const questionKeys = [
+              'q1_asbestos', 'q2_binder_shiny', 'q3_spray_pak', 'q4_soil_stained',
+              'q5_water_moisture', 'q6_pungent_odours', 'q7_litmus_paper'
+            ];
+            const notesKeys = [
+              'q1_notes', 'q2_notes', 'q3_notes', 'q4_notes',
+              'q5_notes', 'q6_notes', 'q7_notes'
+            ];
+            
+            return {
+              ...q,
+              answer: inspection[questionKeys[index]] || '',
+              notes: inspection[notesKeys[index]] || q.notes
+            };
+          });
+          setQuestions(updatedQuestions);
+          
+          console.log('Loaded existing inspection data');
+        }
+      }
+    } catch (error) {
+      console.log('No existing inspection found or error loading:', error);
+      // This is fine - just means no existing inspection
+    }
+  };
+
   const loadPermit = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
