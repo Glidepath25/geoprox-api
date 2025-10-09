@@ -176,7 +176,6 @@ async def init_sample_data():
             {
                 "id": str(uuid.uuid4()),
                 "permit_number": "K6004-HAW-VON-59848",
-                "permit_name": "Streetlight Installation - Howth Road",
                 "works_type": "Standard",
                 "location": "Public",
                 "address": "Howth Road Junction, Dublin",
@@ -191,7 +190,6 @@ async def init_sample_data():
             {
                 "id": str(uuid.uuid4()),
                 "permit_number": "Test123-HAW-GAS-12345", 
-                "permit_name": "Emergency Gas Main Repair",
                 "works_type": "Emergency",
                 "location": "Private",
                 "address": "Industrial Estate, Manchester",
@@ -206,7 +204,6 @@ async def init_sample_data():
             {
                 "id": str(uuid.uuid4()),
                 "permit_number": "ELEC789-BIR-POW-67890",
-                "permit_name": "Power Cable Replacement",
                 "works_type": "Planned",
                 "location": "Public",
                 "address": "City Centre, Birmingham",
