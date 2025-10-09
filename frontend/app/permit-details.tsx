@@ -542,4 +542,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  sampleSection: {
+    marginBottom: 16,
+  },
+  sampleTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  determinantRow: {
+    marginBottom: 6,
+  },
+  determinantText: {
+    fontSize: 14,
+    color: '#374151',
+    paddingLeft: 12,
+  },
 });
