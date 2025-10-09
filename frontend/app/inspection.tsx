@@ -375,8 +375,8 @@ export default function InspectionScreen() {
 
       if (response.ok) {
         Alert.alert(
-          'Success',
-          'Site inspection completed successfully!',
+          'Inspection Submitted',
+          'Site inspection has been successfully submitted and marked as complete.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
       } else {
