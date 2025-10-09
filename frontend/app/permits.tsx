@@ -1,0 +1,351 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  TouchableOpacity,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+
+const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
+interface Permit {
+  id: string;
+  permit_number: string;
+  utility_type: string;
+  works_type: string;
+  location: string;
+  address: string;
+  highway_authority: string;
+  status: string;
+  created_at: string;
+}
+
+export default function PermitsScreen() {
+  const [permits, setPermits] = useState<Permit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [user, setUser] = useState(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const userData = await AsyncStorage.getItem('user');
+      
+      if (!token) {
+        router.replace('/');
+        return;
+      }
+      
+      if (userData) {
+        setUser(JSON.parse(userData));
+      }
+      
+      await loadPermits();
+    } catch (error) {
+      console.error('Auth check error:', error);
+      router.replace('/');
+    }
+  };
+
+  const loadPermits = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPermits(data);
+      } else if (response.status === 401) {
+        await AsyncStorage.clear();
+        router.replace('/');
+      } else {
+        Alert.alert('Error', 'Failed to load permits');
+      }
+    } catch (error) {
+      console.error('Load permits error:', error);
+      Alert.alert('Error', 'Network error loading permits');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadPermits();
+  };
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.clear();
+            router.replace('/');
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePermitPress = (permit: Permit) => {
+    router.push({
+      pathname: '/inspection',
+      params: { permitId: permit.id }
+    });
+  };
+
+  const renderPermitCard = ({ item }: { item: Permit }) => (
+    <TouchableOpacity
+      style={styles.permitCard}
+      onPress={() => handlePermitPress(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.permitNumber}>{item.permit_number}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={styles.statusText}>{item.status}</Text>
+        </View>
+      </View>
+      
+      <View style={styles.cardContent}>
+        <View style={styles.detailRow}>
+          <Ionicons name="build" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>{item.utility_type}</Text>
+        </View>
+        
+        <View style={styles.detailRow}>
+          <Ionicons name="construct" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>{item.works_type}</Text>
+        </View>
+        
+        <View style={styles.detailRow}>
+          <Ionicons name="location" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>{item.location}</Text>
+        </View>
+        
+        <View style={styles.detailRow}>
+          <Ionicons name="business" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>{item.highway_authority}</Text>
+        </View>
+      </View>
+      
+      <View style={styles.cardFooter}>
+        <Text style={styles.addressText}>{item.address}</Text>
+        <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+      </View>
+    </TouchableOpacity>
+  );
+
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return '#10b981';
+      case 'pending':
+        return '#f59e0b';
+      case 'completed':
+        return '#6b7280';
+      default:
+        return '#ef4444';
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2563eb" />
+        <Text style={styles.loadingText}>Loading permits...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>Permits</Text>
+          <Text style={styles.subtitle}>
+            Welcome back, {user?.username || 'User'}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Ionicons name="log-out-outline" size={24} color="#ef4444" />
+        </TouchableOpacity>
+      </View>
+
+      {permits.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="document-text-outline" size={64} color="#9ca3af" />
+          <Text style={styles.emptyTitle}>No Permits Found</Text>
+          <Text style={styles.emptyText}>
+            You don't have any permits assigned to you yet.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={permits}
+          renderItem={renderPermitCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#2563eb"
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6b7280',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  logoutButton: {
+    padding: 8,
+  },
+  listContainer: {
+    padding: 16,
+  },
+  permitCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  permitNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cardContent: {
+    marginBottom: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  detailText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#374151',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  addressText: {
+    fontSize: 13,
+    color: '#6b7280',
+    flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+});
