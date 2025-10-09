@@ -50,12 +50,15 @@ class UserResponse(BaseModel):
 class Permit(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     permit_number: str
-    utility_type: str
+    permit_name: str
     works_type: str
     location: str
     address: str
+    latitude: float
+    longitude: float
     highway_authority: str
     status: str
+    proximity_risk_assessment: str  # Result from desktop assessment
     created_by: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
