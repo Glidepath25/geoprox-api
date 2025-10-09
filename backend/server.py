@@ -145,6 +145,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # Initialize sample data
 async def init_sample_data():
+    # Clear existing data to ensure schema compatibility
+    await db.users.delete_many({})
+    await db.permits.delete_many({})
+    await db.inspections.delete_many({})
+    
     # Check if users exist
     user_count = await db.users.count_documents({})
     if user_count == 0:
