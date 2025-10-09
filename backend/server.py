@@ -375,12 +375,49 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
     
     return permits_with_status
 
-@api_router.get("/permits/{permit_id}", response_model=Permit)
+@api_router.get("/permits/{permit_id}")
 async def get_permit(permit_id: str, current_user: User = Depends(get_current_user)):
     permit = await db.permits.find_one({"id": permit_id, "created_by": current_user.id})
     if not permit:
         raise HTTPException(status_code=404, detail="Permit not found")
-    return Permit(**permit)
+    
+    permit_data = Permit(**permit).dict()
+    
+    # Check site inspections
+    inspections = await db.inspections.find({"permit_id": permit_id}).to_list(1000)
+    if inspections:
+        latest_inspection = inspections[-1]
+        status = latest_inspection.get("status", "pending")
+        
+        if status == "completed":
+            permit_data["inspection_status"] = "completed"
+            permit_data["inspection_results"] = {
+                "bituminous": latest_inspection.get("bituminous_result", ""),
+                "sub_base": latest_inspection.get("sub_base_result", "")
+            }
+        elif status == "wip":
+            permit_data["inspection_status"] = "wip" 
+            permit_data["inspection_results"] = {
+                "bituminous": latest_inspection.get("bituminous_result", ""),
+                "sub_base": latest_inspection.get("sub_base_result", "")
+            } if latest_inspection.get("bituminous_result") else None
+        else:
+            permit_data["inspection_status"] = "pending"
+            permit_data["inspection_results"] = None
+    else:
+        permit_data["inspection_status"] = "pending"
+        permit_data["inspection_results"] = None
+    
+    # Check sample testing status
+    sample_tests = await db.sample_testing.find({"permit_id": permit_id}).to_list(1000)
+    if sample_tests:
+        latest_sample = sample_tests[-1]
+        sample_status = latest_sample.get("status", "pending")
+        permit_data["sample_status"] = sample_status
+    else:
+        permit_data["sample_status"] = "not_required"  # Default to not required
+    
+    return permit_data
 
 @api_router.post("/inspections/save")
 async def save_inspection(inspection: InspectionCreate, current_user: User = Depends(get_current_user)):
