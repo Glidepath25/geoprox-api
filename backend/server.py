@@ -102,6 +102,7 @@ class InspectionCreate(BaseModel):
     work_order_reference: str
     excavation_site_number: str
     surface_location: str
+    utility_type: str  # User enters this on site
     q1_asbestos: str
     q1_notes: str = ""
     q2_binder_shiny: str
