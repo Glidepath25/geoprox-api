@@ -369,7 +369,9 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
             sample_status = latest_sample.get("status", "pending")
             permit_data["sample_status"] = sample_status
         else:
-            permit_data["sample_status"] = "not_required"  # Default to not required
+            # Check if permit has been marked for sampling (in production this would come from desktop system)
+            # For now, we'll use a field on the permit itself
+            permit_data["sample_status"] = permit.get("sample_required", "not_required")
         
         permits_with_status.append(permit_data)
     
