@@ -634,4 +634,14 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginLeft: 8,
   },
+  statusNotRequired: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusPendingSample: {
+    color: '#f59e0b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
