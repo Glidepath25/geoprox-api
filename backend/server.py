@@ -281,21 +281,68 @@ async def get_permit(permit_id: str, current_user: User = Depends(get_current_us
         raise HTTPException(status_code=404, detail="Permit not found")
     return Permit(**permit)
 
-@api_router.post("/inspections", response_model=SiteInspection)
-async def create_inspection(inspection: InspectionCreate, current_user: User = Depends(get_current_user)):
+@api_router.post("/inspections/save")
+async def save_inspection(inspection: InspectionCreate, current_user: User = Depends(get_current_user)):
     # Verify permit exists and belongs to user
     permit = await db.permits.find_one({"id": inspection.permit_id, "created_by": current_user.id})
     if not permit:
         raise HTTPException(status_code=404, detail="Permit not found")
     
+    # Check if inspection already exists for this permit
+    existing = await db.inspections.find_one({"permit_id": inspection.permit_id})
+    
     inspection_data = inspection.dict()
-    inspection_data["id"] = str(uuid.uuid4())
     inspection_data["inspector_id"] = current_user.id
     inspection_data["inspection_date"] = datetime.utcnow()
+    inspection_data["status"] = "wip"  # Work in progress
     
-    site_inspection = SiteInspection(**inspection_data)
-    await db.inspections.insert_one(site_inspection.dict())
-    return site_inspection
+    if existing:
+        # Update existing inspection
+        inspection_data["id"] = existing["id"]
+        await db.inspections.replace_one({"id": existing["id"]}, inspection_data)
+    else:
+        # Create new inspection
+        inspection_data["id"] = str(uuid.uuid4())
+        await db.inspections.insert_one(inspection_data)
+    
+    return SiteInspection(**inspection_data)
+
+@api_router.post("/inspections/submit")
+async def submit_inspection(inspection: InspectionCreate, current_user: User = Depends(get_current_user)):
+    # Verify permit exists and belongs to user
+    permit = await db.permits.find_one({"id": inspection.permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    # Validate all required fields for submission
+    required_fields = ['utility_type', 'q1_asbestos', 'q2_binder_shiny', 'q3_spray_pak', 
+                      'q4_soil_stained', 'q5_water_moisture', 'q6_pungent_odours', 
+                      'q7_litmus_paper', 'bituminous_result', 'sub_base_result']
+    
+    inspection_dict = inspection.dict()
+    missing_fields = [field for field in required_fields if not inspection_dict.get(field)]
+    
+    if missing_fields:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing_fields)}")
+    
+    # Check if inspection already exists for this permit
+    existing = await db.inspections.find_one({"permit_id": inspection.permit_id})
+    
+    inspection_data = inspection.dict()
+    inspection_data["inspector_id"] = current_user.id
+    inspection_data["inspection_date"] = datetime.utcnow()
+    inspection_data["status"] = "completed"  # Final submission
+    
+    if existing:
+        # Update existing inspection
+        inspection_data["id"] = existing["id"]
+        await db.inspections.replace_one({"id": existing["id"]}, inspection_data)
+    else:
+        # Create new inspection
+        inspection_data["id"] = str(uuid.uuid4())
+        await db.inspections.insert_one(inspection_data)
+    
+    return SiteInspection(**inspection_data)
 
 @api_router.get("/inspections/{permit_id}", response_model=List[SiteInspection])
 async def get_inspections(permit_id: str, current_user: User = Depends(get_current_user)):
