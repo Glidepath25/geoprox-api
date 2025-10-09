@@ -519,17 +519,55 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
             # Add sample results if completed
             if sample_status == "completed":
                 sample_results = {}
-                if latest_sample.get("sample1_material") and latest_sample.get("sample1_lab_analysis"):
-                    sample_results["sample1"] = {
-                        "material": latest_sample.get("sample1_material"),
-                        "result": latest_sample.get("sample1_lab_analysis")
-                    }
-                if latest_sample.get("sample2_material") and latest_sample.get("sample2_lab_analysis"):
-                    sample_results["sample2"] = {
-                        "material": latest_sample.get("sample2_material"),
-                        "result": latest_sample.get("sample2_lab_analysis")
-                    }
-                permit_data["sample_results"] = sample_results
+                
+                # Sample 1 determinants
+                sample1_determinants = []
+                determinants = [
+                    ("Coal tar", "coal_tar_sample1", "coal_tar_conc1"),
+                    ("Petroleum", "petroleum_sample1", "petroleum_conc1"),
+                    ("Heavy metal", "heavy_metal_sample1", "heavy_metal_conc1"),
+                    ("Asbestos", "asbestos_sample1", "asbestos_conc1"),
+                    ("Other", "other_sample1", "other_conc1")
+                ]
+                
+                for name, result_field, conc_field in determinants:
+                    result_value = latest_sample.get(result_field, "")
+                    conc_value = latest_sample.get(conc_field, "")
+                    if result_value or conc_value:
+                        sample1_determinants.append({
+                            "name": name,
+                            "result": result_value,
+                            "concentration": conc_value
+                        })
+                
+                if sample1_determinants:
+                    sample_results["sample1_determinants"] = sample1_determinants
+                
+                # Sample 2 determinants
+                sample2_determinants = []
+                determinants2 = [
+                    ("Coal tar", "coal_tar_sample2", "coal_tar_conc2"),
+                    ("Petroleum", "petroleum_sample2", "petroleum_conc2"),
+                    ("Heavy metal", "heavy_metal_sample2", "heavy_metal_conc2"),
+                    ("Asbestos", "asbestos_sample2", "asbestos_conc2"),
+                    ("Other", "other_sample2", "other_conc2")
+                ]
+                
+                for name, result_field, conc_field in determinants2:
+                    result_value = latest_sample.get(result_field, "")
+                    conc_value = latest_sample.get(conc_field, "")
+                    if result_value or conc_value:
+                        sample2_determinants.append({
+                            "name": name,
+                            "result": result_value,
+                            "concentration": conc_value
+                        })
+                
+                if sample2_determinants:
+                    sample_results["sample2_determinants"] = sample2_determinants
+                
+                if sample_results:
+                    permit_data["sample_results"] = sample_results
         else:
             # Check if permit has been marked for sampling (in production this would come from desktop system)
             # For now, we'll use a field on the permit itself
