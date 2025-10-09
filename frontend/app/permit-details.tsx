@@ -290,10 +290,33 @@ export default function PermitDetailsScreen() {
               <Text style={styles.statusText}>
                 {permit.sample_status === 'wip' ? 'WIP' : 
                  permit.sample_status === 'completed' ? 'Complete' : 
+                 permit.sample_status === 'pending_sample' ? 'Pending Sample' :
                  permit.sample_status === 'pending' ? 'Pending' : 'Not Required'}
               </Text>
             </View>
           </View>
+
+          {permit.sample_results && (
+            <View style={styles.resultsContainer}>
+              {permit.sample_results.sample1 && (
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Sample 1 ({permit.sample_results.sample1.material}):</Text>
+                  <View style={[styles.resultBadge, { backgroundColor: permit.sample_results.sample1.result === 'Green' ? '#10b981' : '#ef4444' }]}>
+                    <Text style={styles.resultText}>{permit.sample_results.sample1.result}</Text>
+                  </View>
+                </View>
+              )}
+              
+              {permit.sample_results.sample2 && (
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Sample 2 ({permit.sample_results.sample2.material}):</Text>
+                  <View style={[styles.resultBadge, { backgroundColor: permit.sample_results.sample2.result === 'Green' ? '#10b981' : '#ef4444' }]}>
+                    <Text style={styles.resultText}>{permit.sample_results.sample2.result}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
 
           <TouchableOpacity 
             style={styles.actionButton}
