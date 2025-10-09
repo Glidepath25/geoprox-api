@@ -144,7 +144,7 @@ export default function PermitsScreen() {
 
   const handlePermitPress = (permit: Permit) => {
     router.push({
-      pathname: '/inspection',
+      pathname: '/permit-details',
       params: { permitId: permit.id }
     });
   };
