@@ -23,11 +23,14 @@ const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 interface Permit {
   id: string;
   permit_number: string;
-  utility_type: string;
+  permit_name: string;
   works_type: string;
   location: string;
   address: string;
+  latitude: number;
+  longitude: number;
   highway_authority: string;
+  proximity_risk_assessment: string;
 }
 
 interface Question {
