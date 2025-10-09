@@ -198,29 +198,6 @@ export default function PermitsScreen() {
       </View>
       
       <View style={styles.cardContent}>
-        <View style={styles.detailRow}>
-          <Ionicons name="construct" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>{item.works_type}</Text>
-        </View>
-        
-        <View style={styles.detailRow}>
-          <Ionicons name="location" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>{item.location}</Text>
-        </View>
-        
-        <View style={styles.detailRow}>
-          <Ionicons name="business" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>{item.highway_authority}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Ionicons name="shield" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>Proximity Risk Assessment: </Text>
-          <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.proximity_risk_assessment) }]}>
-            <Text style={styles.riskText}>{item.proximity_risk_assessment}</Text>
-          </View>
-        </View>
-        
         <TouchableOpacity 
           style={styles.coordinatesRow}
           onPress={() => openGoogleMaps(item.latitude, item.longitude)}
@@ -230,8 +207,53 @@ export default function PermitsScreen() {
           <Text style={styles.coordinatesText}>
             {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
           </Text>
-          <Ionicons name="external-link" size={14} color="#2563eb" />
+          <Ionicons name="open-outline" size={14} color="#2563eb" />
         </TouchableOpacity>
+
+        <View style={styles.detailRow}>
+          <Ionicons name="shield" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>Proximity Risk Assessment: </Text>
+          <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.proximity_risk_assessment) }]}>
+            <Text style={styles.riskText}>{item.proximity_risk_assessment}</Text>
+          </View>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Ionicons name="clipboard" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>Site Inspection Status: </Text>
+          <View style={styles.statusContainer}>
+            {item.inspection_status === 'pending' && (
+              <Text style={styles.statusPending}>Pending</Text>
+            )}
+            {item.inspection_status === 'wip' && (
+              <Text style={styles.statusWip}>WIP</Text>
+            )}
+            {item.inspection_status === 'completed' && (
+              <Text style={styles.statusCompleted}>Complete</Text>
+            )}
+          </View>
+        </View>
+
+        {item.inspection_results && (
+          <View style={styles.detailRow}>
+            <View style={styles.resultsContainer}>
+              <Text style={styles.resultLabel}>Bituminous: </Text>
+              <View style={[styles.resultBadge, { backgroundColor: item.inspection_results.bituminous === 'Green' ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.resultText}>{item.inspection_results.bituminous}</Text>
+              </View>
+              <Text style={styles.resultLabel}> - Sub-Base: </Text>
+              <View style={[styles.resultBadge, { backgroundColor: item.inspection_results.sub_base === 'Green' ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.resultText}>{item.inspection_results.sub_base}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.detailRow}>
+          <Ionicons name="beaker" size={16} color="#6b7280" />
+          <Text style={styles.detailText}>Sample Status: </Text>
+          <Text style={styles.sampleStatus}>Not Required</Text>
+        </View>
       </View>
       
       <View style={styles.cardFooter}>
