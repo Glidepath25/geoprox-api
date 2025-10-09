@@ -260,8 +260,14 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
                     "bituminous": latest_inspection.get("bituminous_result", ""),
                     "sub_base": latest_inspection.get("sub_base_result", "")
                 }
+            elif status == "wip":
+                permit_data["inspection_status"] = "wip" 
+                permit_data["inspection_results"] = {
+                    "bituminous": latest_inspection.get("bituminous_result", ""),
+                    "sub_base": latest_inspection.get("sub_base_result", "")
+                } if latest_inspection.get("bituminous_result") else None
             else:
-                permit_data["inspection_status"] = "wip"
+                permit_data["inspection_status"] = "pending"
                 permit_data["inspection_results"] = None
         else:
             permit_data["inspection_status"] = "pending"
