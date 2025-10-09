@@ -420,4 +420,78 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+  headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  permitName: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  inspectionResults: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  resultBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  resultText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  riskBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  riskText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  coordinatesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  coordinatesText: {
+    marginLeft: 8,
+    marginRight: 4,
+    fontSize: 14,
+    color: '#2563eb',
+    textDecorationLine: 'underline',
+  },
+  footerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  completedText: {
+    marginLeft: 4,
+    fontSize: 12,
+    color: '#10b981',
+    fontWeight: '600',
+  },
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  pendingText: {
+    marginLeft: 4,
+    fontSize: 12,
+    color: '#f59e0b',
+    fontWeight: '600',
+  },
 });
