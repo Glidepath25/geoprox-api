@@ -323,7 +323,7 @@ export default function PermitsScreen() {
         </View>
       ) : (
         <FlatList
-          data={permits}
+          data={filteredPermits}
           renderItem={renderPermitCard}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
