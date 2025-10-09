@@ -70,6 +70,7 @@ class SiteInspection(BaseModel):
     work_order_reference: str
     excavation_site_number: str
     surface_location: str
+    utility_type: str  # User enters this on site
     
     # Questionnaire answers
     q1_asbestos: str  # Yes/No
