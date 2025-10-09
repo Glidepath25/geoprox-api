@@ -354,6 +354,20 @@ async def get_inspections(permit_id: str, current_user: User = Depends(get_curre
     inspections = await db.inspections.find({"permit_id": permit_id}).to_list(1000)
     return [SiteInspection(**inspection) for inspection in inspections]
 
+@api_router.get("/inspections/current/{permit_id}")
+async def get_current_inspection(permit_id: str, current_user: User = Depends(get_current_user)):
+    # Verify permit belongs to user
+    permit = await db.permits.find_one({"id": permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    # Get the current inspection (latest one)
+    inspection = await db.inspections.find_one({"permit_id": permit_id})
+    if not inspection:
+        return None
+    
+    return SiteInspection(**inspection)
+
 @api_router.get("/")
 async def root():
     return {"message": "GeoProx Mobile API"}
