@@ -588,4 +588,37 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
   },
+  statusContainer: {
+    marginLeft: 8,
+  },
+  statusPending: {
+    color: '#f59e0b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusWip: {
+    color: '#8b5cf6',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusCompleted: {
+    color: '#10b981',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  resultsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 24,
+  },
+  resultLabel: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  sampleStatus: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginLeft: 8,
+  },
 });
