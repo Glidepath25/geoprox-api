@@ -541,11 +541,10 @@ export default function SampleTestingScreen() {
             </View>
           </View>
 
-          {/* Sample Details */}
+          {/* Sample 1 */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sample Details</Text>
+            <Text style={styles.sectionTitle}>Sample 1</Text>
             
-            <Text style={styles.subsectionTitle}>Sample 1</Text>
             <View style={styles.inputRow}>
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>SAMPLE NUMBER</Text>
@@ -604,7 +603,140 @@ export default function SampleTestingScreen() {
               </View>
             </View>
 
-            <Text style={styles.subsectionTitle}>Sample 2</Text>
+            {/* Determinant Table for Sample 1 */}
+            <View style={styles.tableContainer}>
+              <View style={styles.tableHeader}>
+                <Text style={styles.tableHeaderCell}>DETERMINANT</Text>
+                <Text style={styles.tableHeaderCell}>PRESENT</Text>
+                <Text style={styles.tableHeaderCell}>CONCENTRATION (MG/KG)</Text>
+              </View>
+              
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Coal Tar (determined by BaP)</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, coalTarSample1 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setCoalTarSample1('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, coalTarSample1 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, coalTarSample1 === 'No' && styles.radioSelected]}
+                    onPress={() => setCoalTarSample1('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, coalTarSample1 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={coalTarConc1}
+                  onChangeText={setCoalTarConc1}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Total Petroleum Hydrocarbons (C6-C40)</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, petroleumSample1 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setPetroleumSample1('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, petroleumSample1 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, petroleumSample1 === 'No' && styles.radioSelected]}
+                    onPress={() => setPetroleumSample1('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, petroleumSample1 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={petroleumConc1}
+                  onChangeText={setPetroleumConc1}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Heavy Metal</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, heavyMetalSample1 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setHeavyMetalSample1('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, heavyMetalSample1 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, heavyMetalSample1 === 'No' && styles.radioSelected]}
+                    onPress={() => setHeavyMetalSample1('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, heavyMetalSample1 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={heavyMetalConc1}
+                  onChangeText={setHeavyMetalConc1}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Asbestos</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, asbestosSample1 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setAsbestosSample1('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, asbestosSample1 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, asbestosSample1 === 'No' && styles.radioSelected]}
+                    onPress={() => setAsbestosSample1('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, asbestosSample1 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={asbestosConc1}
+                  onChangeText={setAsbestosConc1}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Other</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, otherSample1 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setOtherSample1('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, otherSample1 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, otherSample1 === 'No' && styles.radioSelected]}
+                    onPress={() => setOtherSample1('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, otherSample1 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={otherConc1}
+                  onChangeText={setOtherConc1}
+                  placeholder="Enter value"
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Sample 2 */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Sample 2</Text>
+            
             <View style={styles.inputRow}>
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>SAMPLE NUMBER</Text>
@@ -660,6 +792,135 @@ export default function SampleTestingScreen() {
                     Red
                   </Text>
                 </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Determinant Table for Sample 2 */}
+            <View style={styles.tableContainer}>
+              <View style={styles.tableHeader}>
+                <Text style={styles.tableHeaderCell}>DETERMINANT</Text>
+                <Text style={styles.tableHeaderCell}>PRESENT</Text>
+                <Text style={styles.tableHeaderCell}>CONCENTRATION (MG/KG)</Text>
+              </View>
+              
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Coal Tar (determined by BaP)</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, coalTarSample2 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setCoalTarSample2('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, coalTarSample2 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, coalTarSample2 === 'No' && styles.radioSelected]}
+                    onPress={() => setCoalTarSample2('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, coalTarSample2 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={coalTarConc2}
+                  onChangeText={setCoalTarConc2}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Total Petroleum Hydrocarbons (C6-C40)</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, petroleumSample2 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setPetroleumSample2('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, petroleumSample2 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, petroleumSample2 === 'No' && styles.radioSelected]}
+                    onPress={() => setPetroleumSample2('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, petroleumSample2 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={petroleumConc2}
+                  onChangeText={setPetroleumConc2}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Heavy Metal</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, heavyMetalSample2 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setHeavyMetalSample2('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, heavyMetalSample2 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, heavyMetalSample2 === 'No' && styles.radioSelected]}
+                    onPress={() => setHeavyMetalSample2('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, heavyMetalSample2 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={heavyMetalConc2}
+                  onChangeText={setHeavyMetalConc2}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Asbestos</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, asbestosSample2 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setAsbestosSample2('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, asbestosSample2 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, asbestosSample2 === 'No' && styles.radioSelected]}
+                    onPress={() => setAsbestosSample2('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, asbestosSample2 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={asbestosConc2}
+                  onChangeText={setAsbestosConc2}
+                  placeholder="Enter value"
+                />
+              </View>
+
+              <View style={styles.tableRow}>
+                <Text style={styles.tableCellLabel}>Other</Text>
+                <View style={styles.radioGroup}>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, otherSample2 === 'Yes' && styles.radioSelected]}
+                    onPress={() => setOtherSample2('Yes')}
+                  >
+                    <Text style={[styles.radioTextSmall, otherSample2 === 'Yes' && styles.radioTextSelected]}>Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.radioOptionSmall, otherSample2 === 'No' && styles.radioSelected]}
+                    onPress={() => setOtherSample2('No')}
+                  >
+                    <Text style={[styles.radioTextSmall, otherSample2 === 'No' && styles.radioTextSelected]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.concentrationInput}
+                  value={otherConc2}
+                  onChangeText={setOtherConc2}
+                  placeholder="Enter value"
+                />
               </View>
             </View>
           </View>
