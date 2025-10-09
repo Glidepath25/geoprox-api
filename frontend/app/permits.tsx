@@ -214,7 +214,7 @@ export default function PermitsScreen() {
 
         <View style={styles.detailRow}>
           <Ionicons name="shield" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>Risk Assessment: </Text>
+          <Text style={styles.detailText}>Proximity Risk Assessment: </Text>
           <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.proximity_risk_assessment) }]}>
             <Text style={styles.riskText}>{item.proximity_risk_assessment}</Text>
           </View>
