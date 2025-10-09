@@ -44,9 +44,11 @@ export default function PermitDetailsScreen() {
   const [permit, setPermit] = useState<Permit | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadPermitDetails();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadPermitDetails();
+    }, [])
+  );
 
   const loadPermitDetails = async () => {
     try {
