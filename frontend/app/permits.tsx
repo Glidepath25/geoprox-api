@@ -39,8 +39,10 @@ interface Permit {
 
 export default function PermitsScreen() {
   const [permits, setPermits] = useState<Permit[]>([]);
+  const [filteredPermits, setFilteredPermits] = useState<Permit[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState(null);
   const router = useRouter();
 
