@@ -1,0 +1,100 @@
+[
+  {
+    "test": "Root Endpoint",
+    "success": true,
+    "message": "API is accessible and responding correctly",
+    "timestamp": "2025-10-09T19:57:41.721185",
+    "details": null
+  },
+  {
+    "test": "Login - john.smith",
+    "success": true,
+    "message": "Successfully logged in user: john.smith",
+    "timestamp": "2025-10-09T19:57:41.764462",
+    "details": null
+  },
+  {
+    "test": "Login - sarah.jones",
+    "success": true,
+    "message": "Successfully logged in user: sarah.jones",
+    "timestamp": "2025-10-09T19:57:41.806009",
+    "details": null
+  },
+  {
+    "test": "Invalid Login - invalid.user",
+    "success": true,
+    "message": "Correctly rejected invalid credentials",
+    "timestamp": "2025-10-09T19:57:41.851654",
+    "details": null
+  },
+  {
+    "test": "Invalid Login - john.smith",
+    "success": true,
+    "message": "Correctly rejected invalid credentials",
+    "timestamp": "2025-10-09T19:57:41.896410",
+    "details": null
+  },
+  {
+    "test": "Invalid Login - empty",
+    "success": true,
+    "message": "Correctly rejected invalid credentials",
+    "timestamp": "2025-10-09T19:57:41.939772",
+    "details": null
+  },
+  {
+    "test": "Get Permits (No Auth)",
+    "success": true,
+    "message": "Correctly rejected unauthenticated request",
+    "timestamp": "2025-10-09T19:57:41.982970",
+    "details": null
+  },
+  {
+    "test": "Get Permits (Auth)",
+    "success": true,
+    "message": "Retrieved 2 permits successfully",
+    "timestamp": "2025-10-09T19:57:42.026701",
+    "details": null
+  },
+  {
+    "test": "Permit Structure",
+    "success": true,
+    "message": "All required fields present",
+    "timestamp": "2025-10-09T19:57:42.026727",
+    "details": null
+  },
+  {
+    "test": "Get Specific Permit",
+    "success": true,
+    "message": "Retrieved permit 01916fea-1d9b-41ad-8ae5-b8a371ba24bc successfully",
+    "timestamp": "2025-10-09T19:57:42.063280",
+    "details": null
+  },
+  {
+    "test": "Get Nonexistent Permit",
+    "success": true,
+    "message": "Correctly returned 404 for non-existent permit",
+    "timestamp": "2025-10-09T19:57:42.098303",
+    "details": null
+  },
+  {
+    "test": "Create Inspection",
+    "success": true,
+    "message": "Successfully created inspection with ID: 05ae5552-34cc-4dbe-b142-d36ece69356e",
+    "timestamp": "2025-10-09T19:57:42.147224",
+    "details": null
+  },
+  {
+    "test": "Create Inspection (Invalid Permit)",
+    "success": true,
+    "message": "Correctly rejected inspection for invalid permit",
+    "timestamp": "2025-10-09T19:57:42.186209",
+    "details": null
+  },
+  {
+    "test": "Get Inspections",
+    "success": true,
+    "message": "Retrieved 1 inspections for permit",
+    "timestamp": "2025-10-09T19:57:42.224550",
+    "details": null
+  }
+]
