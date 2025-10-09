@@ -204,6 +204,11 @@ export default function InspectionScreen() {
       return false;
     }
 
+    if (!utilityType.trim()) {
+      Alert.alert('Validation Error', 'Utility Type is required');
+      return false;
+    }
+
     const unansweredQuestions = questions.filter(q => !q.answer);
     if (unansweredQuestions.length > 0) {
       Alert.alert('Validation Error', 'Please answer all questions');
