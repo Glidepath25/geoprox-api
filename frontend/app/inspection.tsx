@@ -48,6 +48,7 @@ export default function InspectionScreen() {
   const [permit, setPermit] = useState<Permit | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   
   // Form fields
