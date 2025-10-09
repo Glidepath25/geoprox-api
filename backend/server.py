@@ -71,30 +71,30 @@ class SiteInspection(BaseModel):
     surface_location: str
     utility_type: str  # User enters this on site
     
-    # Questionnaire answers
-    q1_asbestos: str  # Yes/No
-    q1_notes: str
-    q2_binder_shiny: str  # Yes/No
-    q2_notes: str
-    q3_spray_pak: str  # Yes/No
-    q3_notes: str
-    q4_soil_stained: str  # Yes/No
-    q4_notes: str
-    q5_water_moisture: str  # Yes/No
-    q5_notes: str
-    q6_pungent_odours: str  # Yes/No
-    q6_notes: str
-    q7_litmus_paper: str  # Yes/No
-    q7_notes: str
+    # Questionnaire answers - Optional for draft saves
+    q1_asbestos: Optional[str] = ""
+    q1_notes: str = ""
+    q2_binder_shiny: Optional[str] = ""
+    q2_notes: str = ""
+    q3_spray_pak: Optional[str] = ""
+    q3_notes: str = ""
+    q4_soil_stained: Optional[str] = ""
+    q4_notes: str = ""
+    q5_water_moisture: Optional[str] = ""
+    q5_notes: str = ""
+    q6_pungent_odours: Optional[str] = ""
+    q6_notes: str = ""
+    q7_litmus_paper: Optional[str] = ""
+    q7_notes: str = ""
     
-    # Assessment results
-    bituminous_result: str
-    sub_base_result: str
+    # Assessment results - Optional for draft saves
+    bituminous_result: Optional[str] = ""
+    sub_base_result: Optional[str] = ""
     
     # Photos (base64 encoded)
     photos: List[str] = []
     
-    status: str = "completed"
+    status: str = "pending"  # pending, wip, completed
 
 class InspectionCreate(BaseModel):
     permit_id: str
