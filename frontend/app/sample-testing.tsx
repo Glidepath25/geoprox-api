@@ -1234,4 +1234,28 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.6,
   },
+  radioGroup: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  radioOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    marginRight: 12,
+    backgroundColor: '#ffffff',
+  },
+  radioSelected: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  radioText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  radioTextSelected: {
+    color: '#ffffff',
+  },
 });
