@@ -20,7 +20,6 @@ const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 interface Permit {
   id: string;
   permit_number: string;
-  permit_name: string;
   works_type: string;
   location: string;
   address: string;
@@ -35,6 +34,7 @@ interface Permit {
     bituminous: string;
     sub_base: string;
   } | null;
+  sample_status?: string;
 }
 
 export default function PermitsScreen() {
