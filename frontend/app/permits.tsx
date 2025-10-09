@@ -289,6 +289,29 @@ export default function PermitsScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search permit references (e.g., HAW, K6004...)"
+            placeholderTextColor="#9ca3af"
+            value={searchQuery}
+            onChangeText={handleSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              onPress={() => handleSearch('')}
+              style={styles.clearButton}
+            >
+              <Ionicons name="close-circle" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       {permits.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color="#9ca3af" />
