@@ -307,8 +307,8 @@ export default function InspectionScreen() {
             
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>UTILITY TYPE</Text>
-                <Text style={styles.detailValue}>{permit?.utility_type}</Text>
+                <Text style={styles.detailLabel}>PERMIT NAME</Text>
+                <Text style={styles.detailValue}>{permit?.permit_name}</Text>
               </View>
               
               <View style={styles.detailItem}>
@@ -325,6 +325,21 @@ export default function InspectionScreen() {
                 <Text style={styles.detailLabel}>PERMIT NUMBER</Text>
                 <Text style={styles.detailValue}>{permit?.permit_number}</Text>
               </View>
+
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>PROXIMITY RISK ASSESSMENT</Text>
+                <Text style={styles.detailValue}>{permit?.proximity_risk_assessment}</Text>
+              </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>UTILITY TYPE *</Text>
+              <TextInput
+                style={styles.input}
+                value={utilityType}
+                onChangeText={setUtilityType}
+                placeholder="Enter utility type observed on site (e.g., Gas, Electricity, Water)"
+              />
             </View>
 
             <View style={styles.inputRow}>
