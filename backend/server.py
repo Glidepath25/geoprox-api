@@ -469,6 +469,73 @@ async def get_current_inspection(permit_id: str, current_user: User = Depends(ge
     
     return SiteInspection(**inspection)
 
+# Sample Testing endpoints
+@api_router.post("/sample-testing/save")
+async def save_sample_testing(sample_test: SampleTestingCreate, current_user: User = Depends(get_current_user)):
+    # Verify permit exists and belongs to user
+    permit = await db.permits.find_one({"id": sample_test.permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    # Check if sample test already exists for this permit
+    existing = await db.sample_testing.find_one({"permit_id": sample_test.permit_id})
+    
+    sample_data = sample_test.dict()
+    sample_data["inspector_id"] = current_user.id
+    sample_data["testing_date"] = datetime.utcnow()
+    sample_data["status"] = "wip"  # Work in progress
+    
+    if existing:
+        # Update existing sample test
+        sample_data["id"] = existing["id"]
+        await db.sample_testing.replace_one({"id": existing["id"]}, sample_data)
+    else:
+        # Create new sample test
+        sample_data["id"] = str(uuid.uuid4())
+        await db.sample_testing.insert_one(sample_data)
+    
+    return SampleTesting(**sample_data)
+
+@api_router.post("/sample-testing/submit")
+async def submit_sample_testing(sample_test: SampleTestingCreate, current_user: User = Depends(get_current_user)):
+    # Verify permit exists and belongs to user
+    permit = await db.permits.find_one({"id": sample_test.permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    # Check if sample test already exists for this permit
+    existing = await db.sample_testing.find_one({"permit_id": sample_test.permit_id})
+    
+    sample_data = sample_test.dict()
+    sample_data["inspector_id"] = current_user.id
+    sample_data["testing_date"] = datetime.utcnow()
+    sample_data["status"] = "completed"  # Final submission
+    
+    if existing:
+        # Update existing sample test
+        sample_data["id"] = existing["id"]
+        await db.sample_testing.replace_one({"id": existing["id"]}, sample_data)
+    else:
+        # Create new sample test
+        sample_data["id"] = str(uuid.uuid4())
+        await db.sample_testing.insert_one(sample_data)
+    
+    return SampleTesting(**sample_data)
+
+@api_router.get("/sample-testing/current/{permit_id}")
+async def get_current_sample_testing(permit_id: str, current_user: User = Depends(get_current_user)):
+    # Verify permit belongs to user
+    permit = await db.permits.find_one({"id": permit_id, "created_by": current_user.id})
+    if not permit:
+        raise HTTPException(status_code=404, detail="Permit not found")
+    
+    # Get the current sample test (latest one)
+    sample_test = await db.sample_testing.find_one({"permit_id": permit_id})
+    if not sample_test:
+        return None
+    
+    return SampleTesting(**sample_test)
+
 @api_router.get("/")
 async def root():
     return {"message": "GeoProx Mobile API"}
