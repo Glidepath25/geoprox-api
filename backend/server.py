@@ -233,27 +233,42 @@ async def login(user_login: UserLogin):
     }
 
 @api_router.get("/permits")
-async def get_permits(current_user: User = Depends(get_current_user)):
-    permits = await db.permits.find({"created_by": current_user.id}).to_list(1000)
+async def get_permits(search: str = "", current_user: User = Depends(get_current_user)):
+    # Build search filter
+    search_filter = {"created_by": current_user.id}
+    if search.strip():
+        search_filter["permit_number"] = {"$regex": search.strip(), "$options": "i"}
+    
+    permits = await db.permits.find(search_filter).to_list(1000)
     
     # Add inspection status to each permit
     permits_with_status = []
     for permit in permits:
-        # Check if this permit has any completed inspections
+        # Check if this permit has any inspections
         inspections = await db.inspections.find({"permit_id": permit["id"]}).to_list(1000)
         
         permit_data = Permit(**permit).dict()
+        
         if inspections:
             # Get the latest inspection
             latest_inspection = inspections[-1]  # Last one is latest
-            permit_data["inspection_status"] = "completed"
-            permit_data["inspection_results"] = {
-                "bituminous": latest_inspection.get("bituminous_result", ""),
-                "sub_base": latest_inspection.get("sub_base_result", "")
-            }
+            status = latest_inspection.get("status", "pending")
+            
+            if status == "completed":
+                permit_data["inspection_status"] = "completed"
+                permit_data["inspection_results"] = {
+                    "bituminous": latest_inspection.get("bituminous_result", ""),
+                    "sub_base": latest_inspection.get("sub_base_result", "")
+                }
+            else:
+                permit_data["inspection_status"] = "wip"
+                permit_data["inspection_results"] = None
         else:
             permit_data["inspection_status"] = "pending"
             permit_data["inspection_results"] = None
+        
+        # Add sample status placeholder
+        permit_data["sample_status"] = "pending"
         
         permits_with_status.append(permit_data)
     
