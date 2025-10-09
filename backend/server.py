@@ -332,17 +332,15 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
     
     permits = await db.permits.find(search_filter).to_list(1000)
     
-    # Add inspection status to each permit
+    # Add inspection and sample status to each permit
     permits_with_status = []
     for permit in permits:
-        # Check if this permit has any inspections
-        inspections = await db.inspections.find({"permit_id": permit["id"]}).to_list(1000)
-        
         permit_data = Permit(**permit).dict()
         
+        # Check site inspections
+        inspections = await db.inspections.find({"permit_id": permit["id"]}).to_list(1000)
         if inspections:
-            # Get the latest inspection
-            latest_inspection = inspections[-1]  # Last one is latest
+            latest_inspection = inspections[-1]
             status = latest_inspection.get("status", "pending")
             
             if status == "completed":
@@ -364,8 +362,14 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
             permit_data["inspection_status"] = "pending"
             permit_data["inspection_results"] = None
         
-        # Add sample status placeholder
-        permit_data["sample_status"] = "pending"
+        # Check sample testing status
+        sample_tests = await db.sample_testing.find({"permit_id": permit["id"]}).to_list(1000)
+        if sample_tests:
+            latest_sample = sample_tests[-1]
+            sample_status = latest_sample.get("status", "pending")
+            permit_data["sample_status"] = sample_status
+        else:
+            permit_data["sample_status"] = "not_required"  # Default to not required
         
         permits_with_status.append(permit_data)
     
