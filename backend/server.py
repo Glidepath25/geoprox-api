@@ -96,6 +96,97 @@ class SiteInspection(BaseModel):
     
     status: str = "pending"  # pending, wip, completed
 
+class SampleTesting(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    permit_id: str
+    inspector_id: str
+    testing_date: datetime = Field(default_factory=datetime.utcnow)
+    sample_status: str  # Pending sample, Complete, etc.
+    sampling_date: Optional[datetime] = None
+    results_recorded_by: str = ""
+    sampled_by: str = ""
+    notes: str = ""
+    comments: str = ""
+    
+    # Sample 1 details
+    sample1_number: str = ""
+    sample1_material: str = ""
+    sample1_lab_analysis: str = ""
+    
+    # Sample 2 details  
+    sample2_number: str = ""
+    sample2_material: str = ""
+    sample2_lab_analysis: str = ""
+    
+    # Determinant results for both samples
+    coal_tar_sample1: str = ""
+    coal_tar_sample2: str = ""
+    petroleum_sample1: str = ""
+    petroleum_sample2: str = ""
+    heavy_metal_sample1: str = ""
+    heavy_metal_sample2: str = ""
+    asbestos_sample1: str = ""
+    asbestos_sample2: str = ""
+    other_sample1: str = ""
+    other_sample2: str = ""
+    
+    # Concentration values
+    coal_tar_conc1: str = ""
+    coal_tar_conc2: str = ""
+    petroleum_conc1: str = ""  
+    petroleum_conc2: str = ""
+    heavy_metal_conc1: str = ""
+    heavy_metal_conc2: str = ""
+    asbestos_conc1: str = ""
+    asbestos_conc2: str = ""
+    other_conc1: str = ""
+    other_conc2: str = ""
+    
+    # Attachments
+    field_photos: List[str] = []
+    lab_results: List[str] = []
+    general_attachments: List[str] = []
+    
+    status: str = "pending"  # pending, wip, completed
+
+class SampleTestingCreate(BaseModel):
+    permit_id: str
+    sample_status: str = "Pending sample"
+    sampling_date: Optional[datetime] = None
+    results_recorded_by: str = ""
+    sampled_by: str = ""
+    notes: str = ""
+    comments: str = ""
+    sample1_number: str = ""
+    sample1_material: str = ""
+    sample1_lab_analysis: str = ""
+    sample2_number: str = ""
+    sample2_material: str = ""
+    sample2_lab_analysis: str = ""
+    coal_tar_sample1: str = ""
+    coal_tar_sample2: str = ""
+    petroleum_sample1: str = ""
+    petroleum_sample2: str = ""
+    heavy_metal_sample1: str = ""
+    heavy_metal_sample2: str = ""
+    asbestos_sample1: str = ""
+    asbestos_sample2: str = ""
+    other_sample1: str = ""
+    other_sample2: str = ""
+    coal_tar_conc1: str = ""
+    coal_tar_conc2: str = ""
+    petroleum_conc1: str = ""
+    petroleum_conc2: str = ""
+    heavy_metal_conc1: str = ""
+    heavy_metal_conc2: str = ""
+    asbestos_conc1: str = ""
+    asbestos_conc2: str = ""
+    other_conc1: str = ""
+    other_conc2: str = ""
+    field_photos: List[str] = []
+    lab_results: List[str] = []
+    general_attachments: List[str] = []
+
 class InspectionCreate(BaseModel):
     permit_id: str
     work_order_reference: str
