@@ -312,6 +312,7 @@ export default function InspectionScreen() {
 
       if (response.ok) {
         Alert.alert('Saved', 'Inspection saved as draft. You can complete it later.');
+        // Don't navigate back, let user continue working
       } else {
         const errorData = await response.json();
         Alert.alert('Error', errorData.detail || 'Failed to save inspection');
