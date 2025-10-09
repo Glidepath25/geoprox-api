@@ -167,41 +167,50 @@ async def init_sample_data():
         ]
         await db.users.insert_many(sample_users)
         
-        # Create sample permits
+        # Create sample permits  
         sample_permits = [
             {
                 "id": str(uuid.uuid4()),
                 "permit_number": "K6004-HAW-VON-59848",
-                "utility_type": "Street Lighting",
+                "permit_name": "Streetlight Installation - Howth Road",
                 "works_type": "Standard",
                 "location": "Public",
-                "address": "53.390323, -2.851263",
+                "address": "Howth Road Junction, Dublin",
+                "latitude": 53.390323,
+                "longitude": -2.851263,
                 "highway_authority": "Howth",
                 "status": "Active",
+                "proximity_risk_assessment": "MEDIUM",
                 "created_by": sample_users[0]["id"],
                 "created_at": datetime.utcnow()
             },
             {
                 "id": str(uuid.uuid4()),
                 "permit_number": "Test123-HAW-GAS-12345", 
-                "utility_type": "Gas",
+                "permit_name": "Emergency Gas Main Repair",
                 "works_type": "Emergency",
                 "location": "Private",
-                "address": "54.123456, -3.234567",
+                "address": "Industrial Estate, Manchester",
+                "latitude": 54.123456,
+                "longitude": -3.234567,
                 "highway_authority": "Manchester",
                 "status": "Active",
+                "proximity_risk_assessment": "HIGH",
                 "created_by": sample_users[0]["id"],
                 "created_at": datetime.utcnow()
             },
             {
                 "id": str(uuid.uuid4()),
                 "permit_number": "ELEC789-BIR-POW-67890",
-                "utility_type": "Electricity",
+                "permit_name": "Power Cable Replacement",
                 "works_type": "Planned",
                 "location": "Public",
-                "address": "52.987654, -1.876543",
+                "address": "City Centre, Birmingham",
+                "latitude": 52.487654,
+                "longitude": -1.876543,
                 "highway_authority": "Birmingham",
-                "status": "Active", 
+                "status": "Active",
+                "proximity_risk_assessment": "LOW", 
                 "created_by": sample_users[1]["id"],
                 "created_at": datetime.utcnow()
             }
