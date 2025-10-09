@@ -252,7 +252,20 @@ export default function PermitsScreen() {
         <View style={styles.detailRow}>
           <Ionicons name="beaker" size={16} color="#6b7280" />
           <Text style={styles.detailText}>Sample Status: </Text>
-          <Text style={styles.sampleStatus}>Not Required</Text>
+          <View style={styles.statusContainer}>
+            {item.sample_status === 'not_required' && (
+              <Text style={styles.statusNotRequired}>Not Required</Text>
+            )}
+            {item.sample_status === 'pending_sample' && (
+              <Text style={styles.statusPendingSample}>Pending Sample</Text>
+            )}
+            {item.sample_status === 'wip' && (
+              <Text style={styles.statusWip}>WIP</Text>
+            )}
+            {item.sample_status === 'completed' && (
+              <Text style={styles.statusCompleted}>Complete</Text>
+            )}
+          </View>
         </View>
       </View>
       
