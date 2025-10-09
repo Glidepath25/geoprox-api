@@ -231,10 +231,32 @@ async def login(user_login: UserLogin):
         "user": UserResponse(id=user["id"], username=user["username"], email=user["email"])
     }
 
-@api_router.get("/permits", response_model=List[Permit])
+@api_router.get("/permits")
 async def get_permits(current_user: User = Depends(get_current_user)):
     permits = await db.permits.find({"created_by": current_user.id}).to_list(1000)
-    return [Permit(**permit) for permit in permits]
+    
+    # Add inspection status to each permit
+    permits_with_status = []
+    for permit in permits:
+        # Check if this permit has any completed inspections
+        inspections = await db.inspections.find({"permit_id": permit["id"]}).to_list(1000)
+        
+        permit_data = Permit(**permit).dict()
+        if inspections:
+            # Get the latest inspection
+            latest_inspection = inspections[-1]  # Last one is latest
+            permit_data["inspection_status"] = "completed"
+            permit_data["inspection_results"] = {
+                "bituminous": latest_inspection.get("bituminous_result", ""),
+                "sub_base": latest_inspection.get("sub_base_result", "")
+            }
+        else:
+            permit_data["inspection_status"] = "pending"
+            permit_data["inspection_results"] = None
+        
+        permits_with_status.append(permit_data)
+    
+    return permits_with_status
 
 @api_router.get("/permits/{permit_id}", response_model=Permit)
 async def get_permit(permit_id: str, current_user: User = Depends(get_current_user)):
