@@ -50,7 +50,6 @@ class UserResponse(BaseModel):
 class Permit(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     permit_number: str
-    permit_name: str
     works_type: str
     location: str
     address: str
