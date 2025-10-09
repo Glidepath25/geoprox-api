@@ -515,6 +515,21 @@ async def get_permits(search: str = "", current_user: User = Depends(get_current
             latest_sample = sample_tests[-1]
             sample_status = latest_sample.get("status", "pending")
             permit_data["sample_status"] = sample_status
+            
+            # Add sample results if completed
+            if sample_status == "completed":
+                sample_results = {}
+                if latest_sample.get("sample1_material") and latest_sample.get("sample1_lab_analysis"):
+                    sample_results["sample1"] = {
+                        "material": latest_sample.get("sample1_material"),
+                        "result": latest_sample.get("sample1_lab_analysis")
+                    }
+                if latest_sample.get("sample2_material") and latest_sample.get("sample2_lab_analysis"):
+                    sample_results["sample2"] = {
+                        "material": latest_sample.get("sample2_material"),
+                        "result": latest_sample.get("sample2_lab_analysis")
+                    }
+                permit_data["sample_results"] = sample_results
         else:
             # Check if permit has been marked for sampling (in production this would come from desktop system)
             # For now, we'll use a field on the permit itself
