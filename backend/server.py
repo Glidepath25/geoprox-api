@@ -289,6 +289,7 @@ async def init_sample_data():
                 "highway_authority": "Manchester",
                 "status": "Active",
                 "proximity_risk_assessment": "HIGH",
+                "sample_required": "pending_sample",  # This permit needs sampling
                 "created_by": sample_users[0]["id"],
                 "created_at": datetime.utcnow()
             },
