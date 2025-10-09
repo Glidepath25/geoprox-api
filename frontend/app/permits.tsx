@@ -71,11 +71,16 @@ export default function PermitsScreen() {
     }
   };
 
-  const loadPermits = async () => {
+  const loadPermits = async (search: string = '') => {
     try {
       const token = await AsyncStorage.getItem('token');
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits`, {
+      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/permits`);
+      if (search.trim()) {
+        url.searchParams.append('search', search.trim());
+      }
+      
+      const response = await fetch(url.toString(), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -85,6 +90,7 @@ export default function PermitsScreen() {
       if (response.ok) {
         const data = await response.json();
         setPermits(data);
+        setFilteredPermits(data);
       } else if (response.status === 401) {
         await AsyncStorage.clear();
         router.replace('/');
@@ -97,6 +103,18 @@ export default function PermitsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const handleSearch = (text: string) => {
+    setSearchQuery(text);
+    if (text.trim() === '') {
+      setFilteredPermits(permits);
+    } else {
+      const filtered = permits.filter(permit =>
+        permit.permit_number.toLowerCase().includes(text.toLowerCase())
+      );
+      setFilteredPermits(filtered);
     }
   };
 
