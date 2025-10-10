@@ -154,8 +154,25 @@ export default function PermitsScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            await AsyncStorage.clear();
-            router.replace('/');
+            try {
+              const token = await TokenManager.getAccessToken();
+              
+              // Call logout endpoint
+              await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/logout`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+            } catch (error) {
+              console.log('Logout API error (non-critical):', error);
+            } finally {
+              // Clear tokens and navigate to login
+              await TokenManager.clearTokens();
+              await AsyncStorage.clear();
+              router.replace('/');
+            }
           },
         },
       ]
