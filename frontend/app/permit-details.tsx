@@ -272,19 +272,6 @@ export default function PermitDetailsScreen() {
               </View>
             )}
           </View>
-              
-              {permit.sample_results.sample2_determinants && (
-                <View style={styles.sampleSection}>
-                  <Text style={styles.sampleTitle}>Sample 2:</Text>
-                  {permit.sample_results.sample2_determinants.map((det, index) => (
-                    <View key={index} style={styles.determinantRow}>
-                      <Text style={styles.determinantText}>{det.name} = {det.result} = {det.concentration}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
 
           <TouchableOpacity 
             style={styles.actionButton}
