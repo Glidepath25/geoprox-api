@@ -103,7 +103,7 @@ export default function SampleTestingScreen() {
 
   const loadPermit = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
         headers: {
@@ -131,7 +131,7 @@ export default function SampleTestingScreen() {
 
   const loadExistingSampleTest = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       // Get permit details which includes sample_payload for existing sample tests
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
@@ -240,7 +240,7 @@ export default function SampleTestingScreen() {
   const saveSampleTest = async () => {
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const sampleData = {
         permit_id: permitId,
@@ -309,7 +309,7 @@ export default function SampleTestingScreen() {
 
     setSubmitting(true);
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const sampleData = {
         permit_id: permitId,

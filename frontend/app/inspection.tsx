@@ -127,7 +127,7 @@ export default function InspectionScreen() {
 
   const loadExistingInspection = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       // Get permit details which includes site_payload for existing inspections
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
@@ -155,7 +155,7 @@ export default function InspectionScreen() {
 
   const loadPermit = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
         headers: {
@@ -258,7 +258,7 @@ export default function InspectionScreen() {
   const saveInspection = async () => {
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const inspectionData = {
         permit_id: permitId,
@@ -314,7 +314,7 @@ export default function InspectionScreen() {
 
     setSubmitting(true);
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const inspectionData = {
         permit_id: permitId,
