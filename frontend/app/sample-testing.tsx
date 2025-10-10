@@ -22,15 +22,29 @@ import * as ImagePicker from 'expo-image-picker';
 const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 interface Permit {
-  id: string;
-  permit_number: string;
-  works_type: string;
-  location: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  highway_authority: string;
-  proximity_risk_assessment: string;
+  permit_ref: string;
+  created_at: string;
+  updated_at: string;
+  location?: {
+    display: string;
+    lat: number;
+    lon: number;
+    radius_m: number;
+  };
+  desktop: {
+    status: string;
+    outcome: string | null;
+  };
+  site: {
+    status: string;
+    outcome: string | null;
+  };
+  sample: {
+    status: string;
+    outcome: string | null;
+  };
+  owner_username: string;
+  owner_display_name: string;
 }
 
 export default function SampleTestingScreen() {
