@@ -173,9 +173,8 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <View style={styles.demoCredentials}>
-              <Text style={styles.demoTitle}>Production Credentials:</Text>
-              <Text style={styles.demoText}>Username: EXPOTEST</Text>
-              <Text style={styles.demoText}>Password: EXPOTEST!!</Text>
+              <Text style={styles.demoTitle}>Enter your GeoProx credentials</Text>
+              <Text style={styles.demoText}>Use your desktop login details</Text>
             </View>
           </View>
         </View>
