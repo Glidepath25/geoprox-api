@@ -52,7 +52,7 @@ export default function PermitDetailsScreen() {
 
   const loadPermitDetails = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
         headers: {
@@ -65,6 +65,7 @@ export default function PermitDetailsScreen() {
         const data = await response.json();
         setPermit(data);
       } else if (response.status === 401) {
+        await TokenManager.clearTokens();
         await AsyncStorage.clear();
         router.replace('/');
       } else {
