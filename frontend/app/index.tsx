@@ -63,14 +63,21 @@ export default function LoginScreen() {
       console.log('Attempting login to:', `${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`);
       console.log('With credentials:', { username, password: '***' });
       
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username, password }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+      
       console.log('Response status:', response.status);
       const data = await response.json();
       console.log('Response data:', data);
@@ -97,7 +104,11 @@ export default function LoginScreen() {
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Error', `Network error: ${error.message || 'Please try again.'}`);
+      if (error.name === 'AbortError') {
+        Alert.alert('Error', 'Login request timed out. Please check your connection and try again.');
+      } else {
+        Alert.alert('Error', `Network error: ${error.message || 'Please try again.'}`);
+      }
     } finally {
       setLoading(false);
     }
