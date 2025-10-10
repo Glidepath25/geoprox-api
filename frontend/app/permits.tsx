@@ -314,8 +314,10 @@ export default function PermitsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Permits</Text>
+        <View style={styles.headerLeft}>
+          <View style={styles.brandContainer}>
+            <Text style={styles.brandText}>GeoProx</Text>
+          </View>
           <Text style={styles.subtitle}>
             Welcome back, {user?.username || 'User'}
           </Text>
