@@ -157,9 +157,9 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <View style={styles.demoCredentials}>
-              <Text style={styles.demoTitle}>Demo Credentials:</Text>
-              <Text style={styles.demoText}>Username: john.smith</Text>
-              <Text style={styles.demoText}>Password: password123</Text>
+              <Text style={styles.demoTitle}>Production Credentials:</Text>
+              <Text style={styles.demoText}>Username: EXPOTEST</Text>
+              <Text style={styles.demoText}>Password: EXPOTEST!!</Text>
             </View>
           </View>
         </View>
