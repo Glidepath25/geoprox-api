@@ -10,6 +10,7 @@ import ssl
 import mimetypes
 import re
 import secrets
+import time
 from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
@@ -34,6 +35,13 @@ from pydantic import BaseModel, Field
 import pandas as pd
 
 from geoprox import history_store, user_store, permit_store, report_store
+from geoprox.auth_tokens import (
+    TokenError,
+    create_access_token,
+    create_refresh_token,
+    decode_access_token,
+    decode_refresh_token,
+)
 from geoprox.site_assessment_pdf import generate_site_assessment_pdf
 from geoprox.sample_testing_pdf import generate_sample_testing_pdf
 from geoprox.core import run_geoprox_search
@@ -537,7 +545,81 @@ def _safe_artifact(path: str, request: Request) -> Path:
     return full
 
 
+def _extract_bearer_token(request: Request) -> Optional[str]:
+    header = request.headers.get("Authorization")
+    if not header:
+        return None
+    parts = header.split(" ", 1)
+    if len(parts) != 2:
+        return None
+    scheme, value = parts[0].strip(), parts[1].strip()
+    if scheme.lower() != "bearer":
+        return None
+    return value or None
+
+
+def _determine_user_type(raw_value: Optional[str]) -> str:
+    try:
+        return user_store.normalize_user_type(raw_value)
+    except ValueError:
+        return user_store.DEFAULT_USER_TYPE
+
+
+def _cache_user_context(
+    request: Request,
+    record: Dict[str, Any],
+    *,
+    session_token: str,
+    via_session: bool,
+) -> None:
+    normalized_type = _determine_user_type(record.get("user_type"))
+    is_admin = bool(record.get("is_admin"))
+    is_company_admin = bool(record.get("is_company_admin"))
+    scope = _build_user_scope(record)
+
+    request.state.current_user = record
+    request.state.user_type = normalized_type
+    request.state.is_admin = is_admin
+    request.state.is_company_admin = is_company_admin
+    request.state.session_token = session_token
+    request.state.authenticated_via = "session" if via_session else "bearer"
+    request.state.scope = scope
+
+    if via_session:
+        request.session["user_type"] = normalized_type
+        request.session["is_admin"] = is_admin
+        request.session["is_company_admin"] = is_company_admin
+
+
+def _build_user_scope(record: Dict[str, Any]) -> str:
+    parts: List[str] = [_determine_user_type(record.get("user_type"))]
+    if record.get("is_admin"):
+        parts.append("admin")
+    elif record.get("is_company_admin"):
+        parts.append("company_admin")
+    return " ".join(parts)
+
+
 def _require_user(request: Request) -> str:
+
+    bearer = _extract_bearer_token(request)
+    if bearer:
+        try:
+            payload = decode_access_token(bearer)
+        except TokenError as exc:
+            raise HTTPException(status_code=401, detail="Invalid authentication token") from exc
+        username = payload.get("sub")
+        session_token = payload.get("stk")
+        if not isinstance(username, str) or not isinstance(session_token, str):
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+        record = user_store.get_user_by_username(username)
+        if not record or not record.get("is_active"):
+            raise HTTPException(status_code=401, detail="Authentication required")
+        stored_token = record.get("session_token")
+        if not stored_token or stored_token != session_token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        _cache_user_context(request, record, session_token=session_token, via_session=False)
+        return username
 
     username = request.session.get("user")
 
@@ -575,11 +657,7 @@ def _require_user(request: Request) -> str:
 
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    request.session["user_type"] = user_store.normalize_user_type(record.get("user_type"))
-    request.session["is_admin"] = bool(record.get("is_admin"))
-    request.session["is_company_admin"] = bool(record.get("is_company_admin"))
-
-    request.state.current_user = record
+    _cache_user_context(request, record, session_token=session_token, via_session=True)
 
     return username
 
@@ -628,7 +706,7 @@ def _require_admin(request: Request) -> str:
 
     user = _require_user(request)
 
-    if not request.session.get("is_admin"):
+    if not (request.session.get("is_admin") or getattr(request.state, "is_admin", False)):
 
         raise HTTPException(status_code=403, detail="Administrator access required")
 
@@ -641,16 +719,19 @@ def _require_admin(request: Request) -> str:
 def _get_user_type(request: Request) -> str:
 
     value = request.session.get("user_type")
+    if not value:
+        value = getattr(request.state, "user_type", None)
+        if not value:
+            current = getattr(request.state, "current_user", None)
+            if isinstance(current, dict):
+                value = current.get("user_type")
 
-    try:
+    normalized = _determine_user_type(value)
 
-        normalized = user_store.normalize_user_type(value)
-
-    except ValueError:
-
-        normalized = user_store.DEFAULT_USER_TYPE
-
-    request.session["user_type"] = normalized
+    if request.session.get("session_token"):
+        request.session["user_type"] = normalized
+    else:
+        request.state.user_type = normalized
 
     return normalized
 
@@ -1922,8 +2003,66 @@ async def logout(request: Request):
     if username:
         user_store.clear_session_token(username, expected_token=token)
     request.session.clear()
-    return RedirectResponse(url="/", status_code=303)
+return RedirectResponse(url="/", status_code=303)
 
+
+@app.post("/api/mobile/auth/login", response_model=MobileAuthResponse)
+async def mobile_auth_login(request: Request, payload: MobileAuthRequest) -> MobileAuthResponse:
+    username = (payload.username or "").strip()
+    if not username or not payload.password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+    if "@" in username:
+        username = username.lower()
+    user = user_store.verify_credentials(username, payload.password, include_disabled=True)
+    if not user:
+        log.info("Mobile login failed for %s", username)
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    if not user.get("is_active"):
+        raise HTTPException(status_code=403, detail="Account disabled")
+    if user.get("require_password_change"):
+        raise HTTPException(status_code=403, detail="Password change required before mobile access")
+    response = _issue_mobile_tokens(user)
+    log.info("Mobile login success for %s via %s", username, getattr(request.client, "host", "-"))
+    return response
+
+
+@app.post("/api/mobile/auth/refresh", response_model=MobileAuthResponse)
+async def mobile_auth_refresh(payload: MobileRefreshRequest) -> MobileAuthResponse:
+    token = (payload.refresh_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Refresh token is required")
+    try:
+        data = decode_refresh_token(token)
+    except TokenError as exc:
+        raise HTTPException(status_code=401, detail="Invalid refresh token") from exc
+    username = data.get("sub")
+    session_token = data.get("stk")
+    if not isinstance(username, str) or not isinstance(session_token, str):
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    user = user_store.get_user_by_username(username)
+    if not user or not user.get("is_active"):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    stored_token = user.get("session_token")
+    if not stored_token or stored_token != session_token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return _issue_mobile_tokens(user)
+
+
+@app.post("/api/mobile/auth/logout", status_code=204)
+async def mobile_auth_logout(request: Request) -> Response:
+    bearer = _extract_bearer_token(request)
+    if not bearer:
+        return Response(status_code=204)
+    try:
+        data = decode_access_token(bearer)
+    except TokenError:
+        return Response(status_code=204)
+    username = data.get("sub")
+    session_token = data.get("stk")
+    if not isinstance(username, str) or not isinstance(session_token, str):
+        return Response(status_code=204)
+    log.info("Mobile logout for %s", username)
+    return Response(status_code=204)
 
 
 @app.get("/change-password", response_class=HTMLResponse)
@@ -2051,6 +2190,50 @@ async def forgot_password_action(
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+class MobileAuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class MobileRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class MobileAuthResponse(BaseModel):
+    access_token: str
+    expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
+    token_type: str = "bearer"
+    scope: Optional[str] = None
+
+
+def _issue_mobile_tokens(user: Dict[str, Any]) -> MobileAuthResponse:
+    session_token = user.get("session_token")
+    if not session_token:
+        session_token = user_store.set_session_token(user["id"])
+        user["session_token"] = session_token
+    scope = _build_user_scope(user)
+    access_token, access_exp = create_access_token(
+        username=user["username"],
+        session_token=session_token,
+        scope=scope,
+    )
+    refresh_token, refresh_exp = create_refresh_token(
+        username=user["username"],
+        session_token=session_token,
+        scope=scope,
+    )
+    now = int(time.time())
+    return MobileAuthResponse(
+        access_token=access_token,
+        expires_in=max(int(access_exp - now), 0),
+        refresh_token=refresh_token,
+        refresh_expires_in=max(int(refresh_exp - now), 0),
+        scope=scope,
+    )
+
+
 class AdminUserOut(BaseModel):
     id: int
     username: str
