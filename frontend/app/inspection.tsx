@@ -753,6 +753,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1f2937',
   },
+  locationLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  locationText: {
+    fontSize: 16,
+    color: '#2563eb',
+    textDecorationLine: 'underline',
+  },
   inputRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
