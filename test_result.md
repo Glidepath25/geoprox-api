@@ -107,15 +107,18 @@ user_problem_statement: "Test the GeoProx Mobile API backend that I just created
 backend:
   - task: "GeoProx Production Authentication - Mobile JWT Login"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/mobile/auth/login created for production GeoProx PostgreSQL authentication. Uses JWT tokens and bcrypt password verification. Credentials: EXPOTEST / EXPOTEST!! - NEEDS TESTING"
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL INFRASTRUCTURE ISSUE: Production PostgreSQL database connection timeout. AWS RDS instance 'geoprox-serverless-instance-1.c3ooeicas6w8.eu-west-1.rds.amazonaws.com:5432' is not accessible from this testing environment. Error: 'connection to server failed: Connection timed out'. This is likely due to VPC security group restrictions that prevent external access. All GeoProx production endpoints are failing due to database connectivity issues."
 
   - task: "Authentication System - User Login (MongoDB - Legacy)"
     implemented: true
