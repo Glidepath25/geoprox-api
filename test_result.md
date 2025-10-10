@@ -196,3 +196,5 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "🎉 COMPLETE SUCCESS: All GeoProx Mobile API backend functionality tested and working perfectly. Comprehensive testing completed covering authentication (login/logout), permits management (get all/get specific), site inspections (create/retrieve), error handling (401/403/404), and data validation. All 10 test cases passed with 100% success rate. Backend API is production-ready. Sample users and permits are properly initialized. JWT authentication working correctly. MongoDB integration successful."
+  - agent: "main"
+    message: "Starting frontend integration for production GeoProx system. The backend has GeoProx integration endpoints at /api/geoprox/* for permits, inspections, and sample testing. Need to update all frontend screens (permits.tsx, permit-details.tsx, inspection-form.tsx, sample-testing.tsx) to use these production endpoints instead of the MongoDB /api/* endpoints. Login credentials: EXPOTEST / EXPOTEST!!"
