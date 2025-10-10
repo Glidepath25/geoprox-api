@@ -197,30 +197,21 @@ export default function PermitDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Desktop</Text>
-              <Text style={styles.sectionSubtitle}>Proximity Risk Assessment</Text>
+              <Text style={styles.sectionTitle}>Desktop Assessment</Text>
+              <Text style={styles.sectionSubtitle}>Proximity Risk</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor('completed') }]}>
-              <Text style={styles.statusText}>Complete</Text>
+              <Text style={styles.statusText}>{permit.desktop_status}</Text>
             </View>
           </View>
 
           <View style={styles.assessmentContent}>
             <View style={styles.resultRow}>
-              <Text style={styles.resultLabel}>Result:</Text>
-              <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(permit.proximity_risk_assessment) }]}>
-                <Text style={styles.riskText}>{permit.proximity_risk_assessment}</Text>
+              <Text style={styles.resultLabel}>Outcome:</Text>
+              <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(permit.desktop_outcome || 'unknown') }]}>
+                <Text style={styles.riskText}>{permit.desktop_outcome || 'N/A'}</Text>
               </View>
             </View>
-
-            <TouchableOpacity 
-              style={styles.artefactsButton}
-              onPress={openDesktopArtefacts}
-            >
-              <Ionicons name="folder-open" size={20} color="#2563eb" />
-              <Text style={styles.artefactsText}>View Artefacts</Text>
-              <Ionicons name="chevron-forward" size={16} color="#2563eb" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -228,30 +219,26 @@ export default function PermitDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Site</Text>
-              <Text style={styles.sectionSubtitle}>Site Inspection</Text>
+              <Text style={styles.sectionTitle}>Site Inspection</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.inspection_status || 'pending') }]}>
-              <Text style={styles.statusText}>
-                {permit.inspection_status === 'wip' ? 'WIP' : 
-                 permit.inspection_status === 'completed' ? 'Complete' : 'Pending'}
-              </Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.site_status || 'pending') }]}>
+              <Text style={styles.statusText}>{permit.site_status}</Text>
             </View>
           </View>
 
-          {permit.inspection_results && (
+          {permit.site_bituminous && permit.site_sub_base && (
             <View style={styles.resultsContainer}>
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Bituminous:</Text>
-                <View style={[styles.resultBadge, { backgroundColor: permit.inspection_results.bituminous === 'Green' ? '#10b981' : '#ef4444' }]}>
-                  <Text style={styles.resultText}>{permit.inspection_results.bituminous}</Text>
+                <View style={[styles.resultBadge, { backgroundColor: permit.site_bituminous === 'PASS' ? '#10b981' : '#ef4444' }]}>
+                  <Text style={styles.resultText}>{permit.site_bituminous}</Text>
                 </View>
               </View>
               
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Sub-Base:</Text>
-                <View style={[styles.resultBadge, { backgroundColor: permit.inspection_results.sub_base === 'Green' ? '#10b981' : '#ef4444' }]}>
-                  <Text style={styles.resultText}>{permit.inspection_results.sub_base}</Text>
+                <View style={[styles.resultBadge, { backgroundColor: permit.site_sub_base === 'PASS' ? '#10b981' : '#ef4444' }]}>
+                  <Text style={styles.resultText}>{permit.site_sub_base}</Text>
                 </View>
               </View>
             </View>
@@ -262,9 +249,7 @@ export default function PermitDetailsScreen() {
             onPress={handleSiteInspection}
           >
             <Ionicons name="clipboard" size={20} color="#ffffff" />
-            <Text style={styles.actionButtonText}>
-              {permit.inspection_status === 'completed' ? 'View Site Inspection' : 'Complete Site Inspection'}
-            </Text>
+            <Text style={styles.actionButtonText}>Complete Site Inspection</Text>
           </TouchableOpacity>
         </View>
 
@@ -272,31 +257,21 @@ export default function PermitDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Sample</Text>
-              <Text style={styles.sectionSubtitle}>Sample Testing</Text>
+              <Text style={styles.sectionTitle}>Sample Testing</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.sample_status || 'not_required') }]}>
-              <Text style={styles.statusText}>
-                {permit.sample_status === 'wip' ? 'WIP' : 
-                 permit.sample_status === 'completed' ? 'Complete' : 
-                 permit.sample_status === 'pending_sample' ? 'Pending Sample' :
-                 permit.sample_status === 'pending' ? 'Pending' : 'Not Required'}
-              </Text>
+              <Text style={styles.statusText}>{permit.sample_status}</Text>
             </View>
           </View>
 
-          {permit.sample_results && (
-            <View style={styles.resultsContainer}>
-              {permit.sample_results.sample1_determinants && (
-                <View style={styles.sampleSection}>
-                  <Text style={styles.sampleTitle}>Sample 1:</Text>
-                  {permit.sample_results.sample1_determinants.map((det, index) => (
-                    <View key={index} style={styles.determinantRow}>
-                      <Text style={styles.determinantText}>{det.name} = {det.result} = {det.concentration}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
+          <View style={styles.resultsContainer}>
+            {permit.sample_outcome && (
+              <View style={styles.resultRow}>
+                <Text style={styles.resultLabel}>Outcome:</Text>
+                <Text style={styles.resultText}>{permit.sample_outcome}</Text>
+              </View>
+            )}
+          </View>
               
               {permit.sample_results.sample2_determinants && (
                 <View style={styles.sampleSection}>
