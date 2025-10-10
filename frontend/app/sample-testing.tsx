@@ -142,54 +142,13 @@ export default function SampleTestingScreen() {
       });
 
       if (response.ok) {
-        const sampleTest = await response.json();
-        if (sampleTest) {
-          // Populate form fields with existing data
-          setSampleStatus(sampleTest.sample_status || 'Pending sample');
-          setSamplingDate(sampleTest.sampling_date ? new Date(sampleTest.sampling_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-          setResultsRecordedBy(sampleTest.results_recorded_by || '');
-          setSampledBy(sampleTest.sampled_by || '');
-          setNotes(sampleTest.notes || '');
-          setComments(sampleTest.comments || '');
-          
-          // Sample details
-          setSample1Number(sampleTest.sample1_number || '');
-          setSample1Material(sampleTest.sample1_material || '');
-          setSample1LabAnalysis(sampleTest.sample1_lab_analysis || '');
-          setSample2Number(sampleTest.sample2_number || '');
-          setSample2Material(sampleTest.sample2_material || '');
-          setSample2LabAnalysis(sampleTest.sample2_lab_analysis || '');
-          
-          // Determinants
-          setCoalTarSample1(sampleTest.coal_tar_sample1 || '');
-          setCoalTarSample2(sampleTest.coal_tar_sample2 || '');
-          setPetroleumSample1(sampleTest.petroleum_sample1 || '');
-          setPetroleumSample2(sampleTest.petroleum_sample2 || '');
-          setHeavyMetalSample1(sampleTest.heavy_metal_sample1 || '');
-          setHeavyMetalSample2(sampleTest.heavy_metal_sample2 || '');
-          setAsbestosSample1(sampleTest.asbestos_sample1 || '');
-          setAsbestosSample2(sampleTest.asbestos_sample2 || '');
-          setOtherSample1(sampleTest.other_sample1 || '');
-          setOtherSample2(sampleTest.other_sample2 || '');
-          
-          // Concentrations
-          setCoalTarConc1(sampleTest.coal_tar_conc1 || '');
-          setCoalTarConc2(sampleTest.coal_tar_conc2 || '');
-          setPetroleumConc1(sampleTest.petroleum_conc1 || '');
-          setPetroleumConc2(sampleTest.petroleum_conc2 || '');
-          setHeavyMetalConc1(sampleTest.heavy_metal_conc1 || '');
-          setHeavyMetalConc2(sampleTest.heavy_metal_conc2 || '');
-          setAsbestosConc1(sampleTest.asbestos_conc1 || '');
-          setAsbestosConc2(sampleTest.asbestos_conc2 || '');
-          setOtherConc1(sampleTest.other_conc1 || '');
-          setOtherConc2(sampleTest.other_conc2 || '');
-          
-          // Attachments
-          setFieldPhotos(sampleTest.field_photos || []);
-          setLabResults(sampleTest.lab_results || []);
-          setGeneralAttachments(sampleTest.general_attachments || []);
-          
-          console.log('Loaded existing sample test data');
+        const permitData = await response.json();
+        
+        // Check if there's existing sample test data in sample_payload
+        if (permitData.sample_status === 'wip' || permitData.sample_status === 'completed') {
+          // The sample_payload is stored in the backend, we'll load it from there
+          // For now, we'll leave the form empty and let users re-enter
+          console.log('Existing sample test status:', permitData.sample_status);
         }
       }
     } catch (error) {
