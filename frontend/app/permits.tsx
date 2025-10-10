@@ -75,9 +75,20 @@ export default function PermitsScreen() {
 
   const loadPermits = async (search: string = '') => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      // Check if token needs refresh
+      if (await TokenManager.isAccessTokenExpired()) {
+        const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+        if (!refreshed) {
+          await TokenManager.clearTokens();
+          await AsyncStorage.clear();
+          router.replace('/');
+          return;
+        }
+      }
+
+      const token = await TokenManager.getAccessToken();
       
-      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits`);
+      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/permits`);
       if (search.trim()) {
         url.searchParams.append('search', search.trim());
       }
@@ -94,8 +105,16 @@ export default function PermitsScreen() {
         setPermits(data);
         setFilteredPermits(data);
       } else if (response.status === 401) {
-        await AsyncStorage.clear();
-        router.replace('/');
+        // Try to refresh token
+        const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+        if (refreshed) {
+          // Retry the request
+          await loadPermits(search);
+        } else {
+          await TokenManager.clearTokens();
+          await AsyncStorage.clear();
+          router.replace('/');
+        }
       } else {
         Alert.alert('Error', 'Failed to load permits');
       }
