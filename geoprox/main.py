@@ -591,6 +591,24 @@ def _cache_user_context(
         request.session["is_company_admin"] = is_company_admin
 
 
+class MobileAuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class MobileRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class MobileAuthResponse(BaseModel):
+    access_token: str
+    expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
+    token_type: str = "bearer"
+    scope: Optional[str] = None
+
+
 def _build_user_scope(record: Dict[str, Any]) -> str:
     parts: List[str] = [_determine_user_type(record.get("user_type"))]
     if record.get("is_admin"):
@@ -2191,24 +2209,6 @@ async def forgot_password_action(
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
-class MobileAuthRequest(BaseModel):
-    username: str
-    password: str
-
-
-class MobileRefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class MobileAuthResponse(BaseModel):
-    access_token: str
-    expires_in: int
-    refresh_token: str
-    refresh_expires_in: int
-    token_type: str = "bearer"
-    scope: Optional[str] = None
-
-
 def _issue_mobile_tokens(user: Dict[str, Any]) -> MobileAuthResponse:
     session_token = user.get("session_token")
     if not session_token:
