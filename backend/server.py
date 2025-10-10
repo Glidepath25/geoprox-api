@@ -460,7 +460,54 @@ async def init_sample_data():
         await db.permits.insert_many(sample_permits)
         print("Sample data initialized")
 
-# Routes
+# Mobile JWT Authentication Routes
+@api_router.post("/mobile/auth/login")
+async def mobile_login(user_login: UserLogin):
+    """Mobile JWT authentication against production GeoProx database"""
+    try:
+        user = geoprox_auth.authenticate_user(user_login.username, user_login.password)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        token = geoprox_auth.create_jwt_token(user)
+        return {
+            "token": token,
+            "user": {
+                "id": str(user["id"]),
+                "username": user["username"],
+                "license_tier": user["license_tier"],
+                "is_admin": user.get("is_admin", False)
+            }
+        }
+    except Exception as e:
+        logging.error(f"Mobile login error: {e}")
+        raise HTTPException(status_code=500, detail="Authentication service unavailable")
+
+@api_router.post("/mobile/auth/refresh")
+async def mobile_refresh_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Refresh JWT token"""
+    try:
+        new_token = geoprox_auth.refresh_token(credentials.credentials)
+        if not new_token:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        
+        return {"token": new_token}
+    except Exception as e:
+        logging.error(f"Token refresh error: {e}")
+        raise HTTPException(status_code=401, detail="Token refresh failed")
+
+async def get_current_geoprox_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user from JWT token for GeoProx integration"""
+    try:
+        payload = geoprox_auth.verify_jwt_token(credentials.credentials)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return payload
+    except Exception as e:
+        logging.error(f"Token verification error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# Legacy local auth (for backwards compatibility)
 @api_router.post("/auth/login")
 async def login(user_login: UserLogin):
     user = await db.users.find_one({"username": user_login.username})
