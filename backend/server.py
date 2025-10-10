@@ -520,6 +520,102 @@ async def login(user_login: UserLogin):
         "user": UserResponse(id=user["id"], username=user["username"], email=user["email"])
     }
 
+# GeoProx Production Integration Routes
+@api_router.get("/geoprox/permits")
+async def get_geoprox_permits(search: str = "", current_user = Depends(get_current_geoprox_user)):
+    """Get permits from production GeoProx database"""
+    try:
+        permits = geoprox_permits.get_user_permits(current_user["username"], search)
+        return permits
+    except Exception as e:
+        logging.error(f"GeoProx permits error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to fetch permits from GeoProx")
+
+@api_router.get("/geoprox/permits/{permit_ref}")
+async def get_geoprox_permit(permit_ref: str, current_user = Depends(get_current_geoprox_user)):
+    """Get specific permit from production GeoProx database"""
+    try:
+        permit = geoprox_permits.get_permit_details(current_user["username"], permit_ref)
+        if not permit:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return permit
+    except Exception as e:
+        logging.error(f"GeoProx permit details error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to fetch permit details")
+
+@api_router.post("/geoprox/inspections/save")
+async def save_geoprox_inspection(inspection: InspectionCreate, current_user = Depends(get_current_geoprox_user)):
+    """Save site inspection to production GeoProx database"""
+    try:
+        inspection_data = inspection.dict()
+        success = geoprox_permits.save_site_inspection(
+            current_user["username"], 
+            inspection.permit_id, 
+            inspection_data, 
+            is_draft=True
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return {"message": "Inspection saved successfully", "status": "wip"}
+    except Exception as e:
+        logging.error(f"GeoProx save inspection error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to save inspection")
+
+@api_router.post("/geoprox/inspections/submit")
+async def submit_geoprox_inspection(inspection: InspectionCreate, current_user = Depends(get_current_geoprox_user)):
+    """Submit site inspection to production GeoProx database"""
+    try:
+        inspection_data = inspection.dict()
+        success = geoprox_permits.save_site_inspection(
+            current_user["username"], 
+            inspection.permit_id, 
+            inspection_data, 
+            is_draft=False
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return {"message": "Inspection submitted successfully", "status": "completed"}
+    except Exception as e:
+        logging.error(f"GeoProx submit inspection error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to submit inspection")
+
+@api_router.post("/geoprox/sample-testing/save")
+async def save_geoprox_sample_testing(sample_test: SampleTestingCreate, current_user = Depends(get_current_geoprox_user)):
+    """Save sample testing to production GeoProx database"""
+    try:
+        sample_data = sample_test.dict()
+        success = geoprox_permits.save_sample_testing(
+            current_user["username"], 
+            sample_test.permit_id, 
+            sample_data, 
+            is_draft=True
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return {"message": "Sample testing saved successfully", "status": "wip"}
+    except Exception as e:
+        logging.error(f"GeoProx save sample testing error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to save sample testing")
+
+@api_router.post("/geoprox/sample-testing/submit")
+async def submit_geoprox_sample_testing(sample_test: SampleTestingCreate, current_user = Depends(get_current_geoprox_user)):
+    """Submit sample testing to production GeoProx database"""
+    try:
+        sample_data = sample_test.dict()
+        success = geoprox_permits.save_sample_testing(
+            current_user["username"], 
+            sample_test.permit_id, 
+            sample_data, 
+            is_draft=False
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return {"message": "Sample testing submitted successfully", "status": "completed"}
+    except Exception as e:
+        logging.error(f"GeoProx submit sample testing error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to submit sample testing")
+
+# Legacy local database routes (for backwards compatibility)
 @api_router.get("/permits")
 async def get_permits(search: str = "", current_user: User = Depends(get_current_user)):
     # Build search filter
