@@ -341,7 +341,7 @@ export default function InspectionScreen() {
         photos: photos,
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections/submit`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/inspections/submit`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
