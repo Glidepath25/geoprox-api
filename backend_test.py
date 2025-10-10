@@ -23,38 +23,81 @@ class GeoProxAPITester:
         self.test_results = []
         self.permits = []
         
-    def log_test(self, test_name, success, message, details=None):
-        """Log test results"""
+    def log_result(self, test_name: str, success: bool, message: str, details: Dict = None):
+        """Log test result"""
         result = {
             "test": test_name,
             "success": success,
             "message": message,
-            "timestamp": datetime.now().isoformat(),
-            "details": details
+            "details": details or {},
+            "timestamp": datetime.now().isoformat()
         }
         self.test_results.append(result)
+        
         status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status}: {test_name} - {message}")
-        if details and not success:
-            print(f"   Details: {details}")
+        print(f"{status}: {test_name}")
+        print(f"   {message}")
+        if details:
+            print(f"   Details: {json.dumps(details, indent=2)}")
+        print()
     
-    def test_root_endpoint(self):
-        """Test the root API endpoint"""
+    def test_mobile_login(self) -> bool:
+        """Test 1: Mobile JWT Authentication"""
+        print("🔐 Testing Mobile JWT Authentication...")
+        
         try:
-            response = requests.get(f"{self.base_url}/")
+            response = requests.post(
+                f"{self.base_url}/mobile/auth/login",
+                json={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD
+                },
+                timeout=30
+            )
+            
             if response.status_code == 200:
                 data = response.json()
-                if data.get("message") == "GeoProx Mobile API":
-                    self.log_test("Root Endpoint", True, "API is accessible and responding correctly")
+                if "token" in data and "user" in data:
+                    self.token = data["token"]
+                    self.user_info = data["user"]
+                    
+                    self.log_result(
+                        "Mobile JWT Login",
+                        True,
+                        f"Successfully authenticated user {TEST_USERNAME}",
+                        {
+                            "user_id": self.user_info.get("id"),
+                            "username": self.user_info.get("username"),
+                            "license_tier": self.user_info.get("license_tier"),
+                            "is_admin": self.user_info.get("is_admin"),
+                            "token_length": len(self.token)
+                        }
+                    )
                     return True
                 else:
-                    self.log_test("Root Endpoint", False, f"Unexpected response: {data}")
+                    self.log_result(
+                        "Mobile JWT Login",
+                        False,
+                        "Response missing token or user data",
+                        {"response": data}
+                    )
                     return False
             else:
-                self.log_test("Root Endpoint", False, f"HTTP {response.status_code}: {response.text}")
+                self.log_result(
+                    "Mobile JWT Login",
+                    False,
+                    f"Authentication failed with status {response.status_code}",
+                    {"response": response.text}
+                )
                 return False
+                
         except Exception as e:
-            self.log_test("Root Endpoint", False, f"Connection error: {str(e)}")
+            self.log_result(
+                "Mobile JWT Login",
+                False,
+                f"Authentication request failed: {str(e)}",
+                {"error_type": type(e).__name__}
+            )
             return False
     
     def test_login_valid_credentials(self):
