@@ -281,7 +281,7 @@ export default function SampleTestingScreen() {
         general_attachments: generalAttachments,
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/sample-testing/save`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/sample-testing/save`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
