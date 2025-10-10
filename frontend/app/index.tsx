@@ -53,21 +53,33 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    console.log('=== LOGIN STARTED ===');
+    console.log('Username:', username);
+    console.log('Password length:', password.length);
+    console.log('Backend URL:', EXPO_PUBLIC_BACKEND_URL);
+    
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter username and password');
       return;
     }
 
     setLoading(true);
+    console.log('Loading set to true');
+    
     try {
-      console.log('Attempting login to:', `${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`);
-      console.log('With credentials:', { username, password: '***' });
+      const apiUrl = `${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`;
+      console.log('Full API URL:', apiUrl);
+      console.log('About to call fetch...');
       
       // Create abort controller for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => {
+        console.log('TIMEOUT TRIGGERED - Aborting request');
+        controller.abort();
+      }, 15000); // 15 second timeout
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`, {
+      console.log('Calling fetch now...');
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,14 +89,15 @@ export default function LoginScreen() {
       });
 
       clearTimeout(timeoutId);
-      
+      console.log('Fetch completed. Response received');
       console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
       const data = await response.json();
-      console.log('Response data:', data);
+      console.log('Response data keys:', Object.keys(data));
 
       if (response.ok) {
-        // Store tokens securely
-        console.log('Storing tokens...');
+        console.log('Login successful! Storing tokens...');
         await TokenManager.storeTokens(
           data.access_token,
           data.refresh_token,
@@ -92,10 +105,9 @@ export default function LoginScreen() {
           data.refresh_expires_in
         );
         
-        // Store user info in AsyncStorage for display purposes
         await AsyncStorage.setItem('user', JSON.stringify({ username }));
+        console.log('Tokens stored. Navigating to permits...');
         
-        console.log('Login successful, navigating to permits');
         router.replace('/permits');
       } else {
         const errorMsg = data.detail || data.error || 'Invalid credentials';
@@ -103,13 +115,18 @@ export default function LoginScreen() {
         Alert.alert('Login Failed', errorMsg);
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('=== LOGIN ERROR ===');
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
       if (error.name === 'AbortError') {
-        Alert.alert('Error', 'Login request timed out. Please check your connection and try again.');
+        Alert.alert('Timeout', 'Login request timed out after 15 seconds. Please check your internet connection.');
       } else {
         Alert.alert('Error', `Network error: ${error.message || 'Please try again.'}`);
       }
     } finally {
+      console.log('Finally block - setting loading to false');
       setLoading(false);
     }
   };
