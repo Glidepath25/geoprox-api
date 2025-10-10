@@ -194,75 +194,93 @@ backend:
 
   - task: "GeoProx Permits - Get User Permits (Production)"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/geoprox/permits created to fetch permits from production PostgreSQL permit_records table. Includes search functionality and converts data to mobile format. - NEEDS TESTING with EXPOTEST user"
+      - working: false
+        agent: "testing"
+        comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
 
   - task: "GeoProx Permit Details - Get Specific Permit (Production)"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/geoprox/permits/{permit_ref} created to fetch specific permit details from production database. Returns permit with inspection and sample status. - NEEDS TESTING"
+      - working: false
+        agent: "testing"
+        comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
 
   - task: "GeoProx Site Inspection - Save Draft (Production)"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/geoprox/inspections/save created to save inspection drafts to production permit_records.site_payload. Updates site_status to 'wip'. - NEEDS TESTING"
+      - working: false
+        agent: "testing"
+        comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
 
   - task: "GeoProx Site Inspection - Submit Final (Production)"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/geoprox/inspections/submit created to submit final inspections to production permit_records.site_payload. Updates site_status to 'completed'. - NEEDS TESTING"
+      - working: false
+        agent: "testing"
+        comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
 
   - task: "GeoProx Sample Testing - Save Draft (Production)"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/geoprox/sample-testing/save created to save sample testing drafts to production permit_records.sample_payload. Updates sample_status to 'wip'. - NEEDS TESTING"
+      - working: false
+        agent: "testing"
+        comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
 
   - task: "GeoProx Sample Testing - Submit Final (Production)"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "New endpoint /api/geoprox/sample-testing/submit created to submit final sample testing to production permit_records.sample_payload. Updates sample_status to 'completed'. - NEEDS TESTING"
+      - working: false
+        agent: "testing"
+        comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
 
 frontend:
   # No frontend tasks to test as per instructions
