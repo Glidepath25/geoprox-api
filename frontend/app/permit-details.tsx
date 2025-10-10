@@ -173,35 +173,23 @@ export default function PermitDetailsScreen() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Permit Overview */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{permit.permit_number}</Text>
+          <Text style={styles.sectionTitle}>{permit.permit_ref}</Text>
           
           <View style={styles.permitDetails}>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Works Type:</Text>
-              <Text style={styles.detailValue}>{permit.works_type}</Text>
+              <Text style={styles.detailLabel}>Owner:</Text>
+              <Text style={styles.detailValue}>{permit.owner_display_name}</Text>
             </View>
             
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Location:</Text>
-              <Text style={styles.detailValue}>{permit.location}</Text>
+              <Text style={styles.detailLabel}>Created:</Text>
+              <Text style={styles.detailValue}>{new Date(permit.created_at).toLocaleDateString()}</Text>
             </View>
             
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Highway Authority:</Text>
-              <Text style={styles.detailValue}>{permit.highway_authority}</Text>
+              <Text style={styles.detailLabel}>Desktop Status:</Text>
+              <Text style={styles.detailValue}>{permit.desktop_status}</Text>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.coordinatesRow}
-              onPress={() => openGoogleMaps(permit.latitude, permit.longitude)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.detailLabel}>Coordinates:</Text>
-              <Text style={styles.coordinatesText}>
-                {permit.latitude.toFixed(6)}, {permit.longitude.toFixed(6)}
-              </Text>
-              <Ionicons name="open-outline" size={16} color="#2563eb" />
-            </TouchableOpacity>
           </View>
         </View>
 
