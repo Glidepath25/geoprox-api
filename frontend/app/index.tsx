@@ -91,8 +91,13 @@ export default function LoginScreen() {
       >
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>GeoProx Mobile</Text>
-            <Text style={styles.subtitle}>Site Inspection App</Text>
+            <View style={styles.logoContainer}>
+              <View style={styles.logoPlaceholder}>
+                <Text style={styles.logoText}>GeoProx</Text>
+                <Text style={styles.logoSubtext}>COORDINATES TO CLARITY</Text>
+              </View>
+            </View>
+            <Text style={styles.subtitle}>Mobile Site Inspection</Text>
           </View>
 
           <View style={styles.form}>
