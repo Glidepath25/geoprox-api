@@ -275,38 +275,43 @@ export default function InspectionScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      const inspectionData = {
-        permit_id: permitId,
-        work_order_reference: workOrderRef || '',
-        excavation_site_number: excavationSiteNumber || '',
-        surface_location: surfaceLocation,
-        utility_type: utilityType || '',
-        q1_asbestos: questions[0].answer,
-        q1_notes: questions[0].notes,
-        q2_binder_shiny: questions[1].answer,
-        q2_notes: questions[1].notes,
-        q3_spray_pak: questions[2].answer,
-        q3_notes: questions[2].notes,
-        q4_soil_stained: questions[3].answer,
-        q4_notes: questions[3].notes,
-        q5_water_moisture: questions[4].answer,
-        q5_notes: questions[4].notes,
-        q6_pungent_odours: questions[5].answer,
-        q6_notes: questions[5].notes,
-        q7_litmus_paper: questions[6].answer,
-        q7_notes: questions[6].notes,
-        bituminous_result: bituminousResult,
-        sub_base_result: subBaseResult,
-        photos: photos,
+      // Format data for production API
+      const payload = {
+        status: "In progress",
+        notes: "Draft saved from mobile app",
+        payload: {
+          form: {
+            permit_number: permitId,
+            work_order_ref: workOrderRef || '',
+            excavation_site_number: excavationSiteNumber || '',
+            surface_location: surfaceLocation,
+            utility_type: utilityType || '',
+            q1_asbestos: questions[0].answer,
+            q2_binder_shiny: questions[1].answer,
+            q3_spray_pak: questions[2].answer,
+            q4_soil_colour: questions[3].answer,
+            q5_water_sheen: questions[4].answer,
+            q6_pungent_odour: questions[5].answer,
+            q7_litmus_change: questions[6].answer,
+            result_bituminous: bituminousResult,
+            result_sub_base: subBaseResult,
+            assessment_date: new Date().toISOString().split('T')[0],
+          },
+          summary: {
+            bituminous: "Pending",
+            sub_base: "Pending"
+          },
+          attachments: photos
+        }
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections/save`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/site-assessment`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(inspectionData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
