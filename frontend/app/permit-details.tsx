@@ -53,7 +53,7 @@ export default function PermitDetailsScreen() {
     try {
       const token = await AsyncStorage.getItem('token');
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

@@ -105,7 +105,7 @@ export default function SampleTestingScreen() {
     try {
       const token = await AsyncStorage.getItem('token');
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -134,7 +134,7 @@ export default function SampleTestingScreen() {
       const token = await AsyncStorage.getItem('token');
       
       // Get permit details which includes sample_payload for existing sample tests
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
