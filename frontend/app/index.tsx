@@ -248,4 +248,30 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 4,
   },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1f2937',
+    paddingHorizontal: 32,
+    paddingVertical: 20,
+    borderRadius: 12,
+    minWidth: 200,
+  },
+  logoText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    letterSpacing: 2,
+  },
+  logoSubtext: {
+    fontSize: 14,
+    color: '#fbbf24',
+    marginTop: 4,
+    letterSpacing: 1.5,
+    fontWeight: '600',
+  },
 });
