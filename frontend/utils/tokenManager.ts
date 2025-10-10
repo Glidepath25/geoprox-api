@@ -1,9 +1,40 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const TOKEN_EXPIRY_KEY = 'token_expiry';
 const REFRESH_EXPIRY_KEY = 'refresh_expiry';
+
+// Use SecureStore for native, AsyncStorage for web
+const isWeb = Platform.OS === 'web';
+
+const storage = {
+  async setItem(key: string, value: string): Promise<void> {
+    if (isWeb) {
+      await AsyncStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  },
+  
+  async getItem(key: string): Promise<string | null> {
+    if (isWeb) {
+      return await AsyncStorage.getItem(key);
+    } else {
+      return await SecureStore.getItemAsync(key);
+    }
+  },
+  
+  async deleteItem(key: string): Promise<void> {
+    if (isWeb) {
+      await AsyncStorage.removeItem(key);
+    } else {
+      await SecureStore.deleteItemAsync(key);
+    }
+  },
+};
 
 export const TokenManager = {
   // Store tokens securely
@@ -17,26 +48,26 @@ export const TokenManager = {
     const refreshExpiry = Date.now() + refreshExpiresIn * 1000;
 
     await Promise.all([
-      SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
-      SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
-      SecureStore.setItemAsync(TOKEN_EXPIRY_KEY, accessExpiry.toString()),
-      SecureStore.setItemAsync(REFRESH_EXPIRY_KEY, refreshExpiry.toString()),
+      storage.setItem(ACCESS_TOKEN_KEY, accessToken),
+      storage.setItem(REFRESH_TOKEN_KEY, refreshToken),
+      storage.setItem(TOKEN_EXPIRY_KEY, accessExpiry.toString()),
+      storage.setItem(REFRESH_EXPIRY_KEY, refreshExpiry.toString()),
     ]);
   },
 
   // Get access token
   async getAccessToken(): Promise<string | null> {
-    return await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
+    return await storage.getItem(ACCESS_TOKEN_KEY);
   },
 
   // Get refresh token
   async getRefreshToken(): Promise<string | null> {
-    return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+    return await storage.getItem(REFRESH_TOKEN_KEY);
   },
 
   // Check if access token is expired or about to expire (within 5 minutes)
   async isAccessTokenExpired(): Promise<boolean> {
-    const expiry = await SecureStore.getItemAsync(TOKEN_EXPIRY_KEY);
+    const expiry = await storage.getItem(TOKEN_EXPIRY_KEY);
     if (!expiry) return true;
     
     const expiryTime = parseInt(expiry);
@@ -48,7 +79,7 @@ export const TokenManager = {
 
   // Check if refresh token is expired
   async isRefreshTokenExpired(): Promise<boolean> {
-    const expiry = await SecureStore.getItemAsync(REFRESH_EXPIRY_KEY);
+    const expiry = await storage.getItem(REFRESH_EXPIRY_KEY);
     if (!expiry) return true;
     
     const expiryTime = parseInt(expiry);
@@ -58,10 +89,10 @@ export const TokenManager = {
   // Clear all tokens
   async clearTokens(): Promise<void> {
     await Promise.all([
-      SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
-      SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
-      SecureStore.deleteItemAsync(TOKEN_EXPIRY_KEY),
-      SecureStore.deleteItemAsync(REFRESH_EXPIRY_KEY),
+      storage.deleteItem(ACCESS_TOKEN_KEY),
+      storage.deleteItem(REFRESH_TOKEN_KEY),
+      storage.deleteItem(TOKEN_EXPIRY_KEY),
+      storage.deleteItem(REFRESH_EXPIRY_KEY),
     ]);
   },
 
