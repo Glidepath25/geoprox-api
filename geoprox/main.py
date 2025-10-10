@@ -34,7 +34,7 @@ from starlette.datastructures import UploadFile
 from pydantic import BaseModel, Field
 import pandas as pd
 
-from geoprox import history_store, user_store, permit_store, report_store
+from geoprox import history_store, permit_store, report_store, user_store
 from geoprox.auth_tokens import (
     TokenError,
     create_access_token,
@@ -42,9 +42,14 @@ from geoprox.auth_tokens import (
     decode_access_token,
     decode_refresh_token,
 )
-from geoprox.site_assessment_pdf import generate_site_assessment_pdf
-from geoprox.sample_testing_pdf import generate_sample_testing_pdf
 from geoprox.core import run_geoprox_search
+from geoprox.mobile_auth_models import (
+    MobileAuthRequest,
+    MobileAuthResponse,
+    MobileRefreshRequest,
+)
+from geoprox.sample_testing_pdf import generate_sample_testing_pdf
+from geoprox.site_assessment_pdf import generate_site_assessment_pdf
 
 SITE_ASSESSMENT_DETAIL_FIELDS = [
     ('utility_type', 'Utility Type'),
@@ -589,24 +594,6 @@ def _cache_user_context(
         request.session["user_type"] = normalized_type
         request.session["is_admin"] = is_admin
         request.session["is_company_admin"] = is_company_admin
-
-
-class MobileAuthRequest(BaseModel):
-    username: str
-    password: str
-
-
-class MobileRefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class MobileAuthResponse(BaseModel):
-    access_token: str
-    expires_in: int
-    refresh_token: str
-    refresh_expires_in: int
-    token_type: str = "bearer"
-    scope: Optional[str] = None
 
 
 def _build_user_scope(record: Dict[str, Any]) -> str:
