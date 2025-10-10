@@ -76,7 +76,7 @@ export default function PermitsScreen() {
     try {
       const token = await AsyncStorage.getItem('token');
       
-      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/permits`);
+      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits`);
       if (search.trim()) {
         url.searchParams.append('search', search.trim());
       }
