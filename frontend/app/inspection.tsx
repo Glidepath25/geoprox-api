@@ -440,7 +440,20 @@ export default function InspectionScreen() {
               
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>LOCATION</Text>
-                <Text style={styles.detailValue}>{permit?.location?.display || 'N/A'}</Text>
+                {permit?.location ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const url = `https://www.google.com/maps?q=${permit.location.lat},${permit.location.lon}`;
+                      Linking.openURL(url);
+                    }}
+                    style={styles.locationLink}
+                  >
+                    <Text style={styles.locationText}>{permit.location.display}</Text>
+                    <Ionicons name="open-outline" size={14} color="#2563eb" style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.detailValue}>N/A</Text>
+                )}
               </View>
               
               <View style={styles.detailItem}>
