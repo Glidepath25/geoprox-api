@@ -105,12 +105,24 @@
 user_problem_statement: "Test the GeoProx Mobile API backend that I just created. The backend includes authentication system, permits management, and site inspections functionality."
 
 backend:
-  - task: "Authentication System - User Login"
+  - task: "GeoProx Production Authentication - Mobile JWT Login"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py, backend/geoprox_integration.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoint /api/mobile/auth/login created for production GeoProx PostgreSQL authentication. Uses JWT tokens and bcrypt password verification. Credentials: EXPOTEST / EXPOTEST!! - NEEDS TESTING"
+
+  - task: "Authentication System - User Login (MongoDB - Legacy)"
     implemented: true
     working: true
     file: "backend/server.py"
     stuck_count: 0
-    priority: "high"
+    priority: "low"
     needs_retesting: false
     status_history:
       - working: true
