@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://mobile-geoprox.preview.emergentagent.com/api"
+BASE_URL = "https://site-inspector-30.preview.emergentagent.com/api"
 
 class GeoProxAPITester:
     def __init__(self):
