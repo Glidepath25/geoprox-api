@@ -505,13 +505,30 @@ export default function InspectionScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>SURFACE LOCATION</Text>
-              <TextInput
-                style={styles.input}
-                value={surfaceLocation}
-                onChangeText={setSurfaceLocation}
-                placeholder="Enter surface location"
-              />
+              <Text style={styles.inputLabel}>SURFACE LOCATION (Select all that apply)</Text>
+              {['Carriageway', 'Footway / Footpath', 'Verge', 'Other'].map((location) => (
+                <TouchableOpacity
+                  key={location}
+                  style={styles.checkboxContainer}
+                  onPress={() => {
+                    if (surfaceLocations.includes(location)) {
+                      setSurfaceLocations(surfaceLocations.filter(l => l !== location));
+                    } else {
+                      setSurfaceLocations([...surfaceLocations, location]);
+                    }
+                  }}
+                >
+                  <View style={[
+                    styles.checkbox,
+                    surfaceLocations.includes(location) && styles.checkboxChecked
+                  ]}>
+                    {surfaceLocations.includes(location) && (
+                      <Ionicons name="checkmark" size={18} color="#ffffff" />
+                    )}
+                  </View>
+                  <Text style={styles.checkboxLabel}>{location}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
 
