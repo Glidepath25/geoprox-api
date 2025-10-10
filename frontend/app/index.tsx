@@ -26,19 +26,24 @@ export default function LoginScreen() {
 
   // Check if user is already logged in
   useEffect(() => {
-    checkAuthStatus();
+    // Add small delay to ensure router is mounted
+    const timer = setTimeout(() => {
+      checkAuthStatus();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const checkAuthStatus = async () => {
     try {
       const token = await TokenManager.getAccessToken();
       if (token && !(await TokenManager.isAccessTokenExpired())) {
-        router.replace('/permits');
+        setTimeout(() => router.replace('/permits'), 50);
       } else if (token && !(await TokenManager.isRefreshTokenExpired())) {
         // Try to refresh the token
         const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
         if (refreshed) {
-          router.replace('/permits');
+          setTimeout(() => router.replace('/permits'), 50);
         } else {
           await TokenManager.clearTokens();
         }
