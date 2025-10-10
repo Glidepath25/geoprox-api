@@ -14,6 +14,9 @@ import hashlib
 import jwt
 from bson import ObjectId
 
+# Import GeoProx Integration
+from geoprox_integration import geoprox_auth, geoprox_permits, geoprox_db
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
