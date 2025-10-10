@@ -76,32 +76,50 @@ export default function LoginScreen() {
       console.log('Full API URL:', apiUrl);
       console.log('About to call fetch...');
       
-      // Create abort controller for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log('TIMEOUT TRIGGERED - Aborting request');
-        controller.abort();
-      }, 15000); // 15 second timeout
+      // Test with XMLHttpRequest as fallback
+      const testXHR = () => {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const timeoutId = setTimeout(() => {
+            xhr.abort();
+            reject(new Error('XHR Timeout after 15 seconds'));
+          }, 15000);
+          
+          xhr.onload = () => {
+            clearTimeout(timeoutId);
+            console.log('XHR completed with status:', xhr.status);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(JSON.parse(xhr.responseText));
+            } else {
+              reject(new Error(`HTTP ${xhr.status}`));
+            }
+          };
+          
+          xhr.onerror = () => {
+            clearTimeout(timeoutId);
+            console.error('XHR error occurred');
+            reject(new Error('Network error'));
+          };
+          
+          xhr.ontimeout = () => {
+            console.error('XHR timeout occurred');
+            reject(new Error('Request timeout'));
+          };
+          
+          console.log('Opening XHR connection...');
+          xhr.open('POST', apiUrl);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          console.log('Sending XHR request...');
+          xhr.send(JSON.stringify({ username, password }));
+        });
+      };
       
-      console.log('Calling fetch now...');
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      console.log('Fetch completed. Response received');
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
-      
-      const data = await response.json();
+      console.log('Using XMLHttpRequest for request...');
+      const data = await testXHR();
+      console.log('Request completed successfully');
       console.log('Response data keys:', Object.keys(data));
 
-      if (response.ok) {
+      if (data.access_token) {
         console.log('Login successful! Storing tokens...');
         await TokenManager.storeTokens(
           data.access_token,
@@ -123,9 +141,8 @@ export default function LoginScreen() {
       console.error('=== LOGIN ERROR ===');
       console.error('Error name:', error.name);
       console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
       
-      if (error.name === 'AbortError') {
+      if (error.message.includes('Timeout') || error.message.includes('timeout')) {
         Alert.alert('Timeout', 'Login request timed out after 15 seconds. Please check your internet connection.');
       } else {
         Alert.alert('Error', `Network error: ${error.message || 'Please try again.'}`);
