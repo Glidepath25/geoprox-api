@@ -21,41 +21,7 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
   const router = useRouter();
-
-  // Check if user is already logged in
-  useEffect(() => {
-    // Add small delay to ensure router is mounted
-    const timer = setTimeout(() => {
-      checkAuthStatus();
-    }, 100);
-    
-    return () => clearTimeout(timer);
-  }, []);
-
-  const checkAuthStatus = async () => {
-    try {
-      const token = await TokenManager.getAccessToken();
-      if (token && !(await TokenManager.isAccessTokenExpired())) {
-        setTimeout(() => router.replace('/permits'), 50);
-      } else if (token && !(await TokenManager.isRefreshTokenExpired())) {
-        // Try to refresh the token
-        const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
-        if (refreshed) {
-          setTimeout(() => router.replace('/permits'), 50);
-        } else {
-          await TokenManager.clearTokens();
-        }
-      } else {
-        await TokenManager.clearTokens();
-      }
-    } catch (error) {
-      console.log('Auth check error:', error);
-    } finally {
-      setCheckingAuth(false);
-    }
-  };
 
   const handleLogin = async () => {
     console.log('=== LOGIN STARTED ===');
