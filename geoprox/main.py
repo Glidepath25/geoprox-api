@@ -2003,7 +2003,8 @@ async def logout(request: Request):
     if username:
         user_store.clear_session_token(username, expected_token=token)
     request.session.clear()
-    return RedirectResponse(url="/", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
+    return response
 
 
 @app.post("/api/mobile/auth/login", response_model=MobileAuthResponse)
