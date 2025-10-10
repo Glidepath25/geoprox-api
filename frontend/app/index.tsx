@@ -60,6 +60,9 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      console.log('Attempting login to:', `${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`);
+      console.log('With credentials:', { username, password: '***' });
+      
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`, {
         method: 'POST',
         headers: {
@@ -68,10 +71,13 @@ export default function LoginScreen() {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (response.ok) {
         // Store tokens securely
+        console.log('Storing tokens...');
         await TokenManager.storeTokens(
           data.access_token,
           data.refresh_token,
@@ -82,13 +88,16 @@ export default function LoginScreen() {
         // Store user info in AsyncStorage for display purposes
         await AsyncStorage.setItem('user', JSON.stringify({ username }));
         
+        console.log('Login successful, navigating to permits');
         router.replace('/permits');
       } else {
-        Alert.alert('Login Failed', data.detail || data.error || 'Invalid credentials');
+        const errorMsg = data.detail || data.error || 'Invalid credentials';
+        console.error('Login failed:', errorMsg);
+        Alert.alert('Login Failed', errorMsg);
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Error', 'Network error. Please try again.');
+      Alert.alert('Error', `Network error: ${error.message || 'Please try again.'}`);
     } finally {
       setLoading(false);
     }
