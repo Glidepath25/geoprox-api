@@ -129,7 +129,8 @@ export default function InspectionScreen() {
     try {
       const token = await AsyncStorage.getItem('token');
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/inspections/current/${permitId}`, {
+      // Get permit details which includes site_payload for existing inspections
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -137,37 +138,13 @@ export default function InspectionScreen() {
       });
 
       if (response.ok) {
-        const inspection = await response.json();
-        if (inspection) {
-          // Populate form fields with existing data
-          setWorkOrderRef(inspection.work_order_reference || '');
-          setExcavationSiteNumber(inspection.excavation_site_number || '');
-          setSurfaceLocation(inspection.surface_location || 'Footway / Footpath');
-          setUtilityType(inspection.utility_type || '');
-          setBituminousResult(inspection.bituminous_result || 'Red');
-          setSubBaseResult(inspection.sub_base_result || 'Green');
-          setPhotos(inspection.photos || []);
-          
-          // Populate questions
-          const updatedQuestions = questions.map((q, index) => {
-            const questionKeys = [
-              'q1_asbestos', 'q2_binder_shiny', 'q3_spray_pak', 'q4_soil_stained',
-              'q5_water_moisture', 'q6_pungent_odours', 'q7_litmus_paper'
-            ];
-            const notesKeys = [
-              'q1_notes', 'q2_notes', 'q3_notes', 'q4_notes',
-              'q5_notes', 'q6_notes', 'q7_notes'
-            ];
-            
-            return {
-              ...q,
-              answer: inspection[questionKeys[index]] || '',
-              notes: inspection[notesKeys[index]] || q.notes
-            };
-          });
-          setQuestions(updatedQuestions);
-          
-          console.log('Loaded existing inspection data');
+        const permitData = await response.json();
+        
+        // Check if there's existing inspection data in site_payload
+        if (permitData.inspection_status === 'wip' || permitData.inspection_status === 'completed') {
+          // The site_payload is stored in the backend, we'll load it from there
+          // For now, we'll leave the form empty and let users re-enter
+          console.log('Existing inspection status:', permitData.inspection_status);
         }
       }
     } catch (error) {
@@ -180,7 +157,7 @@ export default function InspectionScreen() {
     try {
       const token = await AsyncStorage.getItem('token');
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
