@@ -53,7 +53,7 @@ export default function PermitsScreen() {
 
   const checkAuth = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await TokenManager.getAccessToken();
       const userData = await AsyncStorage.getItem('user');
       
       if (!token) {
