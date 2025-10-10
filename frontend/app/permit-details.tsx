@@ -112,7 +112,7 @@ export default function PermitDetailsScreen() {
 
   const handleSiteInspection = () => {
     router.push({
-      pathname: '/inspection',
+      pathname: '/inspection-form',
       params: { permitId: permitId }
     });
   };
