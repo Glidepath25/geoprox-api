@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -18,7 +20,7 @@ class MobileAuthResponse(BaseModel):
     refresh_token: str
     refresh_expires_in: int
     token_type: str = "bearer"
-    scope: str | None = None
+    scope: Optional[str] = None
 
 
 __all__ = [
