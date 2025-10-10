@@ -49,7 +49,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/auth/login`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
