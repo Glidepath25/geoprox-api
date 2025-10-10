@@ -181,9 +181,10 @@ export default function InspectionScreen() {
       if (response.ok) {
         const data = await response.json();
         setPermit(data);
-        setWorkOrderRef(data.permit_number.split('-')[0] || '');
+        setWorkOrderRef(data.permit_ref.split('-')[0] || '');
         setExcavationSiteNumber('234');
       } else if (response.status === 401) {
+        await TokenManager.clearTokens();
         await AsyncStorage.clear();
         router.replace('/');
       } else {
