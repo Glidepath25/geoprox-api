@@ -31,9 +31,19 @@ export default function LoginScreen() {
 
   const checkAuthStatus = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (token) {
+      const token = await TokenManager.getAccessToken();
+      if (token && !(await TokenManager.isAccessTokenExpired())) {
         router.replace('/permits');
+      } else if (token && !(await TokenManager.isRefreshTokenExpired())) {
+        // Try to refresh the token
+        const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+        if (refreshed) {
+          router.replace('/permits');
+        } else {
+          await TokenManager.clearTokens();
+        }
+      } else {
+        await TokenManager.clearTokens();
       }
     } catch (error) {
       console.log('Auth check error:', error);
@@ -61,11 +71,20 @@ export default function LoginScreen() {
       const data = await response.json();
 
       if (response.ok) {
-        await AsyncStorage.setItem('token', data.token);
-        await AsyncStorage.setItem('user', JSON.stringify(data.user));
+        // Store tokens securely
+        await TokenManager.storeTokens(
+          data.access_token,
+          data.refresh_token,
+          data.expires_in,
+          data.refresh_expires_in
+        );
+        
+        // Store user info in AsyncStorage for display purposes
+        await AsyncStorage.setItem('user', JSON.stringify({ username }));
+        
         router.replace('/permits');
       } else {
-        Alert.alert('Login Failed', data.detail || 'Invalid credentials');
+        Alert.alert('Login Failed', data.detail || data.error || 'Invalid credentials');
       }
     } catch (error) {
       console.error('Login error:', error);
