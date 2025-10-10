@@ -272,7 +272,13 @@ metadata:
 
 test_plan:
   current_focus:
-    - "All backend tasks completed and tested successfully"
+    - "GeoProx Production Authentication - Mobile JWT Login"
+    - "GeoProx Permits - Get User Permits (Production)"
+    - "GeoProx Permit Details - Get Specific Permit (Production)"
+    - "GeoProx Site Inspection - Save Draft (Production)"
+    - "GeoProx Site Inspection - Submit Final (Production)"
+    - "GeoProx Sample Testing - Save Draft (Production)"
+    - "GeoProx Sample Testing - Submit Final (Production)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
