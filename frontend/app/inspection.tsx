@@ -69,7 +69,7 @@ export default function InspectionScreen() {
   // Form fields
   const [workOrderRef, setWorkOrderRef] = useState('');
   const [excavationSiteNumber, setExcavationSiteNumber] = useState('');
-  const [surfaceLocation, setSurfaceLocation] = useState('Footway / Footpath');
+  const [surfaceLocations, setSurfaceLocations] = useState<string[]>([]);
   const [utilityType, setUtilityType] = useState('');
   const [bituminousResult, setBituminousResult] = useState('Red');
   const [subBaseResult, setSubBaseResult] = useState('Green');
