@@ -413,8 +413,8 @@ export default function InspectionScreen() {
             
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>PERMIT NAME</Text>
-                <Text style={styles.detailValue}>{permit?.permit_name}</Text>
+                <Text style={styles.detailLabel}>PERMIT REF</Text>
+                <Text style={styles.detailValue}>{permit?.permit_ref}</Text>
               </View>
               
               <View style={styles.detailItem}>
@@ -423,18 +423,18 @@ export default function InspectionScreen() {
               </View>
               
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>LOCATION OF WORK</Text>
-                <Text style={styles.detailValue}>{permit?.location}</Text>
+                <Text style={styles.detailLabel}>LOCATION</Text>
+                <Text style={styles.detailValue}>{permit?.location?.display || 'N/A'}</Text>
               </View>
               
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>PERMIT NUMBER</Text>
-                <Text style={styles.detailValue}>{permit?.permit_number}</Text>
+                <Text style={styles.detailLabel}>OWNER</Text>
+                <Text style={styles.detailValue}>{permit?.owner_display_name}</Text>
               </View>
 
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>PROXIMITY RISK ASSESSMENT</Text>
-                <Text style={styles.detailValue}>{permit?.proximity_risk_assessment}</Text>
+                <Text style={styles.detailLabel}>DESKTOP OUTCOME</Text>
+                <Text style={styles.detailValue}>{permit?.desktop?.outcome || 'N/A'}</Text>
               </View>
             </View>
 
