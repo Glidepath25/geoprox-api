@@ -603,6 +603,18 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
   },
+  headerLeft: {
+    flex: 1,
+  },
+  brandContainer: {
+    marginBottom: 4,
+  },
+  brandText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    letterSpacing: 1,
+  },
   statusContainer: {
     marginLeft: 8,
   },
