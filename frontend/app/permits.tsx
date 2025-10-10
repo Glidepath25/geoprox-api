@@ -133,7 +133,7 @@ export default function PermitsScreen() {
       setFilteredPermits(permits);
     } else {
       const filtered = permits.filter(permit =>
-        permit.permit_number.toLowerCase().includes(text.toLowerCase())
+        permit.permit_ref.toLowerCase().includes(text.toLowerCase())
       );
       setFilteredPermits(filtered);
     }
