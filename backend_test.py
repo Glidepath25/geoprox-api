@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 """
-GeoProx Mobile API Backend Testing Suite
-Tests authentication, permits management, and site inspections
+GeoProx Production Integration Backend API Tests
+Tests all GeoProx production endpoints with EXPOTEST credentials
 """
 
 import requests
 import json
 import sys
 from datetime import datetime
+from typing import Dict, Any, Optional
 
-# Backend URL from frontend/.env
+# Test Configuration
 BASE_URL = "https://site-inspector-30.preview.emergentagent.com/api"
+TEST_USERNAME = "EXPOTEST"
+TEST_PASSWORD = "EXPOTEST!!"
 
 class GeoProxAPITester:
     def __init__(self):
         self.base_url = BASE_URL
-        self.auth_token = None
+        self.token = None
+        self.user_info = None
         self.test_results = []
-        self.sample_permit_id = None
+        self.permits = []
         
     def log_test(self, test_name, success, message, details=None):
         """Log test results"""
