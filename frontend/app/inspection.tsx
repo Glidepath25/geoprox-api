@@ -306,6 +306,8 @@ export default function InspectionScreen() {
         }
       };
 
+      console.log('Saving inspection with payload:', JSON.stringify(payload, null, 2));
+      
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/site-assessment`, {
         method: 'POST',
         headers: {
@@ -315,12 +317,15 @@ export default function InspectionScreen() {
         body: JSON.stringify(payload),
       });
 
+      console.log('Save response status:', response.status);
+      const responseData = await response.json();
+      console.log('Save response data:', responseData);
+
       if (response.ok) {
         Alert.alert('Saved', 'Inspection saved as draft. You can complete it later.');
         // Don't navigate back, let user continue working
       } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.detail || 'Failed to save inspection');
+        Alert.alert('Error', responseData.detail || 'Failed to save inspection');
       }
     } catch (error) {
       console.error('Save error:', error);
