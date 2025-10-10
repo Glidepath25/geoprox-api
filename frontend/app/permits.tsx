@@ -214,73 +214,46 @@ export default function PermitsScreen() {
     >
       <View style={styles.cardHeader}>
         <View style={styles.headerLeft}>
-          <Text style={styles.permitNumber}>{item.permit_number}</Text>
-          <Text style={styles.permitName}>{item.permit_name}</Text>
+          <Text style={styles.permitNumber}>{item.permit_ref}</Text>
+          <Text style={styles.permitName}>Owner: {item.owner_display_name}</Text>
         </View>
         <View style={styles.headerRight}>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-            <Text style={styles.statusText}>{item.status}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.desktop_status?.toLowerCase() || 'pending') }]}>
+            <Text style={styles.statusText}>{item.desktop_status}</Text>
           </View>
-          {item.inspection_status === 'completed' && item.inspection_results && (
-            <View style={styles.inspectionResults}>
-              <View style={[styles.resultBadge, { backgroundColor: item.inspection_results.bituminous === 'Green' ? '#10b981' : '#ef4444' }]}>
-                <Text style={styles.resultText}>B: {item.inspection_results.bituminous}</Text>
-              </View>
-              <View style={[styles.resultBadge, { backgroundColor: item.inspection_results.sub_base === 'Green' ? '#10b981' : '#ef4444' }]}>
-                <Text style={styles.resultText}>S: {item.inspection_results.sub_base}</Text>
-              </View>
-            </View>
-          )}
         </View>
       </View>
       
       <View style={styles.cardContent}>
-        <TouchableOpacity 
-          style={styles.coordinatesRow}
-          onPress={() => openGoogleMaps(item.latitude, item.longitude)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="map" size={16} color="#2563eb" />
-          <Text style={styles.coordinatesText}>
-            {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
-          </Text>
-          <Ionicons name="open-outline" size={14} color="#2563eb" />
-        </TouchableOpacity>
-
         <View style={styles.detailRow}>
           <Ionicons name="shield" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>Proximity Risk Assessment: </Text>
-          <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.proximity_risk_assessment) }]}>
-            <Text style={styles.riskText}>{item.proximity_risk_assessment}</Text>
+          <Text style={styles.detailText}>Desktop Outcome: </Text>
+          <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.desktop_outcome?.toLowerCase() || 'unknown') }]}>
+            <Text style={styles.riskText}>{item.desktop_outcome || 'N/A'}</Text>
           </View>
         </View>
 
         <View style={styles.detailRow}>
           <Ionicons name="clipboard" size={16} color="#6b7280" />
-          <Text style={styles.detailText}>Site Inspection Status: </Text>
-          <View style={styles.statusContainer}>
-            {item.inspection_status === 'pending' && (
-              <Text style={styles.statusPending}>Pending</Text>
-            )}
-            {item.inspection_status === 'wip' && (
-              <Text style={styles.statusWip}>WIP</Text>
-            )}
-            {item.inspection_status === 'completed' && (
-              <Text style={styles.statusCompleted}>Complete</Text>
-            )}
-          </View>
+          <Text style={styles.detailText}>Site Status: </Text>
+          <Text style={[styles.statusWip, { 
+            color: item.site_status === 'Completed' ? '#10b981' : 
+                   item.site_status === 'In progress' ? '#f59e0b' : '#6b7280' 
+          }]}>
+            {item.site_status}
+          </Text>
         </View>
 
-        {item.inspection_results && (
+        {item.site_bituminous && item.site_sub_base && (
           <View style={styles.detailRow}>
             <View style={styles.resultsContainer}>
               <Text style={styles.resultLabel}>Bituminous: </Text>
-              <View style={[styles.resultBadge, { backgroundColor: item.inspection_results.bituminous === 'Green' ? '#10b981' : '#ef4444' }]}>
-                <Text style={styles.resultText}>{item.inspection_results.bituminous}</Text>
+              <View style={[styles.resultBadge, { backgroundColor: item.site_bituminous === 'PASS' ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.resultText}>{item.site_bituminous}</Text>
               </View>
               <Text style={styles.resultLabel}> - Sub-Base: </Text>
-              <View style={[styles.resultBadge, { backgroundColor: item.inspection_results.sub_base === 'Green' ? '#10b981' : '#ef4444' }]}>
-                <Text style={styles.resultText}>{item.inspection_results.sub_base}</Text>
+              <View style={[styles.resultBadge, { backgroundColor: item.site_sub_base === 'PASS' ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.resultText}>{item.site_sub_base}</Text>
               </View>
             </View>
           </View>
