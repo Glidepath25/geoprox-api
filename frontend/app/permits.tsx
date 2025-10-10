@@ -20,23 +20,22 @@ import { TokenManager } from '../utils/tokenManager';
 const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 interface Permit {
-  id: string;
-  permit_number: string;
-  works_type: string;
-  location: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  highway_authority: string;
-  status: string;
-  proximity_risk_assessment: string;
+  permit_ref: string;
   created_at: string;
-  inspection_status?: string;
-  inspection_results?: {
-    bituminous: string;
-    sub_base: string;
-  } | null;
-  sample_status?: string;
+  updated_at: string;
+  desktop_status: string;
+  desktop_outcome: string | null;
+  desktop_date: string | null;
+  site_status: string;
+  site_outcome: string | null;
+  site_bituminous: string | null;
+  site_sub_base: string | null;
+  site_date: string | null;
+  sample_status: string;
+  sample_outcome: string | null;
+  sample_date: string | null;
+  owner_username: string;
+  owner_display_name: string;
 }
 
 export default function PermitsScreen() {
