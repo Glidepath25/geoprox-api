@@ -205,10 +205,12 @@ export default function PermitDetailsScreen() {
               <Text style={styles.detailValue}>{new Date(permit.created_at).toLocaleDateString()}</Text>
             </View>
             
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Desktop Status:</Text>
-              <Text style={styles.detailValue}>{permit.desktop_status}</Text>
-            </View>
+            {permit.location && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Location:</Text>
+                <Text style={styles.detailValue}>{permit.location.display}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -219,16 +221,16 @@ export default function PermitDetailsScreen() {
               <Text style={styles.sectionTitle}>Desktop Assessment</Text>
               <Text style={styles.sectionSubtitle}>Proximity Risk</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor('completed') }]}>
-              <Text style={styles.statusText}>{permit.desktop_status}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.desktop.status?.toLowerCase() || 'completed') }]}>
+              <Text style={styles.statusText}>{permit.desktop.status}</Text>
             </View>
           </View>
 
           <View style={styles.assessmentContent}>
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Outcome:</Text>
-              <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(permit.desktop_outcome || 'unknown') }]}>
-                <Text style={styles.riskText}>{permit.desktop_outcome || 'N/A'}</Text>
+              <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(permit.desktop.outcome?.toLowerCase() || 'unknown') }]}>
+                <Text style={styles.riskText}>{permit.desktop.outcome || 'N/A'}</Text>
               </View>
             </View>
           </View>
@@ -240,26 +242,30 @@ export default function PermitDetailsScreen() {
             <View>
               <Text style={styles.sectionTitle}>Site Inspection</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.site_status || 'pending') }]}>
-              <Text style={styles.statusText}>{permit.site_status}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.site.status?.toLowerCase() || 'pending') }]}>
+              <Text style={styles.statusText}>{permit.site.status}</Text>
             </View>
           </View>
 
-          {permit.site_bituminous && permit.site_sub_base && (
+          {permit.site.summary && (
             <View style={styles.resultsContainer}>
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Bituminous:</Text>
-                <View style={[styles.resultBadge, { backgroundColor: permit.site_bituminous === 'PASS' ? '#10b981' : '#ef4444' }]}>
-                  <Text style={styles.resultText}>{permit.site_bituminous}</Text>
+              {permit.site.summary.bituminous && (
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Bituminous:</Text>
+                  <View style={[styles.resultBadge, { backgroundColor: permit.site.summary.bituminous === 'Green' ? '#10b981' : '#ef4444' }]}>
+                    <Text style={styles.resultText}>{permit.site.summary.bituminous}</Text>
+                  </View>
                 </View>
-              </View>
+              )}
               
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Sub-Base:</Text>
-                <View style={[styles.resultBadge, { backgroundColor: permit.site_sub_base === 'PASS' ? '#10b981' : '#ef4444' }]}>
-                  <Text style={styles.resultText}>{permit.site_sub_base}</Text>
+              {permit.site.summary.sub_base && (
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Sub-Base:</Text>
+                  <View style={[styles.resultBadge, { backgroundColor: permit.site.summary.sub_base === 'Green' ? '#10b981' : '#ef4444' }]}>
+                    <Text style={styles.resultText}>{permit.site.summary.sub_base}</Text>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           )}
 
@@ -278,16 +284,16 @@ export default function PermitDetailsScreen() {
             <View>
               <Text style={styles.sectionTitle}>Sample Testing</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.sample_status || 'not_required') }]}>
-              <Text style={styles.statusText}>{permit.sample_status}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(permit.sample.status?.toLowerCase() || 'not_required') }]}>
+              <Text style={styles.statusText}>{permit.sample.status}</Text>
             </View>
           </View>
 
           <View style={styles.resultsContainer}>
-            {permit.sample_outcome && (
+            {permit.sample.outcome && (
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Outcome:</Text>
-                <Text style={styles.resultText}>{permit.sample_outcome}</Text>
+                <Text style={styles.resultText}>{permit.sample.outcome}</Text>
               </View>
             )}
           </View>
