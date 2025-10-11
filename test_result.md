@@ -197,9 +197,9 @@ backend:
 
   - task: "GeoProx Permits - Get User Permits (Production)"
     implemented: true
-    working: false
+    working: true
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
@@ -209,6 +209,9 @@ backend:
       - working: false
         agent: "testing"
         comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
+      - working: true
+        agent: "testing"
+        comment: "✅ RESOLVED: GET /api/geoprox/permits endpoint working perfectly. Successfully connects to production database and retrieves permits for authenticated users. EXPOTEST user has 0 permits (expected). Endpoint returns proper JSON array format. Authentication properly enforced - returns 403/401 for unauthorized requests. Database schema issues fixed (desktop_payload -> desktop_summary)."
 
   - task: "GeoProx Permit Details - Get Specific Permit (Production)"
     implemented: true
