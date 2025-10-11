@@ -55,6 +55,7 @@ export default function SampleTestingScreen() {
   const [permit, setPermit] = useState<Permit | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   
   // Form fields
   const [sampleStatus, setSampleStatus] = useState('Pending sample');
