@@ -57,8 +57,8 @@ class GeoProxAPITester:
             
             if response.status_code == 200:
                 data = response.json()
-                if "token" in data and "user" in data:
-                    self.token = data["token"]
+                if "access_token" in data and "user" in data:
+                    self.token = data["access_token"]
                     self.user_info = data["user"]
                     
                     self.log_result(
@@ -70,7 +70,9 @@ class GeoProxAPITester:
                             "username": self.user_info.get("username"),
                             "license_tier": self.user_info.get("license_tier"),
                             "is_admin": self.user_info.get("is_admin"),
-                            "token_length": len(self.token)
+                            "token_length": len(self.token),
+                            "token_type": data.get("token_type"),
+                            "expires_in": data.get("expires_in")
                         }
                     )
                     return True
@@ -78,7 +80,7 @@ class GeoProxAPITester:
                     self.log_result(
                         "Mobile JWT Login",
                         False,
-                        "Response missing token or user data",
+                        "Response missing access_token or user data",
                         {"response": data}
                     )
                     return False
