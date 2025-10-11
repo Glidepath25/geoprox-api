@@ -216,33 +216,89 @@ export default function SampleTestingScreen() {
   };
 
   const addAttachment = async (type: 'field' | 'lab' | 'general') => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-        base64: true,
-      });
+    Alert.alert(
+      'Add Photo',
+      'Choose an option',
+      [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            try {
+              // Request camera permission
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Camera permission is required to take photos');
+                return;
+              }
 
-      if (!result.canceled && result.assets[0].base64) {
-        const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        
-        switch (type) {
-          case 'field':
-            setFieldPhotos(prev => [...prev, base64Image]);
-            break;
-          case 'lab':
-            setLabResults(prev => [...prev, base64Image]);
-            break;
-          case 'general':
-            setGeneralAttachments(prev => [...prev, base64Image]);
-            break;
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+                base64: true,
+              });
+
+              if (!result.canceled && result.assets[0].base64) {
+                const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
+                
+                switch (type) {
+                  case 'field':
+                    setFieldPhotos(prev => [...prev, base64Image]);
+                    break;
+                  case 'lab':
+                    setLabResults(prev => [...prev, base64Image]);
+                    break;
+                  case 'general':
+                    setGeneralAttachments(prev => [...prev, base64Image]);
+                    break;
+                }
+              }
+            } catch (error) {
+              console.error('Camera error:', error);
+              Alert.alert('Error', 'Failed to take photo');
+            }
+          }
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: async () => {
+            try {
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+                base64: true,
+              });
+
+              if (!result.canceled && result.assets[0].base64) {
+                const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
+                
+                switch (type) {
+                  case 'field':
+                    setFieldPhotos(prev => [...prev, base64Image]);
+                    break;
+                  case 'lab':
+                    setLabResults(prev => [...prev, base64Image]);
+                    break;
+                  case 'general':
+                    setGeneralAttachments(prev => [...prev, base64Image]);
+                    break;
+                }
+              }
+            } catch (error) {
+              console.error('Gallery error:', error);
+              Alert.alert('Error', 'Failed to select photo');
+            }
+          }
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
         }
-      }
-    } catch (error) {
-      console.error('Attachment error:', error);
-      Alert.alert('Error', 'Failed to add attachment');
+      ]
+    );
     }
   };
 
