@@ -1,0 +1,66 @@
+<analysis>
+The AI engineer successfully progressed the GeoProx mobile app from a basic concept to near-production, integrating with a live AWS PostgreSQL backend and JWT authentication. The work involved significant frontend and backend modifications to handle new data schemas, implement token management, and align mobile-specific features (like save draft) with existing desktop workflows. Challenges included debugging authentication (ATS,  on web,  resets), adapting to new production API endpoints and data structures, and resolving UI rendering errors due to schema mismatches. The engineer iteratively fixed issues, collaborated with user feedback, and is currently resolving a  after implementing load functionality for sample testing.
+</analysis>
+
+<product_requirements>
+The GeoProx mobile app aims to provide site inspection forms for field workers, initially with login, permit listing, and basic inspection forms (with photos). Enhancements included displaying detailed permit info (risk assessment, status), search, save/submit options for inspections, a Permit Module screen, and a Sample Testing module. The core problem evolved to integrate with the user's production AWS PostgreSQL database, implement JWT for mobile authentication, and eventually link to S3 for artifacts. Recent requests focused on making location coordinates clickable to Google Maps, implementing multi-select for surface locations, consolidating sample testing save/submit to a single Save Changes button, and adding camera/gallery options for photo uploads. A key backend collaboration involved enabling PDF generation upon submission from mobile, and ensuring team members can update any company permit.
+</product_requirements>
+
+<key_technical_concepts>
+-   **Full-stack Expo App:** React Native frontend (Expo Router), FastAPI backend.
+-   **Data Persistence:** Transition from MongoDB to AWS PostgreSQL.
+-   **Authentication:** JWT for mobile;  (native) and  (web) for token management.
+-   **API Integration:** Consumption of production GeoProx endpoints.
+-   **UI/UX:** Responsive design, keyboard handling, safe areas, multi-select dropdowns, camera/gallery access.
+</key_technical_concepts>
+
+<code_architecture>
+
+
+-   ****
+    -   **Summary**: Main FastAPI backend for auth, permit, inspection, and sample management.
+    -   **Changes**: Initial setup for login/CRUD, updated / models, new API endpoints, , integrated  for PostgreSQL/JWT.
+-   ****
+    -   **Summary**: Handles PostgreSQL (AWS Aurora Serverless) connection and JWT auth logic.
+    -   **Changes**: Contains DB connection logic () and JWT token helpers.
+-   ****
+    -   **Summary**: Environment variables for frontend configuration.
+    -   **Changes**:  updated to production API, then inadvertently reset and fixed again.
+-   ****
+    -   **Summary**: Expo application configuration.
+    -   **Changes**: Added iOS ATS exception for the AWS domain.
+-   ****
+    -   **Summary**: Login screen and entry point.
+    -   **Changes**: Branding, navigation upon auth,  integration, switched to  for web compatibility, improved error logging, simplified  to prevent infinite loops, updated login prompt to generic text.
+-   ****
+    -   **Summary**: Displays a list of permits with search/status.
+    -   **Changes**:  interface updates, search,  for production schema,  for auth checks,  to clear tokens, import  for cross-platform logout alert.
+-   ****
+    -   **Summary**: Permit module showing detailed info and links to forms.
+    -   **Changes**: Created this new screen.  interface updates, rendering logic adapted for nested / objects,  for auth. Significant reworks to render data from production API structure, removed old location fields, cleaned up JSX.
+-   **** (was )
+    -   **Summary**: Site inspection form.
+    -   **Changes**: Renamed from . Updated  interface to match nested production schema, API endpoints to  for save/submit,  now loads , made  clickable to Google Maps with , implemented multi-select dropdown for , added camera/gallery choice for photos.
+-   ****
+    -   **Summary**: Sample testing form.
+    -   **Changes**: Created this new form. Updated  interface,  to load , made  clickable, API endpoints to  for save/submit, consolidated to one Save Changes button, status dropdown instead of auto-status, swapped Results recorded by and Sampled by, added camera/gallery choice for photos.
+-   ****
+    -   **Summary**: Manages secure storage/retrieval of JWT tokens.
+    -   **Changes**: New file. Uses  for native,  for web.
+-   ****
+    -   **Summary**: Utility for authenticated API calls with token refresh logic.
+    -   **Changes**: New file.
+</code_architecture>
+
+<pending_tasks>
+-   Frontend integration for S3 storage for artifacts (e.g., photos attached to inspections).
+-   A syntax error in  at line 553 needs to be fixed.
+</pending_tasks>
+
+<current_work>
+Immediately before this summary request, the AI engineer was addressing a critical  located in  at line 553. This error was reported by the user after refreshing both the web preview and the iOS Expo Go app, indicating a code breakage that prevents the application from loading. This specific error arose during the recent efforts to implement the functionality for loading saved data back into the sample testing form, following confirmation from the backend developer about the correct payload structure for . The current task is to debug and fix this syntax issue to restore the application's functionality.
+</current_work>
+
+<optional_next_step>
+Fix the  in  at line 553.
+</optional_next_step>
