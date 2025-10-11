@@ -1253,31 +1253,21 @@ const styles = StyleSheet.create({
     color: '#2563eb',
     textDecorationLine: 'underline',
   },
-  dropdownContainer: {
-    marginTop: 8,
-  },
-  dropdownOption: {
+  pickerButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
     borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 48,
   },
-  dropdownOptionSelected: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#2563eb',
-  },
-  dropdownOptionText: {
+  pickerButtonText: {
     fontSize: 16,
-    color: '#374151',
-  },
-  dropdownOptionTextSelected: {
-    color: '#2563eb',
-    fontWeight: '600',
+    color: '#1f2937',
   },
   inputRow: {
     flexDirection: 'row',
