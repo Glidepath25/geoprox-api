@@ -8,15 +8,15 @@ import json
 import os
 from contextlib import contextmanager
 
-# GeoProx Production Database Configuration
+# GeoProx Production Database Configuration - Public Instance
 GEOPROX_DB_CONFIG = {
-    "host": "geoprox-serverless-instance-1.c3ooeicas6w8.eu-west-1.rds.amazonaws.com",
+    "host": "geoprox-serverless-public-instance-1-cluster.cluster-c3ooeicas6w8.eu-west-1.rds.amazonaws.com",
     "database": "geoprox", 
     "user": "GeoProx_V2",
     "password": "Glidepath25!",
     "port": 5432,
     "sslmode": "require",
-    "connect_timeout": 5  # 5 second timeout for connection attempts
+    "connect_timeout": 10  # 10 second timeout for connection attempts
 }
 
 # JWT Configuration
