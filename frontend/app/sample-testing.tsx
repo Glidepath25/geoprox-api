@@ -159,11 +159,55 @@ export default function SampleTestingScreen() {
       if (response.ok) {
         const permitData = await response.json();
         
-        // Check if there's existing sample test data in sample_payload
-        if (permitData.sample_status === 'wip' || permitData.sample_status === 'completed') {
-          // The sample_payload is stored in the backend, we'll load it from there
-          // For now, we'll leave the form empty and let users re-enter
-          console.log('Existing sample test status:', permitData.sample_status);
+        console.log('Loaded permit data for sample testing:', permitData);
+        console.log('Sample status:', permitData.sample?.status);
+        
+        // Check if there's existing sample test data in sample.payload
+        if (permitData.sample?.payload?.form) {
+          const savedForm = permitData.sample.payload.form;
+          console.log('Loading saved sample test data:', savedForm);
+          
+          // Load saved form fields
+          if (savedForm.sample_status) setSampleStatus(savedForm.sample_status);
+          if (savedForm.sampling_date) setSamplingDate(savedForm.sampling_date);
+          if (savedForm.results_recorded_by) setResultsRecordedBy(savedForm.results_recorded_by);
+          if (savedForm.sampled_by) setSampledBy(savedForm.sampled_by);
+          if (savedForm.notes) setNotes(savedForm.notes);
+          if (savedForm.comments) setComments(savedForm.comments);
+          
+          // Load sample details
+          if (savedForm.sample1_number) setSample1Number(savedForm.sample1_number);
+          if (savedForm.sample1_material) setSample1Material(savedForm.sample1_material);
+          if (savedForm.sample1_lab_analysis) setSample1LabAnalysis(savedForm.sample1_lab_analysis);
+          if (savedForm.sample2_number) setSample2Number(savedForm.sample2_number);
+          if (savedForm.sample2_material) setSample2Material(savedForm.sample2_material);
+          if (savedForm.sample2_lab_analysis) setSample2LabAnalysis(savedForm.sample2_lab_analysis);
+          
+          // Load determinants
+          if (savedForm.coal_tar_sample1) setCoalTarSample1(savedForm.coal_tar_sample1);
+          if (savedForm.coal_tar_sample2) setCoalTarSample2(savedForm.coal_tar_sample2);
+          if (savedForm.petroleum_sample1) setPetroleumSample1(savedForm.petroleum_sample1);
+          if (savedForm.petroleum_sample2) setPetroleumSample2(savedForm.petroleum_sample2);
+          if (savedForm.heavy_metal_sample1) setHeavyMetalSample1(savedForm.heavy_metal_sample1);
+          if (savedForm.heavy_metal_sample2) setHeavyMetalSample2(savedForm.heavy_metal_sample2);
+          if (savedForm.asbestos_sample1) setAsbestosSample1(savedForm.asbestos_sample1);
+          if (savedForm.asbestos_sample2) setAsbestosSample2(savedForm.asbestos_sample2);
+          if (savedForm.other_sample1) setOtherSample1(savedForm.other_sample1);
+          if (savedForm.other_sample2) setOtherSample2(savedForm.other_sample2);
+          
+          // Load concentrations
+          if (savedForm.coal_tar_conc1) setCoalTarConc1(savedForm.coal_tar_conc1);
+          if (savedForm.coal_tar_conc2) setCoalTarConc2(savedForm.coal_tar_conc2);
+          if (savedForm.petroleum_conc1) setPetroleumConc1(savedForm.petroleum_conc1);
+          if (savedForm.petroleum_conc2) setPetroleumConc2(savedForm.petroleum_conc2);
+          if (savedForm.heavy_metal_conc1) setHeavyMetalConc1(savedForm.heavy_metal_conc1);
+          if (savedForm.heavy_metal_conc2) setHeavyMetalConc2(savedForm.heavy_metal_conc2);
+          if (savedForm.asbestos_conc1) setAsbestosConc1(savedForm.asbestos_conc1);
+          if (savedForm.asbestos_conc2) setAsbestosConc2(savedForm.asbestos_conc2);
+          if (savedForm.other_conc1) setOtherConc1(savedForm.other_conc1);
+          if (savedForm.other_conc2) setOtherConc2(savedForm.other_conc2);
+          
+          console.log('Sample test data loaded successfully!');
         }
       }
     } catch (error) {
