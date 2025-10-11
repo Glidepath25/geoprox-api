@@ -1132,39 +1132,22 @@ export default function SampleTestingScreen() {
             </View>
           </View>
 
-          {/* Submit Buttons */}
+          {/* Save Button */}
           <View style={styles.submitSection}>
-            <View style={styles.buttonsContainer}>
-              <TouchableOpacity
-                style={[styles.saveButton, saving && styles.buttonDisabled]}
-                onPress={saveSampleTest}
-                disabled={saving || submitting}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#2563eb" />
-                ) : (
-                  <>
-                    <Ionicons name="save-outline" size={20} color="#2563eb" />
-                    <Text style={styles.saveButtonText}>Save Draft</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.submitButton, submitting && styles.buttonDisabled]}
-                onPress={submitSampleTest}
-                disabled={submitting || saving}
-              >
-                {submitting ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color="#ffffff" />
-                    <Text style={styles.submitButtonText}>Submit Final</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[styles.singleSaveButton, saving && styles.buttonDisabled]}
+              onPress={saveChanges}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <Ionicons name="save" size={22} color="#ffffff" />
+                  <Text style={styles.singleSaveButtonText}>Save Changes</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
