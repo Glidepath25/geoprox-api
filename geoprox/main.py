@@ -1673,6 +1673,74 @@ def _generate_site_pdf_payload(permit_ref: str, site: Dict[str, Any]) -> Optiona
 
     return next_payload
 
+
+def _should_generate_sample_pdf(sample: Dict[str, Any]) -> bool:
+    status_value = _normalize_sample_status(sample.get("status"))
+    if status_value != SAMPLE_TESTING_STATUS_OPTIONS[-1][0]:
+        return False
+    payload = sample.get("payload")
+    if not isinstance(payload, dict):
+        return False
+    form = payload.get("form")
+    if not isinstance(form, dict):
+        return False
+    if payload.get("pdf_url") or payload.get("pdf_relative_path") or payload.get("pdf_s3_key"):
+        return False
+    return True
+
+
+def _generate_sample_pdf_payload(permit_ref: str, sample: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    payload = sample.get("payload")
+    if not isinstance(payload, dict):
+        return None
+
+    form_data = payload.get("form")
+    if not isinstance(form_data, dict):
+        return None
+
+    attachments = payload.get("attachments")
+    if not isinstance(attachments, list):
+        attachments = []
+
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = _build_sample_result_summary(form_data)
+
+    sample_assets = _collect_attachment_assets(attachments)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    pdf_path = ARTIFACTS_DIR / f"sample-testing_{permit_ref}_{timestamp}.pdf"
+    generate_sample_testing_pdf(
+        pdf_path,
+        permit_ref=permit_ref,
+        form_data=form_data,
+        attachments=sample_assets,
+        logo_path=STATIC_DIR / 'geoprox-logo.png',
+    )
+
+    pdf_relative = pdf_path.relative_to(ARTIFACTS_DIR).as_posix()
+    pdf_persisted = _persist_artifact(
+        Path(pdf_relative),
+        pdf_path,
+        content_type="application/pdf",
+        delete_local=bool(S3_BUCKET),
+    )
+
+    next_payload = dict(payload)
+    next_payload["form"] = form_data
+    next_payload["summary"] = summary
+    next_payload["attachments"] = attachments
+    next_payload["pdf_path"] = str(pdf_path)
+    next_payload["pdf_relative_path"] = pdf_relative
+    if pdf_persisted.get("url"):
+        next_payload["pdf_url"] = pdf_persisted["url"]
+    else:
+        next_payload["pdf_url"] = f"/artifacts/{pdf_relative}"
+    if pdf_persisted.get("s3_key"):
+        next_payload["pdf_s3_key"] = pdf_persisted["s3_key"]
+
+    return next_payload
+
 def _build_sample_result_summary(form_data: Dict[str, Any]) -> Dict[str, Any]:
     entries = []
     for key, label in SAMPLE_TESTING_ENTRY_KEYS:
@@ -3117,7 +3185,8 @@ async def sample_testing_page(request: Request, permit_ref: str) -> HTMLResponse
 @app.post("/permits/{permit_ref}/sample-testing", response_class=HTMLResponse)
 async def sample_testing_submit(request: Request, permit_ref: str) -> Response:
     username = _require_user(request)
-    record = permit_store.get_permit(username, permit_ref)
+    scope_usernames, _ = _resolve_company_scope(username)
+    record = permit_store.get_permit(username, permit_ref, allowed_usernames=scope_usernames)
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
 
@@ -3257,6 +3326,7 @@ async def sample_testing_submit(request: Request, permit_ref: str) -> Response:
         outcome=outcome,
         notes=notes,
         payload=payload,
+        allowed_usernames=scope_usernames,
     )
     _add_flash(request, "Sample testing record saved.", "success")
     return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
@@ -3265,6 +3335,7 @@ async def sample_testing_submit(request: Request, permit_ref: str) -> Response:
 @app.post("/permits/{permit_ref}/sample-status", response_class=HTMLResponse)
 async def sample_status_update(request: Request, permit_ref: str) -> Response:
     username = _require_user(request)
+    scope_usernames, _ = _resolve_company_scope(username)
     form = await request.form()
     status = _normalize_sample_status((form.get("sample_status") or ""))
     notes = (form.get("sample_notes") or "").strip() or None
@@ -3276,6 +3347,7 @@ async def sample_status_update(request: Request, permit_ref: str) -> Response:
         outcome=outcome,
         notes=notes,
         payload=None,
+        allowed_usernames=scope_usernames,
     )
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
@@ -3289,6 +3361,7 @@ def api_update_sample_testing(request: Request, permit_ref: str, payload: Permit
     ref = (permit_ref or "").strip()
     if not ref:
         raise HTTPException(status_code=400, detail="Permit reference is required.")
+    scope_usernames, _ = _resolve_company_scope(username)
     status = _normalize_sample_status(payload.status)
     notes = (payload.notes or "").strip() or None
     outcome = (payload.outcome or "").strip() or None
@@ -3300,7 +3373,24 @@ def api_update_sample_testing(request: Request, permit_ref: str, payload: Permit
         outcome=outcome,
         notes=notes,
         payload=payload_data,
+        allowed_usernames=scope_usernames,
     )
+    if record:
+        sample = record.get("sample") if isinstance(record, dict) else None
+        if isinstance(sample, dict) and _should_generate_sample_pdf(sample):
+            updated_payload = _generate_sample_pdf_payload(ref, sample)
+            if updated_payload:
+                refreshed = permit_store.update_sample_assessment(
+                    username=username,
+                    permit_ref=ref,
+                    status=status,
+                    outcome=outcome,
+                    notes=notes,
+                    payload=updated_payload,
+                    allowed_usernames=scope_usernames,
+                )
+                if refreshed:
+                    record = refreshed
     if not record:
         raise HTTPException(status_code=404, detail="Permit record not found.")
     return _permit_to_response(record)

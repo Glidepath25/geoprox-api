@@ -415,8 +415,9 @@ def update_sample_assessment(
     outcome: Optional[str],
     notes: Optional[str],
     payload: Optional[Dict[str, Any]],
+    allowed_usernames: Optional[Iterable[str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    existing = get_permit(username, permit_ref)
+    existing = get_permit(username, permit_ref, allowed_usernames=allowed_usernames)
     if not existing:
         return None
 
@@ -429,6 +430,7 @@ def update_sample_assessment(
 
     payload_json = json.dumps(merged_payload, ensure_ascii=False) if merged_payload else None
     now = _now()
+    owner_username = existing.get("username") or username
 
     with _get_conn() as conn:
         conn.execute(
@@ -440,19 +442,18 @@ def update_sample_assessment(
                 sample_notes = ?,
                 sample_payload = ?
             WHERE username = ? AND permit_ref = ?
-            """
-,
+            """,
             (
                 now,
                 status,
                 outcome,
                 notes,
                 payload_json,
-                username,
+                owner_username,
                 permit_ref,
             ),
         )
-    return get_permit(username, permit_ref)
+    return get_permit(username, permit_ref, allowed_usernames=allowed_usernames)
 
 
 
