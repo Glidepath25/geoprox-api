@@ -199,13 +199,13 @@ class GeoProxPermits:
     def _convert_to_mobile_format(self, permit: Dict[str, Any]) -> Dict[str, Any]:
         """Convert GeoProx permit format to mobile app format"""
         
-        # Parse desktop payload for proximity assessment
-        desktop_payload = permit.get('desktop_payload') or {}
-        if isinstance(desktop_payload, str):
+        # Parse desktop summary for proximity assessment
+        desktop_summary = permit.get('desktop_summary') or {}
+        if isinstance(desktop_summary, str):
             try:
-                desktop_payload = json.loads(desktop_payload)
+                desktop_summary = json.loads(desktop_summary)
             except:
-                desktop_payload = {}
+                desktop_summary = {}
         
         # Parse site payload for inspection results
         site_payload = permit.get('site_payload') or {}
