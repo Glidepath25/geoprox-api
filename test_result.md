@@ -215,9 +215,9 @@ backend:
 
   - task: "GeoProx Permit Details - Get Specific Permit (Production)"
     implemented: true
-    working: false
+    working: true
     file: "backend/server.py, backend/geoprox_integration.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
@@ -227,6 +227,9 @@ backend:
       - working: false
         agent: "testing"
         comment: "❌ BLOCKED: Cannot test due to production PostgreSQL database connectivity issue. Same infrastructure problem as authentication endpoint."
+      - working: true
+        agent: "testing"
+        comment: "✅ RESOLVED: GET /api/geoprox/permits/{permit_ref} endpoint working correctly. Properly returns 404 for non-existent permits. Authentication enforced. Database connectivity established. Error handling fixed to return proper HTTP status codes instead of 500 errors. Endpoint structure validated and operational."
 
   - task: "GeoProx Site Inspection - Save Draft (Production)"
     implemented: true
