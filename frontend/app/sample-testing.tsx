@@ -260,8 +260,8 @@ export default function SampleTestingScreen() {
       
       // Format data for production API
       const payload = {
-        status: "In progress",
-        notes: notes || "Draft saved from mobile app",
+        status: "Pending results",
+        notes: notes || "Samples collected, awaiting lab results",
         payload: {
           form: {
             permit_number: permitId,
