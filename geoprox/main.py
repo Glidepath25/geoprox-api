@@ -1605,6 +1605,74 @@ def _normalize_site_status(value: Optional[str]) -> str:
             return status_value
     return SITE_ASSESSMENT_STATUS_OPTIONS[-1][0]
 
+
+def _should_generate_site_pdf(site: Dict[str, Any]) -> bool:
+    status_value = _normalize_site_status(site.get("status"))
+    if status_value != "Completed":
+        return False
+    payload = site.get("payload")
+    if not isinstance(payload, dict):
+        return False
+    form = payload.get("form")
+    if not isinstance(form, dict):
+        return False
+    if payload.get("pdf_url") or payload.get("pdf_relative_path") or payload.get("pdf_s3_key"):
+        return False
+    return True
+
+
+def _generate_site_pdf_payload(permit_ref: str, site: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    payload = site.get("payload")
+    if not isinstance(payload, dict):
+        return None
+
+    form_data = payload.get("form")
+    if not isinstance(form_data, dict):
+        return None
+
+    attachments = payload.get("attachments")
+    if not isinstance(attachments, list):
+        attachments = []
+
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = _build_site_result_summary(form_data)
+
+    site_assets = _collect_attachment_assets(attachments)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    pdf_path = ARTIFACTS_DIR / f"site-assessment_{permit_ref}_{timestamp}.pdf"
+    generate_site_assessment_pdf(
+        pdf_path,
+        permit_ref=permit_ref,
+        form_data=form_data,
+        attachments=site_assets,
+        logo_path=STATIC_DIR / 'geoprox-logo.png',
+    )
+
+    pdf_relative = pdf_path.relative_to(ARTIFACTS_DIR).as_posix()
+    pdf_persisted = _persist_artifact(
+        Path(pdf_relative),
+        pdf_path,
+        content_type="application/pdf",
+        delete_local=bool(S3_BUCKET),
+    )
+
+    next_payload = dict(payload)
+    next_payload["form"] = form_data
+    next_payload["summary"] = summary
+    next_payload["attachments"] = attachments
+    next_payload["pdf_path"] = str(pdf_path)
+    next_payload["pdf_relative_path"] = pdf_relative
+    if pdf_persisted.get("url"):
+        next_payload["pdf_url"] = pdf_persisted["url"]
+    else:
+        next_payload["pdf_url"] = f"/artifacts/{pdf_relative}"
+    if pdf_persisted.get("s3_key"):
+        next_payload["pdf_s3_key"] = pdf_persisted["s3_key"]
+
+    return next_payload
+
 def _build_sample_result_summary(form_data: Dict[str, Any]) -> Dict[str, Any]:
     entries = []
     for key, label in SAMPLE_TESTING_ENTRY_KEYS:
@@ -4369,6 +4437,22 @@ def api_update_site_assessment(request: Request, permit_ref: str, payload: Permi
         payload=payload_data,
         allowed_usernames=scope_usernames,
     )
+    if record:
+        site = record.get("site") if isinstance(record, dict) else None
+        if isinstance(site, dict) and _should_generate_site_pdf(site):
+            updated_payload = _generate_site_pdf_payload(ref, site)
+            if updated_payload:
+                refreshed = permit_store.update_site_assessment(
+                    username=username,
+                    permit_ref=ref,
+                    status=status,
+                    outcome=outcome,
+                    notes=notes,
+                    payload=updated_payload,
+                    allowed_usernames=scope_usernames,
+                )
+                if refreshed:
+                    record = refreshed
     if not record:
         raise HTTPException(status_code=404, detail="Permit record not found.")
     return _permit_to_response(record)
