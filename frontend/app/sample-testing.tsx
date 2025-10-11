@@ -422,8 +422,8 @@ export default function SampleTestingScreen() {
             
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>PERMIT NUMBER</Text>
-                <Text style={styles.detailValue}>{permit?.permit_number}</Text>
+                <Text style={styles.detailLabel}>PERMIT REF</Text>
+                <Text style={styles.detailValue}>{permit?.permit_ref}</Text>
               </View>
               
               <View style={styles.detailItem}>
@@ -432,13 +432,26 @@ export default function SampleTestingScreen() {
               </View>
               
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>LOCATION OF WORK</Text>
-                <Text style={styles.detailValue}>{permit?.location?.display || 'N/A'}</Text>
+                <Text style={styles.detailLabel}>LOCATION</Text>
+                {permit?.location ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const url = `https://www.google.com/maps?q=${permit.location.lat},${permit.location.lon}`;
+                      Linking.openURL(url);
+                    }}
+                    style={styles.locationLink}
+                  >
+                    <Text style={styles.locationText}>{permit.location.display}</Text>
+                    <Ionicons name="open-outline" size={14} color="#2563eb" style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.detailValue}>N/A</Text>
+                )}
               </View>
               
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>PROXIMITY RISK ASSESSMENT</Text>
-                <Text style={styles.detailValue}>{permit?.proximity_risk_assessment}</Text>
+                <Text style={styles.detailLabel}>OWNER</Text>
+                <Text style={styles.detailValue}>{permit?.owner_display_name}</Text>
               </View>
             </View>
           </View>
