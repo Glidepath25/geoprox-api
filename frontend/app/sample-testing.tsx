@@ -406,7 +406,7 @@ export default function SampleTestingScreen() {
         }
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-assessment`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-testing`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
