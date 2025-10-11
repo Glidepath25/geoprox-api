@@ -3,6 +3,7 @@ import psycopg2.extras
 import jwt
 import bcrypt
 import hashlib
+import binascii
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 import json
