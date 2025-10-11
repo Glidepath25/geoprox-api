@@ -254,14 +254,17 @@ export default function SampleTestingScreen() {
   };
 
   const saveSampleTest = async () => {
+    console.log('=== SAVE SAMPLE TEST STARTED ===');
+    console.log('Selected sample status:', sampleStatus);
+    
     setSaving(true);
     try {
       const token = await TokenManager.getAccessToken();
       
       // Format data for production API
       const payload = {
-        status: "Pending results",
-        notes: notes || "Samples collected, awaiting lab results",
+        status: sampleStatus, // Use the selected status from dropdown
+        notes: notes || `Sample status: ${sampleStatus}`,
         payload: {
           form: {
             permit_number: permitId,
