@@ -145,7 +145,7 @@ export default function InspectionScreen() {
       const token = await TokenManager.getAccessToken();
       
       // Get permit details which includes site_payload for existing inspections
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -197,7 +197,7 @@ export default function InspectionScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
