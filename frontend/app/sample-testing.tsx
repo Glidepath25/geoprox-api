@@ -54,7 +54,6 @@ export default function SampleTestingScreen() {
   
   const [permit, setPermit] = useState<Permit | null>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
   
   // Form fields
