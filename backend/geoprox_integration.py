@@ -15,7 +15,8 @@ GEOPROX_DB_CONFIG = {
     "user": "GeoProx_V2",
     "password": "Glidepath25!",
     "port": 5432,
-    "sslmode": "require"
+    "sslmode": "require",
+    "connect_timeout": 5  # 5 second timeout for connection attempts
 }
 
 # JWT Configuration
