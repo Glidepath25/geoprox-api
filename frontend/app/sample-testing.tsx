@@ -1390,6 +1390,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  singleSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 24,
+  },
+  singleSaveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
   submitButton: {
     flex: 1,
     backgroundColor: '#2563eb',
