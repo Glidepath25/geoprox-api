@@ -231,22 +231,65 @@ export default function InspectionScreen() {
   };
 
   const addPhoto = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-        base64: true,
-      });
+    Alert.alert(
+      'Add Photo',
+      'Choose an option',
+      [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            try {
+              // Request camera permission
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Camera permission is required to take photos');
+                return;
+              }
 
-      if (!result.canceled && result.assets[0].base64) {
-        setPhotos(prev => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
-      }
-    } catch (error) {
-      console.error('Photo error:', error);
-      Alert.alert('Error', 'Failed to add photo');
-    }
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+                base64: true,
+              });
+
+              if (!result.canceled && result.assets[0].base64) {
+                setPhotos(prev => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+              }
+            } catch (error) {
+              console.error('Camera error:', error);
+              Alert.alert('Error', 'Failed to take photo');
+            }
+          }
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: async () => {
+            try {
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+                base64: true,
+              });
+
+              if (!result.canceled && result.assets[0].base64) {
+                setPhotos(prev => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+              }
+            } catch (error) {
+              console.error('Gallery error:', error);
+              Alert.alert('Error', 'Failed to select photo');
+            }
+          }
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
   };
 
   const removePhoto = (index: number) => {
