@@ -155,11 +155,36 @@ export default function InspectionScreen() {
       if (response.ok) {
         const permitData = await response.json();
         
-        // Check if there's existing inspection data in site_payload
-        if (permitData.inspection_status === 'wip' || permitData.inspection_status === 'completed') {
-          // The site_payload is stored in the backend, we'll load it from there
-          // For now, we'll leave the form empty and let users re-enter
-          console.log('Existing inspection status:', permitData.inspection_status);
+        console.log('Loaded permit data:', permitData);
+        console.log('Site status:', permitData.site?.status);
+        
+        // Check if there's existing inspection data in site.payload
+        if (permitData.site?.payload?.form) {
+          const savedForm = permitData.site.payload.form;
+          console.log('Loading saved inspection data:', savedForm);
+          
+          // Load saved form fields
+          if (savedForm.work_order_ref) setWorkOrderRef(savedForm.work_order_ref);
+          if (savedForm.excavation_site_number) setExcavationSiteNumber(savedForm.excavation_site_number);
+          if (savedForm.surface_locations) setSurfaceLocations(savedForm.surface_locations);
+          if (savedForm.utility_type) setUtilityType(savedForm.utility_type);
+          
+          // Load saved question answers
+          const updatedQuestions = [...questions];
+          if (savedForm.q1_asbestos) updatedQuestions[0].answer = savedForm.q1_asbestos;
+          if (savedForm.q2_binder_shiny) updatedQuestions[1].answer = savedForm.q2_binder_shiny;
+          if (savedForm.q3_spray_pak) updatedQuestions[2].answer = savedForm.q3_spray_pak;
+          if (savedForm.q4_soil_colour) updatedQuestions[3].answer = savedForm.q4_soil_colour;
+          if (savedForm.q5_water_sheen) updatedQuestions[4].answer = savedForm.q5_water_sheen;
+          if (savedForm.q6_pungent_odour) updatedQuestions[5].answer = savedForm.q6_pungent_odour;
+          if (savedForm.q7_litmus_change) updatedQuestions[6].answer = savedForm.q7_litmus_change;
+          setQuestions(updatedQuestions);
+          
+          // Load saved results
+          if (savedForm.result_bituminous) setBituminousResult(savedForm.result_bituminous);
+          if (savedForm.result_sub_base) setSubBaseResult(savedForm.result_sub_base);
+          
+          console.log('Inspection data loaded successfully!');
         }
       }
     } catch (error) {
