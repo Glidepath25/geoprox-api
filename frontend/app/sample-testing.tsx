@@ -312,6 +312,9 @@ export default function SampleTestingScreen() {
         }
       };
 
+      console.log('Sending sample save request to:', `${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-assessment`);
+      console.log('Payload:', JSON.stringify(payload, null, 2));
+      
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-assessment`, {
         method: 'POST',
         headers: {
@@ -321,16 +324,22 @@ export default function SampleTestingScreen() {
         body: JSON.stringify(payload),
       });
 
+      console.log('Response status:', response.status);
+      const responseData = await response.json();
+      console.log('Response data:', responseData);
+
       if (response.ok) {
-        Alert.alert('Saved', 'Samples recorded. Status moved to "Pending Results" awaiting lab analysis.');
+        Alert.alert('Saved', `Sample data saved with status: "${sampleStatus}"`);
+        // Don't navigate back - let user continue working
       } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.detail || 'Failed to save sample testing');
+        Alert.alert('Error', responseData.detail || 'Failed to save sample testing');
       }
     } catch (error) {
-      console.error('Save error:', error);
-      Alert.alert('Error', 'Network error saving sample testing');
+      console.error('=== SAVE ERROR ===');
+      console.error('Error:', error);
+      Alert.alert('Error', `Network error saving sample testing: ${error.message}`);
     } finally {
+      console.log('Save complete, setting saving to false');
       setSaving(false);
     }
   };
