@@ -319,7 +319,7 @@ export default function SampleTestingScreen() {
       });
 
       if (response.ok) {
-        Alert.alert('Saved', 'Sample testing saved as draft. You can complete it later.');
+        Alert.alert('Saved', 'Samples recorded. Status moved to "Pending Results" awaiting lab analysis.');
       } else {
         const errorData = await response.json();
         Alert.alert('Error', errorData.detail || 'Failed to save sample testing');
