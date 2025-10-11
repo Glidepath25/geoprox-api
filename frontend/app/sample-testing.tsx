@@ -504,28 +504,25 @@ export default function SampleTestingScreen() {
             <View style={styles.inputRow}>
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>SAMPLE STATUS</Text>
-                <View style={styles.dropdownContainer}>
-                  {['Not required', 'Pending sample', 'Pending results', 'Completed'].map((status) => (
-                    <TouchableOpacity
-                      key={status}
-                      style={[
-                        styles.dropdownOption,
-                        sampleStatus === status && styles.dropdownOptionSelected
-                      ]}
-                      onPress={() => setSampleStatus(status)}
-                    >
-                      <Text style={[
-                        styles.dropdownOptionText,
-                        sampleStatus === status && styles.dropdownOptionTextSelected
-                      ]}>
-                        {status}
-                      </Text>
-                      {sampleStatus === status && (
-                        <Ionicons name="checkmark-circle" size={20} color="#2563eb" />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <TouchableOpacity
+                  style={styles.pickerButton}
+                  onPress={() => {
+                    Alert.alert(
+                      'Select Sample Status',
+                      '',
+                      [
+                        { text: 'Not required', onPress: () => setSampleStatus('Not required') },
+                        { text: 'Pending sample', onPress: () => setSampleStatus('Pending sample') },
+                        { text: 'Pending results', onPress: () => setSampleStatus('Pending results') },
+                        { text: 'Completed', onPress: () => setSampleStatus('Completed') },
+                        { text: 'Cancel', style: 'cancel' }
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.pickerButtonText}>{sampleStatus}</Text>
+                  <Ionicons name="chevron-down" size={20} color="#6b7280" />
+                </TouchableOpacity>
               </View>
               
               <View style={styles.inputContainer}>
