@@ -72,7 +72,7 @@ export default function PermitDetailsScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
