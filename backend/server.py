@@ -551,6 +551,8 @@ async def get_geoprox_permit(permit_ref: str, current_user = Depends(get_current
         if not permit:
             raise HTTPException(status_code=404, detail="Permit not found")
         return permit
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions as-is
     except Exception as e:
         logging.error(f"GeoProx permit details error: {e}")
         raise HTTPException(status_code=500, detail="Unable to fetch permit details")
