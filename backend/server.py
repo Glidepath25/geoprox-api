@@ -471,7 +471,11 @@ async def mobile_login(user_login: UserLogin):
         
         token = geoprox_auth.create_jwt_token(user)
         return {
-            "token": token,
+            "access_token": token,
+            "refresh_token": token,  # Using same token for simplicity
+            "expires_in": 86400,  # 24 hours in seconds
+            "refresh_expires_in": 86400,
+            "token_type": "Bearer",
             "user": {
                 "id": str(user["id"]),
                 "username": user["username"],
