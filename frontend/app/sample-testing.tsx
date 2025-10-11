@@ -299,7 +299,6 @@ export default function SampleTestingScreen() {
         }
       ]
     );
-    }
   };
 
   const removeAttachment = (type: 'field' | 'lab' | 'general', index: number) => {
