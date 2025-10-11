@@ -151,7 +151,7 @@ class GeoProxPermits:
                         location_lat,
                         location_lon,
                         desktop_status,
-                        desktop_payload,
+                        desktop_summary,
                         site_status,
                         site_payload,
                         sample_status,
