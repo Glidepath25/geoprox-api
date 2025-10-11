@@ -417,25 +417,8 @@
             <input id="assessment_date" name="assessment_date" type="date" value="{{ form_defaults.get('assessment_date', today) }}">
           </div>
           <div>
-            <label>Location of work</label>
-            <div class="radio-group">
-              {% for option in location_options %}
-              {% set selected_location = form_defaults.get('location_of_work') %}
-              {% set checked = 'checked' if selected_location == option or (not selected_location and loop.first) else '' %}
-              <label class="radio-pill">
-                <input type="radio" name="location_of_work" value="{{ option }}" {{ checked }}>
-                {{ option }}
-              </label>
-              {% endfor %}
-            </div>
-          </div>
-          <div>
             <label for="permit_number">Permit number</label>
             <input id="permit_number" name="permit_number" type="text" value="{{ form_defaults.get('permit_number', permit.permit_ref) }}">
-          </div>
-          <div>
-            <label for="work_order_ref">Work order reference</label>
-            <input id="work_order_ref" name="work_order_ref" type="text" value="{{ form_defaults.get('work_order_ref', '') }}">
           </div>
           <div>
             <label for="excavation_site_number">Excavation site number</label>
@@ -444,10 +427,6 @@
           <div>
             <label for="site_address">Address</label>
             <input id="site_address" name="site_address" type="text" value="{{ form_defaults.get('site_address', permit.location.display or '') }}">
-          </div>
-          <div>
-            <label for="site_postcode">Post code</label>
-            <input id="site_postcode" name="site_postcode" type="text" value="{{ form_defaults.get('site_postcode', '') }}">
           </div>
           <div>
             <label for="highway_authority">Highway authority</label>
@@ -465,10 +444,11 @@
           <div>
             <label>Surface location</label>
             <div class="radio-group">
+              {% set selected_surfaces = form_defaults.get('surface_locations', []) %}
               {% for option in surface_options %}
-              {% set checked = 'checked' if form_defaults.get('surface_location', '').startswith(option) else '' %}
+              {% set checked = 'checked' if option in selected_surfaces else '' %}
               <label class="radio-pill">
-                <input type="radio" name="surface_location" value="{{ option }}" {{ checked }}>
+                <input type="checkbox" name="surface_locations" value="{{ option }}" {{ checked }}>
                 {{ option }}
               </label>
               {% endfor %}

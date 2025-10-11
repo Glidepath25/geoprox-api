@@ -54,15 +54,12 @@ from geoprox.site_assessment_pdf import generate_site_assessment_pdf
 SITE_ASSESSMENT_DETAIL_FIELDS = [
     ('utility_type', 'Utility Type'),
     ('assessment_date', 'Date of Assessment'),
-    ('location_of_work', 'Location of Work'),
     ('permit_number', 'Permit Number'),
-    ('work_order_ref', 'Work Order Reference'),
     ('excavation_site_number', 'Excavation Site Number'),
     ('site_address', 'Address'),
-    ('site_postcode', 'Post Code'),
     ('highway_authority', 'Highway Authority'),
     ('works_type', 'Works Type'),
-    ('surface_location', 'Surface Location'),
+    ('surface_location', 'Surface Locations'),
     ('what_three_words', 'What Three Words'),
 ]
 SITE_ASSESSMENT_QUESTION_SECTIONS = [
@@ -1587,6 +1584,27 @@ def _build_site_result_summary(form_data: Dict[str, Any]) -> Dict[str, str]:
         'sub_base': (form_data.get('result_sub_base') or '').strip(),
     }
 
+
+def _normalize_site_status(value: Optional[str]) -> str:
+    if not value:
+        return SITE_ASSESSMENT_STATUS_OPTIONS[-1][0]
+    lowered = value.strip().lower()
+    alias_map = {
+        "wip": "In progress",
+        "work in progress": "In progress",
+        "in-progress": "In progress",
+        "in progress": "In progress",
+        "complete": "Completed",
+        "completed": "Completed",
+        "not-started": "Not started",
+    }
+    if lowered in alias_map:
+        lowered = alias_map[lowered].lower()
+    for status_value, status_label in SITE_ASSESSMENT_STATUS_OPTIONS:
+        if lowered == status_value.lower() or lowered == status_label.lower():
+            return status_value
+    return SITE_ASSESSMENT_STATUS_OPTIONS[-1][0]
+
 def _build_sample_result_summary(form_data: Dict[str, Any]) -> Dict[str, Any]:
     entries = []
     for key, label in SAMPLE_TESTING_ENTRY_KEYS:
@@ -2685,10 +2703,45 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
         form_defaults["assessment_date"] = today
     if not form_defaults.get("permit_number"):
         form_defaults["permit_number"] = permit.permit_ref
+    surface_locations_raw = form_defaults.get("surface_locations")
+    normalized_surface_locations: List[str] = []
+    if isinstance(surface_locations_raw, list):
+        for value in surface_locations_raw:
+            if not isinstance(value, str):
+                continue
+            stripped = value.strip()
+            if not stripped:
+                continue
+            match = next(
+                (option for option in SITE_ASSESSMENT_SURFACE_OPTIONS if stripped.lower() == option.lower()),
+                None,
+            )
+            if match and match not in normalized_surface_locations:
+                normalized_surface_locations.append(match)
+
+    surface_value = form_defaults.get("surface_location")
+    if not normalized_surface_locations and isinstance(surface_value, str):
+        parts = [part.strip() for part in surface_value.split(",") if part.strip()]
+        for part in parts:
+            lowered = part.lower()
+            match = next(
+                (
+                    option
+                    for option in SITE_ASSESSMENT_SURFACE_OPTIONS
+                    if lowered == option.lower() or (option == "Other" and lowered.startswith("other"))
+                ),
+                None,
+            )
+            if match and match not in normalized_surface_locations:
+                normalized_surface_locations.append(match)
+
+    form_defaults["surface_locations"] = normalized_surface_locations
+
     if "surface_location_other" not in form_defaults:
-        surface_value = form_defaults.get("surface_location")
-        if isinstance(surface_value, str) and surface_value.startswith("Other - "):
-            form_defaults["surface_location_other"] = surface_value[len("Other - ") :].strip()
+        other_text = ""
+        if isinstance(surface_value, str) and "Other - " in surface_value:
+            other_text = surface_value.split("Other - ", 1)[-1].strip()
+        form_defaults["surface_location_other"] = other_text
     site_pdf_url = _resolve_artifact_url(
         site_payload.get("pdf_url"),
         site_payload.get("pdf_s3_key"),
@@ -2728,7 +2781,8 @@ async def site_assessment_page(request: Request, permit_ref: str) -> HTMLRespons
 @app.post("/permits/{permit_ref}/site-assessment", response_class=HTMLResponse)
 async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
     username = _require_user(request)
-    record = permit_store.get_permit(username, permit_ref)
+    scope_usernames, _ = _resolve_company_scope(username)
+    record = permit_store.get_permit(username, permit_ref, allowed_usernames=scope_usernames)
     if not record:
         raise HTTPException(status_code=404, detail="Permit not found")
 
@@ -2748,33 +2802,56 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
         return ""
 
     status = _select("site_status", [value for value, _ in SITE_ASSESSMENT_STATUS_OPTIONS]) or "Completed"
+    status = _normalize_site_status(status)
     notes = _clean("site_notes") or None
 
-    location = _select("location_of_work", SITE_ASSESSMENT_LOCATION_OPTIONS)
     works_type = _select("works_type", SITE_ASSESSMENT_WORKS_TYPE_OPTIONS)
-    surface_choice = _select("surface_location", SITE_ASSESSMENT_SURFACE_OPTIONS)
     surface_other = _clean("surface_location_other")
-    if surface_choice == "Other" and surface_other:
-        surface_location = f"Other - {surface_other}"
-    elif surface_choice:
-        surface_location = surface_choice
+    raw_surface_values: List[str] = []
+    if hasattr(form, "getlist"):
+        raw_surface_values = [value for value in form.getlist("surface_locations") if isinstance(value, str)]
     else:
-        surface_location = surface_other
+        single_value = form.get("surface_locations")
+        if isinstance(single_value, str):
+            raw_surface_values = [part.strip() for part in single_value.split(",") if part.strip()]
+
+    selected_surface_options: List[str] = []
+    for value in raw_surface_values:
+        candidate = value.strip()
+        if not candidate:
+            continue
+        match = next(
+            (option for option in SITE_ASSESSMENT_SURFACE_OPTIONS if candidate.lower() == option.lower()),
+            None,
+        )
+        if match and match not in selected_surface_options:
+            selected_surface_options.append(match)
+
+    surface_display_parts: List[str] = []
+    for option in selected_surface_options:
+        if option == "Other":
+            if surface_other:
+                surface_display_parts.append(f"Other - {surface_other}")
+            else:
+                surface_display_parts.append("Other")
+        else:
+            surface_display_parts.append(option)
+    if not surface_display_parts and surface_other:
+        surface_display_parts.append(surface_other)
+    surface_location_display = ", ".join(surface_display_parts)
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
     form_data = {
         "utility_type": _clean("utility_type"),
         "assessment_date": _clean("assessment_date") or today,
-        "location_of_work": location,
         "permit_number": _clean("permit_number") or permit_ref,
-        "work_order_ref": _clean("work_order_ref"),
         "excavation_site_number": _clean("excavation_site_number"),
         "site_address": _clean("site_address"),
-        "site_postcode": _clean("site_postcode"),
         "highway_authority": _clean("highway_authority"),
         "works_type": works_type,
-        "surface_location": surface_location,
+        "surface_locations": selected_surface_options,
+        "surface_location": surface_location_display,
         "surface_location_other": surface_other,
         "what_three_words": _clean("what_three_words"),
         "q1_asbestos": _select("q1_asbestos", SITE_ASSESSMENT_YES_NO_CHOICES),
@@ -2891,6 +2968,7 @@ async def site_assessment_submit(request: Request, permit_ref: str) -> Response:
         outcome=outcome,
         notes=notes,
         payload=payload,
+        allowed_usernames=scope_usernames,
     )
     _add_flash(request, "Site assessment saved.", "success")
     return RedirectResponse(url=f"/permits/{permit_ref}/view", status_code=303)
@@ -4277,7 +4355,8 @@ def api_update_site_assessment(request: Request, permit_ref: str, payload: Permi
     ref = (permit_ref or "").strip()
     if not ref:
         raise HTTPException(status_code=400, detail="Permit reference is required.")
-    status = (payload.status or "").strip() or "Completed"
+    scope_usernames, _ = _resolve_company_scope(username)
+    status = _normalize_site_status(payload.status)
     outcome = (payload.outcome or "").strip() or None
     notes = (payload.notes or "").strip() or None
     payload_data = payload.payload if isinstance(payload.payload, dict) else None
@@ -4288,6 +4367,7 @@ def api_update_site_assessment(request: Request, permit_ref: str, payload: Permi
         outcome=outcome,
         notes=notes,
         payload=payload_data,
+        allowed_usernames=scope_usernames,
     )
     if not record:
         raise HTTPException(status_code=404, detail="Permit record not found.")
