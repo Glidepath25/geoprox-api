@@ -479,9 +479,17 @@ async def mobile_login(user_login: UserLogin):
                 "is_admin": user.get("is_admin", False)
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Mobile login error: {e}")
-        raise HTTPException(status_code=500, detail="Authentication service unavailable")
+        error_msg = str(e)
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            raise HTTPException(
+                status_code=503, 
+                detail="Production database unavailable. The GeoProx database cannot be reached. Please contact your administrator."
+            )
+        raise HTTPException(status_code=500, detail=f"Authentication service error: {error_msg}")
 
 @api_router.post("/mobile/auth/refresh")
 async def mobile_refresh_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
