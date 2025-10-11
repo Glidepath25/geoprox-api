@@ -88,11 +88,11 @@ export default function PermitsScreen() {
 
       const token = await TokenManager.getAccessToken();
       
-      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/search`);
+      // Use GeoProx production endpoint
+      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits`);
       if (search.trim()) {
-        url.searchParams.append('query', search.trim());
+        url.searchParams.append('search', search.trim());
       }
-      url.searchParams.append('limit', '2000'); // Get all permits
       
       const response = await fetch(url.toString(), {
         headers: {
