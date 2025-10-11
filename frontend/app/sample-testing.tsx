@@ -538,21 +538,21 @@ export default function SampleTestingScreen() {
 
             <View style={styles.inputRow}>
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>RESULTS RECORDED BY *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={resultsRecordedBy}
-                  onChangeText={setResultsRecordedBy}
-                  placeholder="Enter name"
-                />
-              </View>
-              
-              <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>SAMPLED BY *</Text>
                 <TextInput
                   style={styles.input}
                   value={sampledBy}
                   onChangeText={setSampledBy}
+                  placeholder="Enter name"
+                />
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>RESULTS RECORDED BY *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={resultsRecordedBy}
+                  onChangeText={setResultsRecordedBy}
                   placeholder="Enter name"
                 />
               </View>
