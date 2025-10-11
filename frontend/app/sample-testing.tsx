@@ -253,17 +253,34 @@ export default function SampleTestingScreen() {
     return true;
   };
 
-  const saveSampleTest = async () => {
-    console.log('=== SAVE SAMPLE TEST STARTED ===');
+  const saveChanges = async () => {
+    console.log('=== SAVE CHANGES STARTED ===');
     console.log('Selected sample status:', sampleStatus);
+    
+    // Basic validation - only require sampled by and results recorded by
+    if (!sampledBy.trim()) {
+      Alert.alert('Validation Error', 'Please enter who sampled.');
+      return;
+    }
+    if (!resultsRecordedBy.trim()) {
+      Alert.alert('Validation Error', 'Please enter who recorded results.');
+      return;
+    }
     
     setSaving(true);
     try {
       const token = await TokenManager.getAccessToken();
       
+      // Determine outcome only if status is "Completed"
+      let outcome = null;
+      if (sampleStatus === 'Completed') {
+        outcome = (sample1LabAnalysis === 'Green' && sample2LabAnalysis === 'Green') ? 'Pass' : 'Fail';
+      }
+      
       // Format data for production API
       const payload = {
         status: sampleStatus, // Use the selected status from dropdown
+        outcome: outcome,
         notes: notes || `Sample status: ${sampleStatus}`,
         payload: {
           form: {
