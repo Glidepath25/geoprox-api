@@ -433,7 +433,7 @@ export default function SampleTestingScreen() {
               
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>LOCATION OF WORK</Text>
-                <Text style={styles.detailValue}>{permit?.location}</Text>
+                <Text style={styles.detailValue}>{permit?.location?.display || 'N/A'}</Text>
               </View>
               
               <View style={styles.detailItem}>
