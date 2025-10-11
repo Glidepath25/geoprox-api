@@ -258,52 +258,64 @@ export default function SampleTestingScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      const sampleData = {
-        permit_id: permitId,
-        sample_status: sampleStatus,
-        sampling_date: samplingDate,
-        results_recorded_by: resultsRecordedBy,
-        sampled_by: sampledBy,
-        notes: notes,
-        comments: comments,
-        sample1_number: sample1Number,
-        sample1_material: sample1Material,
-        sample1_lab_analysis: sample1LabAnalysis,
-        sample2_number: sample2Number,
-        sample2_material: sample2Material,
-        sample2_lab_analysis: sample2LabAnalysis,
-        coal_tar_sample1: coalTarSample1,
-        coal_tar_sample2: coalTarSample2,
-        petroleum_sample1: petroleumSample1,
-        petroleum_sample2: petroleumSample2,
-        heavy_metal_sample1: heavyMetalSample1,
-        heavy_metal_sample2: heavyMetalSample2,
-        asbestos_sample1: asbestosSample1,
-        asbestos_sample2: asbestosSample2,
-        other_sample1: otherSample1,
-        other_sample2: otherSample2,
-        coal_tar_conc1: coalTarConc1,
-        coal_tar_conc2: coalTarConc2,
-        petroleum_conc1: petroleumConc1,
-        petroleum_conc2: petroleumConc2,
-        heavy_metal_conc1: heavyMetalConc1,
-        heavy_metal_conc2: heavyMetalConc2,
-        asbestos_conc1: asbestosConc1,
-        asbestos_conc2: asbestosConc2,
-        other_conc1: otherConc1,
-        other_conc2: otherConc2,
-        field_photos: fieldPhotos,
-        lab_results: labResults,
-        general_attachments: generalAttachments,
+      // Format data for production API
+      const payload = {
+        status: "In progress",
+        notes: notes || "Draft saved from mobile app",
+        payload: {
+          form: {
+            permit_number: permitId,
+            sample_status: sampleStatus,
+            sampling_date: samplingDate,
+            results_recorded_by: resultsRecordedBy,
+            sampled_by: sampledBy,
+            comments: comments,
+            sample1_number: sample1Number,
+            sample1_material: sample1Material,
+            sample1_lab_analysis: sample1LabAnalysis,
+            sample2_number: sample2Number,
+            sample2_material: sample2Material,
+            sample2_lab_analysis: sample2LabAnalysis,
+            coal_tar_sample1: coalTarSample1,
+            coal_tar_sample2: coalTarSample2,
+            petroleum_sample1: petroleumSample1,
+            petroleum_sample2: petroleumSample2,
+            heavy_metal_sample1: heavyMetalSample1,
+            heavy_metal_sample2: heavyMetalSample2,
+            asbestos_sample1: asbestosSample1,
+            asbestos_sample2: asbestosSample2,
+            other_sample1: otherSample1,
+            other_sample2: otherSample2,
+            coal_tar_conc1: coalTarConc1,
+            coal_tar_conc2: coalTarConc2,
+            petroleum_conc1: petroleumConc1,
+            petroleum_conc2: petroleumConc2,
+            heavy_metal_conc1: heavyMetalConc1,
+            heavy_metal_conc2: heavyMetalConc2,
+            asbestos_conc1: asbestosConc1,
+            asbestos_conc2: asbestosConc2,
+            other_conc1: otherConc1,
+            other_conc2: otherConc2,
+          },
+          summary: {
+            sample1: sample1LabAnalysis,
+            sample2: sample2LabAnalysis
+          },
+          attachments: {
+            field_photos: fieldPhotos,
+            lab_results: labResults,
+            general: generalAttachments
+          }
+        }
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/sample-testing/save`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-assessment`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(sampleData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
