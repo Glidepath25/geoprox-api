@@ -312,10 +312,10 @@ export default function SampleTestingScreen() {
         }
       };
 
-      console.log('Sending sample save request to:', `${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-assessment`);
+      console.log('Sending sample save request to:', `${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-testing`);
       console.log('Payload:', JSON.stringify(payload, null, 2));
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-assessment`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-testing`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
