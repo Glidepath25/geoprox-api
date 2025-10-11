@@ -303,9 +303,6 @@ metadata:
 test_plan:
   current_focus: []
   stuck_tasks:
-    - "GeoProx Production Authentication - Mobile JWT Login"
-    - "GeoProx Permits - Get User Permits (Production)"
-    - "GeoProx Permit Details - Get Specific Permit (Production)"
     - "GeoProx Site Inspection - Save Draft (Production)"
     - "GeoProx Site Inspection - Submit Final (Production)"
     - "GeoProx Sample Testing - Save Draft (Production)"
