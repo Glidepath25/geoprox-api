@@ -53,7 +53,7 @@ class GeoProxAuth:
         with self.db.get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute("""
-                    SELECT id, username, hashed_password, license_tier, is_admin, company_id
+                    SELECT id, username, password_hash, salt, license_tier, is_admin, company_id
                     FROM users 
                     WHERE username = %s AND is_active = true
                 """, (username,))
@@ -62,8 +62,8 @@ class GeoProxAuth:
                 if not user:
                     return None
                 
-                # Check password against hashed_password
-                if bcrypt.checkpw(password.encode('utf-8'), user['hashed_password'].encode('utf-8')):
+                # Check password against password_hash (bcrypt format)
+                if user['password_hash'] and bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
                     return dict(user)
                 
                 return None
