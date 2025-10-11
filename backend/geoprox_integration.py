@@ -64,14 +64,29 @@ class GeoProxAuth:
                 if not user:
                     return None
                 
-                # GeoProx uses SHA-256 with salt for password hashing
+                # GeoProx uses PBKDF2-HMAC-SHA256 with 120,000 iterations
+                # Salt and hash are stored as hex strings
                 if user['password_hash'] and user['salt']:
-                    # Compute SHA-256(password + salt)
-                    password_with_salt = password + user['salt']
-                    computed_hash = hashlib.sha256(password_with_salt.encode('utf-8')).hexdigest()
-                    
-                    if computed_hash == user['password_hash']:
-                        return dict(user)
+                    try:
+                        # Convert hex salt to bytes
+                        salt_bytes = binascii.unhexlify(user['salt'])
+                        
+                        # Compute PBKDF2-HMAC-SHA256 hash (120,000 iterations)
+                        computed_hash_bytes = hashlib.pbkdf2_hmac(
+                            'sha256',
+                            password.encode('utf-8'),
+                            salt_bytes,
+                            120_000
+                        )
+                        
+                        # Convert to hex for comparison
+                        computed_hash_hex = computed_hash_bytes.hex()
+                        
+                        if computed_hash_hex == user['password_hash']:
+                            return dict(user)
+                    except (ValueError, binascii.Error) as e:
+                        # Invalid salt format
+                        pass
                 
                 return None
     
