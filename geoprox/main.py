@@ -1630,8 +1630,24 @@ def _generate_site_pdf_payload(permit_ref: str, site: Dict[str, Any]) -> Optiona
     if not isinstance(form_data, dict):
         return None
 
-    attachments = payload.get("attachments")
-    if not isinstance(attachments, list):
+    attachments_block = payload.get("attachments")
+    attachments: List[Dict[str, Any]]
+    if isinstance(attachments_block, list):
+        attachments = [dict(item) if isinstance(item, dict) else {"filename": str(item)} for item in attachments_block]
+    elif isinstance(attachments_block, dict):
+        attachments = []
+        for category, items in attachments_block.items():
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                entry: Dict[str, Any]
+                if isinstance(item, dict):
+                    entry = dict(item)
+                else:
+                    entry = {"filename": str(item)}
+                entry.setdefault("category", category)
+                attachments.append(entry)
+    else:
         attachments = []
 
     summary = payload.get("summary")
@@ -1703,7 +1719,7 @@ def _generate_sample_pdf_payload(permit_ref: str, sample: Dict[str, Any]) -> Opt
         attachments = []
 
     summary = payload.get("summary")
-    if not isinstance(summary, dict):
+    if not isinstance(summary, dict) or not summary.get("entries"):
         summary = _build_sample_result_summary(form_data)
 
     sample_assets = _collect_attachment_assets(attachments)
@@ -2728,13 +2744,35 @@ async def permit_detail_page(request: Request, permit_ref: str) -> HTMLResponse:
     if not site_summary and form_payload:
         site_summary = _build_site_result_summary(form_payload)
     attachments_grouped = _group_site_attachments(site_payload)
-    sample_payload = permit.sample.payload or {}
-    if not isinstance(sample_payload, dict):
-        sample_payload = {}
+    raw_sample_payload = permit.sample.payload if isinstance(permit.sample.payload, dict) else {}
+    sample_payload: Dict[str, Any] = dict(raw_sample_payload)
+
+    attachments_block = sample_payload.get("attachments")
+    if isinstance(attachments_block, dict):
+        attachments_list: List[Dict[str, Any]] = []
+        for category, items in attachments_block.items():
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                entry: Dict[str, Any]
+                if isinstance(item, dict):
+                    entry = dict(item)
+                else:
+                    entry = {"filename": str(item)}
+                entry.setdefault("category", category)
+                attachments_list.append(entry)
+        sample_payload["attachments"] = attachments_list
+    elif not isinstance(attachments_block, list):
+        sample_payload["attachments"] = []
+
     sample_form = sample_payload.get("form") if isinstance(sample_payload.get("form"), dict) else {}
     sample_summary = permit.sample.summary if isinstance(permit.sample.summary, dict) else {}
-    if not sample_summary and sample_form:
-        sample_summary = _build_sample_result_summary(sample_form)
+    if not isinstance(sample_summary, dict) or not sample_summary.get("entries"):
+        if sample_form:
+            sample_summary = _build_sample_result_summary(sample_form)
+        else:
+            sample_summary = {}
+    sample_payload["summary"] = sample_summary
     sample_pdf_url = _resolve_artifact_url(
         sample_payload.get("pdf_url"),
         sample_payload.get("pdf_s3_key"),
