@@ -63,9 +63,14 @@ class GeoProxAuth:
                 if not user:
                     return None
                 
-                # Check password against password_hash (bcrypt format)
-                if user['password_hash'] and bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
-                    return dict(user)
+                # GeoProx uses SHA-256 with salt for password hashing
+                if user['password_hash'] and user['salt']:
+                    # Compute SHA-256(password + salt)
+                    password_with_salt = password + user['salt']
+                    computed_hash = hashlib.sha256(password_with_salt.encode('utf-8')).hexdigest()
+                    
+                    if computed_hash == user['password_hash']:
+                        return dict(user)
                 
                 return None
     
