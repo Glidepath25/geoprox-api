@@ -225,8 +225,8 @@ class GeoProxPermits:
         
         # Extract proximity risk assessment
         proximity_risk = "LOW"  # Default
-        if desktop_payload.get('risk_assessment'):
-            proximity_risk = desktop_payload['risk_assessment'].upper()
+        if desktop_summary.get('risk_assessment'):
+            proximity_risk = desktop_summary['risk_assessment'].upper()
         
         # Extract site inspection status and results
         inspection_status = permit.get('site_status', 'pending').lower()
