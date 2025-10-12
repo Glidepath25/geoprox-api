@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://site-assess-hub.preview.emergentagent.com/api"
+BACKEND_URL = "https://geoprox-inspect.preview.emergentagent.com/api"
 TEST_CREDENTIALS = {
     "username": "EXPOTEST",
     "password": "EXPOTEST!!"

@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Test Configuration
-BASE_URL = "https://site-assess-hub.preview.emergentagent.com/api"
+BASE_URL = "https://geoprox-inspect.preview.emergentagent.com/api"
 TEST_USERNAME = "EXPOTEST"
 TEST_PASSWORD = "EXPOTEST!!"
 
