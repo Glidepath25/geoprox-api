@@ -191,28 +191,8 @@ class SampleTestingCreate(BaseModel):
     general_attachments: List[str] = []
 
 class InspectionCreate(BaseModel):
-    permit_id: str
-    work_order_reference: str
-    excavation_site_number: str
-    surface_location: str
-    utility_type: str  # User enters this on site
-    q1_asbestos: str
-    q1_notes: str = ""
-    q2_binder_shiny: str
-    q2_notes: str = ""
-    q3_spray_pak: str
-    q3_notes: str = ""
-    q4_soil_stained: str
-    q4_notes: str = ""
-    q5_water_moisture: str
-    q5_notes: str = ""
-    q6_pungent_odours: str
-    q6_notes: str = ""
-    q7_litmus_paper: str
-    q7_notes: str = ""
-    bituminous_result: str
-    sub_base_result: str
-    photos: List[str] = []
+    permit_ref: str
+    form_data: dict  # Flexible form data from mobile
 
 # Helper functions
 def hash_password(password: str) -> str:
