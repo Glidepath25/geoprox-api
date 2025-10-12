@@ -257,6 +257,7 @@ class GeoProxPermits:
         
         return {
             "id": permit['permit_ref'],  # Use permit_ref as ID for mobile
+            "permit_ref": permit['permit_ref'],  # Frontend expects this field
             "permit_number": permit['permit_ref'],
             "works_type": "Standard",  # Default, could be extracted from search_result
             "location": "Public",  # Default, could be extracted from search_result  
@@ -266,6 +267,8 @@ class GeoProxPermits:
             "highway_authority": "Unknown",  # Could be extracted from search_result
             "status": "Active",
             "proximity_risk_assessment": proximity_risk,
+            "desktop_outcome": permit.get('desktop_outcome', 'N/A'),
+            "owner": permit.get('username', 'N/A'),
             "created_at": permit.get('created_at', '').isoformat() if permit.get('created_at') else '',
             "inspection_status": inspection_status,
             "inspection_results": inspection_results,
