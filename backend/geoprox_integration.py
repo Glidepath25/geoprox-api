@@ -298,40 +298,42 @@ class GeoProxPermits:
             sample_results = self._extract_sample_results(sample_payload)
         
         return {
-            "id": permit['permit_ref'],  # Use permit_ref as ID for mobile
-            "permit_ref": permit['permit_ref'],  # Frontend expects this field
-            "permit_number": permit['permit_ref'],
-            "works_type": "Standard",  # Default, could be extracted from search_result
-            "location": f"{permit.get('location_lat', 0)}, {permit.get('location_lon', 0)}",
-            "address": f"{permit.get('location_lat', 0)}, {permit.get('location_lon', 0)}",
-            "latitude": float(permit.get('location_lat') or 0),
-            "longitude": float(permit.get('location_lon') or 0),
-            "highway_authority": "Unknown",  # Could be extracted from search_result
-            "status": "Active",
-            "proximity_risk_assessment": proximity_risk,
-            "desktop_outcome": permit.get('desktop_outcome', 'N/A'),
-            "owner": permit.get('username', 'N/A'),
+            "permit_ref": permit['permit_ref'],
             "created_at": permit.get('created_at', '').isoformat() if permit.get('created_at') else '',
-            # Nested site object for frontend
+            "updated_at": permit.get('updated_at', '').isoformat() if permit.get('updated_at') else '',
+            "owner_username": permit.get('username', 'Unknown'),
+            "owner_display_name": permit.get('username', 'Unknown'),
+            # Desktop object
+            "desktop": {
+                "status": permit.get('desktop_status', 'completed').lower(),
+                "outcome": permit.get('desktop_outcome'),
+                "notes": permit.get('desktop_notes'),
+                "summary": permit.get('desktop_summary'),
+                "payload": {}
+            },
+            # Site object
             "site": {
                 "status": inspection_status,
-                "outcome": permit.get('site_outcome', 'N/A'),
-                "notes": permit.get('site_notes', ''),
+                "outcome": permit.get('site_outcome'),
+                "notes": permit.get('site_notes'),
                 "summary": site_summary,
                 "payload": site_payload
             },
-            # Nested sample object for frontend
+            # Sample object
             "sample": {
                 "status": sample_status,
-                "outcome": permit.get('sample_outcome', 'N/A'),
-                "notes": permit.get('sample_notes', ''),
+                "outcome": permit.get('sample_outcome'),
+                "notes": permit.get('sample_notes'),
+                "summary": sample_results,
                 "payload": sample_payload
             },
-            # Keep flat fields for backward compatibility
-            "inspection_status": inspection_status,
-            "inspection_results": inspection_results,
-            "sample_status": sample_status,
-            "sample_results": sample_results
+            # Location object
+            "location": {
+                "display": f"{permit.get('location_lat', 0)}, {permit.get('location_lon', 0)}",
+                "lat": float(permit.get('location_lat') or 0),
+                "lon": float(permit.get('location_lon') or 0),
+                "radius_m": 0
+            }
         }
     
     def _extract_sample_results(self, sample_payload: Dict[str, Any]) -> Dict[str, Any]:
