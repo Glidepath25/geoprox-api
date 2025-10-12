@@ -317,6 +317,7 @@ class GeoProxPermits:
                 "status": inspection_status,
                 "outcome": permit.get('site_outcome', 'N/A'),
                 "notes": permit.get('site_notes', ''),
+                "summary": site_summary,
                 "payload": site_payload
             },
             # Nested sample object for frontend
