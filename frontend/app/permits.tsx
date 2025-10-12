@@ -258,8 +258,8 @@ export default function PermitsScreen() {
           <Text style={styles.permitName}>Owner: {item.owner_display_name}</Text>
         </View>
         <View style={styles.headerRight}>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.desktop_status?.toLowerCase() || 'pending') }]}>
-            <Text style={styles.statusText}>{item.desktop_status}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.desktop?.status?.toLowerCase() || 'pending') }]}>
+            <Text style={styles.statusText}>{item.desktop?.status}</Text>
           </View>
         </View>
       </View>
