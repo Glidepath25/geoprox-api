@@ -159,9 +159,11 @@ class GeoProxPermits:
                 base_query = """
                     SELECT DISTINCT
                         pr.permit_ref,
+                        pr.username,
                         pr.location_lat,
                         pr.location_lon,
                         pr.desktop_status,
+                        pr.desktop_outcome,
                         pr.desktop_summary,
                         pr.site_status,
                         pr.site_payload,
