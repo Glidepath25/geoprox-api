@@ -524,11 +524,10 @@ async def save_geoprox_inspection(inspection: InspectionCreate, current_user = D
 async def submit_geoprox_inspection(inspection: InspectionCreate, current_user = Depends(get_current_geoprox_user)):
     """Submit site inspection to production GeoProx database"""
     try:
-        inspection_data = inspection.dict()
         success = geoprox_permits.save_site_inspection(
             current_user["username"], 
-            inspection.permit_id, 
-            inspection_data, 
+            inspection.permit_ref, 
+            inspection.form_data, 
             is_draft=False
         )
         if not success:
@@ -542,11 +541,10 @@ async def submit_geoprox_inspection(inspection: InspectionCreate, current_user =
 async def save_geoprox_sample_testing(sample_test: SampleTestingCreate, current_user = Depends(get_current_geoprox_user)):
     """Save sample testing to production GeoProx database"""
     try:
-        sample_data = sample_test.dict()
         success = geoprox_permits.save_sample_testing(
             current_user["username"], 
-            sample_test.permit_id, 
-            sample_data, 
+            sample_test.permit_ref, 
+            sample_test.form_data, 
             is_draft=True
         )
         if not success:
@@ -560,11 +558,10 @@ async def save_geoprox_sample_testing(sample_test: SampleTestingCreate, current_
 async def submit_geoprox_sample_testing(sample_test: SampleTestingCreate, current_user = Depends(get_current_geoprox_user)):
     """Submit sample testing to production GeoProx database"""
     try:
-        sample_data = sample_test.dict()
         success = geoprox_permits.save_sample_testing(
             current_user["username"], 
-            sample_test.permit_id, 
-            sample_data, 
+            sample_test.permit_ref, 
+            sample_test.form_data, 
             is_draft=False
         )
         if not success:
