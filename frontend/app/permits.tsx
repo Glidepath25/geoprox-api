@@ -277,10 +277,10 @@ export default function PermitsScreen() {
           <Ionicons name="clipboard" size={16} color="#6b7280" />
           <Text style={styles.detailText}>Site Status: </Text>
           <Text style={[styles.statusWip, { 
-            color: item.site_status === 'Completed' ? '#10b981' : 
-                   item.site_status === 'In progress' ? '#f59e0b' : '#6b7280' 
+            color: item.site?.status === 'Completed' ? '#10b981' : 
+                   item.site?.status === 'In progress' ? '#f59e0b' : '#6b7280' 
           }]}>
-            {item.site_status}
+            {item.site?.status}
           </Text>
         </View>
 
