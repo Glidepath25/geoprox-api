@@ -259,11 +259,37 @@ class GeoProxPermits:
         # Extract site inspection status and results
         inspection_status = permit.get('site_status', 'pending').lower()
         inspection_results = None
+        site_summary = None
+        
         if inspection_status == 'completed' and site_payload:
-            inspection_results = {
-                "bituminous": site_payload.get('bituminous_result', ''),
-                "sub_base": site_payload.get('sub_base_result', '')
-            }
+            # Try to get from payload first
+            form_data = site_payload.get('form', {})
+            bituminous = form_data.get('result_bituminous') or form_data.get('bituminous_result', '')
+            sub_base = form_data.get('result_sub_base') or form_data.get('sub_base_result', '')
+            
+            if bituminous or sub_base:
+                site_summary = {
+                    "bituminous": bituminous,
+                    "sub_base": sub_base
+                }
+                inspection_results = site_summary
+        
+        # Fallback: Parse from outcome string if summary not found
+        if not site_summary and permit.get('site_outcome'):
+            outcome = permit['site_outcome']
+            # Parse "Bituminous: Red | Sub-base: Green" format
+            if '|' in outcome:
+                parts = outcome.split('|')
+                site_summary = {}
+                for part in parts:
+                    if ':' in part:
+                        key, value = part.split(':', 1)
+                        key = key.strip().lower()
+                        value = value.strip()
+                        if 'bituminous' in key:
+                            site_summary['bituminous'] = value
+                        elif 'sub' in key or 'base' in key:
+                            site_summary['sub_base'] = value
         
         # Extract sample testing status and results
         sample_status = permit.get('sample_status', 'not_required').lower()
