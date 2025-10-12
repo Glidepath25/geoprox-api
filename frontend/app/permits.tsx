@@ -303,10 +303,10 @@ export default function PermitsScreen() {
           <Ionicons name="beaker" size={16} color="#6b7280" />
           <Text style={styles.detailText}>Sample Status: </Text>
           <Text style={[styles.statusWip, { 
-            color: item.sample_status === 'Completed' ? '#10b981' : 
-                   item.sample_status === 'In progress' ? '#f59e0b' : '#6b7280' 
+            color: item.sample?.status === 'Completed' ? '#10b981' : 
+                   item.sample?.status === 'In progress' ? '#f59e0b' : '#6b7280' 
           }]}>
-            {item.sample_status}
+            {item.sample?.status}
           </Text>
         </View>
 
