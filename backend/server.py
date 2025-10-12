@@ -507,11 +507,10 @@ async def get_geoprox_permit(permit_ref: str, current_user = Depends(get_current
 async def save_geoprox_inspection(inspection: InspectionCreate, current_user = Depends(get_current_geoprox_user)):
     """Save site inspection to production GeoProx database"""
     try:
-        inspection_data = inspection.dict()
         success = geoprox_permits.save_site_inspection(
             current_user["username"], 
-            inspection.permit_id, 
-            inspection_data, 
+            inspection.permit_ref, 
+            inspection.form_data, 
             is_draft=True
         )
         if not success:
