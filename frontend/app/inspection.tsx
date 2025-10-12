@@ -344,37 +344,27 @@ export default function InspectionScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      // Format data for production API
-      const payload = {
-        status: "In progress",
-        notes: "Draft saved from mobile app",
-        payload: {
-          form: {
-            permit_number: permitId,
-            work_order_ref: workOrderRef || '',
-            excavation_site_number: excavationSiteNumber || '',
-            surface_locations: surfaceLocations,
-            utility_type: utilityType || '',
-            q1_asbestos: questions[0].answer,
-            q2_binder_shiny: questions[1].answer,
-            q3_spray_pak: questions[2].answer,
-            q4_soil_colour: questions[3].answer,
-            q5_water_sheen: questions[4].answer,
-            q6_pungent_odour: questions[5].answer,
-            q7_litmus_change: questions[6].answer,
-            result_bituminous: bituminousResult,
-            result_sub_base: subBaseResult,
-            assessment_date: new Date().toISOString().split('T')[0],
-          },
-          summary: {
-            bituminous: "Pending",
-            sub_base: "Pending"
-          },
-          attachments: photos
-        }
+      // Format data for production API - send form fields directly
+      const formData = {
+        permit_number: permitId,
+        work_order_ref: workOrderRef || '',
+        excavation_site_number: excavationSiteNumber || '',
+        surface_locations: surfaceLocations,
+        utility_type: utilityType || '',
+        q1_asbestos: questions[0].answer,
+        q2_binder_shiny: questions[1].answer,
+        q3_spray_pak: questions[2].answer,
+        q4_soil_colour: questions[3].answer,
+        q5_water_sheen: questions[4].answer,
+        q6_pungent_odour: questions[5].answer,
+        q7_litmus_change: questions[6].answer,
+        result_bituminous: bituminousResult,
+        result_sub_base: subBaseResult,
+        assessment_date: new Date().toISOString().split('T')[0],
+        photos: photos
       };
 
-      console.log('Saving inspection with payload:', JSON.stringify(payload, null, 2));
+      console.log('Saving inspection with form data:', JSON.stringify(formData, null, 2));
       
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/inspections/save`, {
         method: 'POST',
@@ -384,7 +374,7 @@ export default function InspectionScreen() {
         },
         body: JSON.stringify({
           permit_ref: permitId,
-          form_data: payload
+          form_data: formData
         }),
       });
 
