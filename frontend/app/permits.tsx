@@ -268,8 +268,8 @@ export default function PermitsScreen() {
         <View style={styles.detailRow}>
           <Ionicons name="shield" size={16} color="#6b7280" />
           <Text style={styles.detailText}>Desktop Outcome: </Text>
-          <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.desktop_outcome?.toLowerCase() || 'unknown') }]}>
-            <Text style={styles.riskText}>{item.desktop_outcome || 'N/A'}</Text>
+          <View style={[styles.riskBadge, { backgroundColor: getRiskAssessmentColor(item.desktop?.outcome?.toLowerCase() || 'unknown') }]}>
+            <Text style={styles.riskText}>{item.desktop?.outcome || 'N/A'}</Text>
           </View>
         </View>
 
