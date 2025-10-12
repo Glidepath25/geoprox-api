@@ -284,16 +284,16 @@ export default function PermitsScreen() {
           </Text>
         </View>
 
-        {item.site_bituminous && item.site_sub_base && (
+        {item.site?.summary?.bituminous && item.site?.summary?.sub_base && (
           <View style={styles.detailRow}>
             <View style={styles.resultsContainer}>
               <Text style={styles.resultLabel}>Bituminous: </Text>
-              <View style={[styles.resultBadge, { backgroundColor: item.site_bituminous === 'PASS' ? '#10b981' : '#ef4444' }]}>
-                <Text style={styles.resultText}>{item.site_bituminous}</Text>
+              <View style={[styles.resultBadge, { backgroundColor: item.site?.summary?.bituminous === 'PASS' ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.resultText}>{item.site?.summary?.bituminous}</Text>
               </View>
               <Text style={styles.resultLabel}> - Sub-Base: </Text>
-              <View style={[styles.resultBadge, { backgroundColor: item.site_sub_base === 'PASS' ? '#10b981' : '#ef4444' }]}>
-                <Text style={styles.resultText}>{item.site_sub_base}</Text>
+              <View style={[styles.resultBadge, { backgroundColor: item.site?.summary?.sub_base === 'PASS' ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.resultText}>{item.site?.summary?.sub_base}</Text>
               </View>
             </View>
           </View>
