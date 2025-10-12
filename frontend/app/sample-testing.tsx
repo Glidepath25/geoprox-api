@@ -525,13 +525,16 @@ export default function SampleTestingScreen() {
         }
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/permits/${permitId}/sample-testing`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/sample-testing/save`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          permit_ref: permitId,
+          form_data: payload
+        }),
       });
 
       if (response.ok) {
