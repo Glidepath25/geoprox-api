@@ -304,7 +304,7 @@ export default function PermitDetailsScreen() {
           >
             <Ionicons name="flask" size={20} color="#ffffff" />
             <Text style={styles.actionButtonText}>
-              {permit.sample_status === 'completed' ? 'View Sample Testing' : 'Complete Sample Testing'}
+              {permit.sample?.status === 'completed' ? 'View Sample Testing' : 'Complete Sample Testing'}
             </Text>
           </TouchableOpacity>
         </View>
