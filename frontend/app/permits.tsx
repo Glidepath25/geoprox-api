@@ -24,19 +24,31 @@ interface Permit {
   permit_ref: string;
   created_at: string;
   updated_at: string;
-  desktop_status: string;
-  desktop_outcome: string | null;
-  desktop_date: string | null;
-  site_status: string;
-  site_outcome: string | null;
-  site_bituminous: string | null;
-  site_sub_base: string | null;
-  site_date: string | null;
-  sample_status: string;
-  sample_outcome: string | null;
-  sample_date: string | null;
   owner_username: string;
   owner_display_name: string;
+  desktop: {
+    status: string;
+    outcome: string | null;
+    summary?: any;
+  };
+  site: {
+    status: string;
+    outcome: string | null;
+    summary?: {
+      bituminous?: string;
+      sub_base?: string;
+    };
+  };
+  sample: {
+    status: string;
+    outcome: string | null;
+    summary?: any;
+  };
+  location: {
+    display: string;
+    lat: number;
+    lon: number;
+  };
 }
 
 export default function PermitsScreen() {
