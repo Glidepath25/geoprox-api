@@ -272,7 +272,7 @@ class GeoProxPermits:
             "permit_ref": permit['permit_ref'],  # Frontend expects this field
             "permit_number": permit['permit_ref'],
             "works_type": "Standard",  # Default, could be extracted from search_result
-            "location": "Public",  # Default, could be extracted from search_result  
+            "location": f"{permit.get('location_lat', 0)}, {permit.get('location_lon', 0)}",
             "address": f"{permit.get('location_lat', 0)}, {permit.get('location_lon', 0)}",
             "latitude": float(permit.get('location_lat') or 0),
             "longitude": float(permit.get('location_lon') or 0),
@@ -282,6 +282,21 @@ class GeoProxPermits:
             "desktop_outcome": permit.get('desktop_outcome', 'N/A'),
             "owner": permit.get('username', 'N/A'),
             "created_at": permit.get('created_at', '').isoformat() if permit.get('created_at') else '',
+            # Nested site object for frontend
+            "site": {
+                "status": inspection_status,
+                "outcome": permit.get('site_outcome', 'N/A'),
+                "notes": permit.get('site_notes', ''),
+                "payload": site_payload
+            },
+            # Nested sample object for frontend
+            "sample": {
+                "status": sample_status,
+                "outcome": permit.get('sample_outcome', 'N/A'),
+                "notes": permit.get('sample_notes', ''),
+                "payload": sample_payload
+            },
+            # Keep flat fields for backward compatibility
             "inspection_status": inspection_status,
             "inspection_results": inspection_results,
             "sample_status": sample_status,
