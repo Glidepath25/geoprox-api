@@ -317,7 +317,7 @@ export default function PermitsScreen() {
       </View>
       
       <View style={styles.cardFooter}>
-        <Text style={styles.addressText}>{item.address}</Text>
+        <Text style={styles.addressText}>{item.location.display}</Text>
         <View style={styles.footerRight}>
           {item.inspection_status === 'completed' ? (
             <View style={styles.completedBadge}>
