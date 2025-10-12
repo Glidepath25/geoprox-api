@@ -307,7 +307,7 @@ class GeoProxPermits:
             "desktop": {
                 "status": permit.get('desktop_status', 'completed').lower(),
                 "outcome": permit.get('desktop_outcome'),
-                "notes": permit.get('desktop_notes'),
+                "notes": None,  # desktop_notes column doesn't exist
                 "summary": permit.get('desktop_summary'),
                 "payload": {}
             },
