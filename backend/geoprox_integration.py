@@ -144,28 +144,39 @@ class GeoProxPermits:
         self.db = db
     
     def get_user_permits(self, username: str, search_query: str = "") -> List[Dict[str, Any]]:
-        """Get permits for a user from GeoProx permit_records table"""
+        """Get permits for a user's company from GeoProx permit_records table"""
         with self.db.get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                # First, get the user's company_id
+                cursor.execute("SELECT company_id FROM users WHERE username = %s", (username,))
+                user_result = cursor.fetchone()
+                if not user_result or not user_result['company_id']:
+                    return []
+                
+                company_id = user_result['company_id']
+                
+                # Get all permits for the company (via username lookup)
+                # Note: permit_records table stores username, so we need to find all users in the same company
                 base_query = """
-                    SELECT 
-                        permit_ref,
-                        location_lat,
-                        location_lon,
-                        desktop_status,
-                        desktop_summary,
-                        site_status,
-                        site_payload,
-                        sample_status,
-                        sample_payload,
-                        search_result,
-                        created_at,
-                        updated_at
-                    FROM permit_records 
-                    WHERE username = %s
+                    SELECT DISTINCT
+                        pr.permit_ref,
+                        pr.location_lat,
+                        pr.location_lon,
+                        pr.desktop_status,
+                        pr.desktop_summary,
+                        pr.site_status,
+                        pr.site_payload,
+                        pr.sample_status,
+                        pr.sample_payload,
+                        pr.search_result,
+                        pr.created_at,
+                        pr.updated_at
+                    FROM permit_records pr
+                    JOIN users u ON pr.username = u.username
+                    WHERE u.company_id = %s
                 """
                 
-                params = [username]
+                params = [company_id]
                 
                 if search_query.strip():
                     base_query += " AND permit_ref ILIKE %s"
