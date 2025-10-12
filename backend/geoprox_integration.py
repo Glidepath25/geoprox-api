@@ -197,13 +197,23 @@ class GeoProxPermits:
                 return mobile_permits
     
     def get_permit_details(self, username: str, permit_ref: str) -> Optional[Dict[str, Any]]:
-        """Get detailed permit information"""
+        """Get specific permit details for user's company"""
         with self.db.get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                # Get user's company_id
+                cursor.execute("SELECT company_id FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+                if not user or not user['company_id']:
+                    return None
+                
+                company_id = user['company_id']
+                
+                # Get permit from company
                 cursor.execute("""
-                    SELECT * FROM permit_records 
-                    WHERE username = %s AND permit_ref = %s
-                """, (username, permit_ref))
+                    SELECT pr.* FROM permit_records pr
+                    INNER JOIN users u ON pr.username = u.username
+                    WHERE u.company_id = %s AND pr.permit_ref = %s
+                """, (company_id, permit_ref))
                 
                 permit = cursor.fetchone()
                 if permit:
