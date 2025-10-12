@@ -319,7 +319,7 @@ export default function PermitsScreen() {
       <View style={styles.cardFooter}>
         <Text style={styles.addressText}>{item.location.display}</Text>
         <View style={styles.footerRight}>
-          {item.inspection_status === 'completed' ? (
+          {item.desktop?.status === 'completed' ? (
             <View style={styles.completedBadge}>
               <Ionicons name="checkmark-circle" size={16} color="#10b981" />
               <Text style={styles.completedText}>Inspected</Text>
