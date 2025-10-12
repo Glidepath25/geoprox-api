@@ -12,7 +12,7 @@ from contextlib import contextmanager
 
 # GeoProx Production Database Configuration - Public Instance
 GEOPROX_DB_CONFIG = {
-    "host": "geoprox-serverless-public-instance-1.c3ooeicas6w8.eu-west-1.rds.amazonaws.com",
+    "host": "176.34.196.217",
     "database": "geoprox", 
     "user": "GeoProx_V2",
     "password": "Glidepath25!",
