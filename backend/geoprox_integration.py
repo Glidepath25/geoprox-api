@@ -164,6 +164,7 @@ class GeoProxPermits:
                         pr.location_lon,
                         pr.desktop_status,
                         pr.desktop_outcome,
+                        pr.desktop_notes,
                         pr.desktop_summary,
                         pr.site_status,
                         pr.site_outcome,
