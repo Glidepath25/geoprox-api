@@ -375,17 +375,31 @@ class GeoProxPermits:
         return results
     
     def save_site_inspection(self, username: str, permit_ref: str, inspection_data: Dict[str, Any], is_draft: bool = False) -> bool:
-        """Save site inspection to GeoProx permit_records"""
+        """Save site inspection to GeoProx permit_records (any user in company can update)"""
         with self.db.get_connection() as conn:
             with conn.cursor() as cursor:
-                status = "wip" if is_draft else "completed"
-                payload = json.dumps(inspection_data)
+                # Get user's company_id
+                cursor.execute("SELECT company_id FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+                if not user:
+                    return False
                 
+                company_id = user[0]
+                status = "wip" if is_draft else "completed"
+                
+                # Store form data in nested structure
+                site_payload = {"form": inspection_data}
+                payload_json = json.dumps(site_payload)
+                
+                # Update permit that belongs to same company
                 cursor.execute("""
-                    UPDATE permit_records 
+                    UPDATE permit_records pr
                     SET site_status = %s, site_payload = %s, updated_at = %s
-                    WHERE username = %s AND permit_ref = %s
-                """, (status, payload, datetime.utcnow(), username, permit_ref))
+                    FROM users u
+                    WHERE pr.username = u.username 
+                      AND u.company_id = %s 
+                      AND pr.permit_ref = %s
+                """, (status, payload_json, datetime.utcnow(), company_id, permit_ref))
                 
                 conn.commit()
                 return cursor.rowcount > 0
