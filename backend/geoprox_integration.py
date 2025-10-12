@@ -10,11 +10,11 @@ import json
 import os
 from contextlib import contextmanager
 
-# GeoProx Production Database Configuration - ORIGINAL Database
+# GeoProx Production Database Configuration - Public Instance (Working)
 # Using IP address due to DNS resolution issues in container environment
-# Original hostname: geoprox-serverless-instance-1.c3ooecias6w8.eu-west-1.rds.amazonaws.com
+# Hostname: geoprox-serverless-public-instance-1.c3ooecias6w8.eu-west-1.rds.amazonaws.com
 GEOPROX_DB_CONFIG = {
-    "host": "34.253.71.32",
+    "host": "176.34.196.217",
     "database": "geoprox", 
     "user": "GeoProx_V2",
     "password": "Glidepath25!",
