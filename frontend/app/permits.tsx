@@ -17,8 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TokenManager } from '../utils/tokenManager';
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { API_BASE_URL } from '../utils/config';
 
 interface Permit {
   permit_ref: string;
@@ -89,7 +88,7 @@ export default function PermitsScreen() {
     try {
       // Check if token needs refresh
       if (await TokenManager.isAccessTokenExpired()) {
-        const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+        const refreshed = await TokenManager.refreshAccessToken(API_BASE_URL);
         if (!refreshed) {
           await TokenManager.clearTokens();
           await AsyncStorage.clear();
@@ -101,7 +100,7 @@ export default function PermitsScreen() {
       const token = await TokenManager.getAccessToken();
       
       // Use GeoProx production endpoint
-      const url = new URL(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits`);
+      const url = new URL(`${API_BASE_URL}/api/geoprox/permits`);
       if (search.trim()) {
         url.searchParams.append('search', search.trim());
       }
@@ -119,7 +118,7 @@ export default function PermitsScreen() {
         setFilteredPermits(data);
       } else if (response.status === 401) {
         // Try to refresh token
-        const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+        const refreshed = await TokenManager.refreshAccessToken(API_BASE_URL);
         if (refreshed) {
           // Retry the request
           await loadPermits(search);
@@ -166,7 +165,7 @@ export default function PermitsScreen() {
         const token = await TokenManager.getAccessToken();
         
         // Call logout endpoint
-        await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/logout`, {
+        await fetch(`${API_BASE_URL}/api/mobile/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -198,7 +197,7 @@ export default function PermitsScreen() {
               const token = await TokenManager.getAccessToken();
               
               // Call logout endpoint
-              await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/logout`, {
+              await fetch(`${API_BASE_URL}/api/mobile/auth/logout`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -409,7 +408,7 @@ export default function PermitsScreen() {
         <FlatList
           data={filteredPermits}
           renderItem={renderPermitCard}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.permit_ref}
           contentContainerStyle={styles.listContainer}
           refreshControl={
             <RefreshControl

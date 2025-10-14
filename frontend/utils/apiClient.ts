@@ -1,14 +1,13 @@
 import { TokenManager } from './tokenManager';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { API_BASE_URL } from './config';
 
 export const apiClient = {
   async fetch(url: string, options: RequestInit = {}): Promise<Response> {
     // Check if token needs refresh before making the request
     if (await TokenManager.isAccessTokenExpired()) {
-      const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+      const refreshed = await TokenManager.refreshAccessToken(API_BASE_URL);
       if (!refreshed) {
         await TokenManager.clearTokens();
         await AsyncStorage.clear();
@@ -35,7 +34,7 @@ export const apiClient = {
 
     // If we get 401, try to refresh token and retry
     if (response.status === 401) {
-      const refreshed = await TokenManager.refreshAccessToken(EXPO_PUBLIC_BACKEND_URL);
+      const refreshed = await TokenManager.refreshAccessToken(API_BASE_URL);
       if (refreshed) {
         // Retry the request with new token
         const newToken = await TokenManager.getAccessToken();

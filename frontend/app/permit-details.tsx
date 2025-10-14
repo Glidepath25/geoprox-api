@@ -14,8 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TokenManager } from '../utils/tokenManager';
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { API_BASE_URL } from '../utils/config';
 
 interface Permit {
   permit_ref: string;
@@ -72,7 +71,7 @@ export default function PermitDetailsScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

@@ -1,0 +1,73 @@
+diff --git a/node_modules/expo/android/src/main/java/expo/modules/ReactActivityDelegateWrapper.kt b/node_modules/expo/android/src/main/java/expo/modules/ReactActivityDelegateWrapper.kt
+index 5cf20ed..930f501 100644
+--- a/node_modules/expo/android/src/main/java/expo/modules/ReactActivityDelegateWrapper.kt
++++ b/node_modules/expo/android/src/main/java/expo/modules/ReactActivityDelegateWrapper.kt
+@@ -68,6 +68,32 @@ class ReactActivityDelegateWrapper(
+       .firstOrNull()
+   }
+ 
++  private val isBridgelessArchitectureEnabled: Boolean by lazy {
++    try {
++      ReactNativeFeatureFlags.enableBridgelessArchitecture
++    } catch (error: Throwable) {
++      Log.w(
++        "ReactActivityDelegateWrapper",
++        "Falling back to bridged architecture because ReactNativeFeatureFlags failed to initialize",
++        error
++      )
++      false
++    }
++  }
++
++  private val isFabricRendererEnabled: Boolean by lazy {
++    try {
++      ReactNativeFeatureFlags.enableFabricRenderer()
++    } catch (error: Throwable) {
++      Log.w(
++        "ReactActivityDelegateWrapper",
++        "Falling back to paper renderer because ReactNativeFeatureFlags failed to initialize",
++        error
++      )
++      false
++    }
++  }
++
+   /**
+    * A deferred that indicates when the app loading is ready
+    */
+@@ -163,7 +189,7 @@ class ReactActivityDelegateWrapper(
+ 
+         val launchOptions = composeLaunchOptions()
+         val reactDelegate: ReactDelegate
+-        if (ReactNativeFeatureFlags.enableBridgelessArchitecture) {
++        if (isBridgelessArchitectureEnabled) {
+           reactDelegate = ReactDelegate(
+             plainActivity,
+             reactHost,
+@@ -176,7 +202,7 @@ class ReactActivityDelegateWrapper(
+             reactNativeHost,
+             mainComponentName,
+             launchOptions,
+-            isFabricEnabled
++            isFabricRendererEnabled
+           ) {
+             override fun createRootView(): ReactRootView? {
+               return this@ReactActivityDelegateWrapper.createRootView() ?: super.createRootView()
+@@ -282,7 +308,7 @@ class ReactActivityDelegateWrapper(
+      */
+     launchLifecycleScopeWithLock {
+       loadAppReady.await()
+-      if (!ReactNativeFeatureFlags.enableBridgelessArchitecture && delegate.reactInstanceManager.currentReactContext == null) {
++      if (!isBridgelessArchitectureEnabled && delegate.reactInstanceManager.currentReactContext == null) {
+         val reactContextListener = object : ReactInstanceEventListener {
+           override fun onReactContextInitialized(context: ReactContext) {
+             delegate.reactInstanceManager.removeReactInstanceEventListener(this)
+@@ -383,7 +409,7 @@ class ReactActivityDelegateWrapper(
+   }
+ 
+   override fun isFabricEnabled(): Boolean {
+-    return invokeDelegateMethod("isFabricEnabled")
++    return isFabricRendererEnabled
+   }
+ 
+   override fun isWideColorGamutEnabled(): Boolean {

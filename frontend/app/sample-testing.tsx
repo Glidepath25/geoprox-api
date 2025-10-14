@@ -19,8 +19,7 @@ import { TokenManager } from '../utils/tokenManager';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { API_BASE_URL } from '../utils/config';
 
 interface Permit {
   permit_ref: string;
@@ -121,7 +120,7 @@ export default function SampleTestingScreen() {
     try {
       const token = await TokenManager.getAccessToken();
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -150,7 +149,7 @@ export default function SampleTestingScreen() {
       const token = await TokenManager.getAccessToken();
       
       // Get permit details which includes sample_payload for existing sample tests
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/permits/${permitId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/geoprox/permits/${permitId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -428,10 +427,10 @@ export default function SampleTestingScreen() {
         }
       };
 
-      console.log('Sending sample save request to:', `${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/sample-testing/save`);
+      console.log('Sending sample save request to:', `${API_BASE_URL}/api/geoprox/sample-testing/save`);
       console.log('Payload:', JSON.stringify(payload, null, 2));
       
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/sample-testing/save`, {
+      const response = await fetch(`${API_BASE_URL}/api/geoprox/sample-testing/save`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -525,7 +524,7 @@ export default function SampleTestingScreen() {
         }
       };
 
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/geoprox/sample-testing/save`, {
+      const response = await fetch(`${API_BASE_URL}/api/geoprox/sample-testing/save`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

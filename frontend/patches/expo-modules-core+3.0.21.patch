@@ -1,0 +1,35 @@
+diff --git a/node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt b/node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt
+index 44706cf..561cc51 100644
+--- a/node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt
++++ b/node_modules/expo-modules-core/android/src/main/java/expo/modules/rncompatibility/ReactNativeFeatureFlags.kt
+@@ -1,6 +1,7 @@
+ package expo.modules.rncompatibility
+ 
+-import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
++import android.util.Log
++import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags as InternalReactNativeFeatureFlags
+ 
+ /**
+  * A compatibility helper of
+@@ -8,5 +9,20 @@ import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
+  * `com.facebook.react.internal.featureflags.ReactNativeFeatureFlags`
+  */
+ object ReactNativeFeatureFlags {
+-  val enableBridgelessArchitecture = ReactNativeFeatureFlags.enableBridgelessArchitecture()
++  private const val TAG = "ExpoFeatureFlags"
++
++  val enableBridgelessArchitecture: Boolean = false
++
++  fun enableFabricRenderer(): Boolean {
++    return try {
++      InternalReactNativeFeatureFlags.enableFabricRenderer()
++    } catch (error: Throwable) {
++      Log.w(
++        TAG,
++        "Falling back to paper renderer because ReactNativeFeatureFlags failed to initialize",
++        error
++      )
++      false
++    }
++  }
+ }

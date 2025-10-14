@@ -14,8 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { TokenManager } from '../utils/tokenManager';
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { API_BASE_URL } from '../utils/config';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
@@ -27,7 +26,7 @@ export default function LoginScreen() {
     console.log('=== LOGIN STARTED ===');
     console.log('Username:', username);
     console.log('Password length:', password.length);
-    console.log('Backend URL:', EXPO_PUBLIC_BACKEND_URL);
+    console.log('Backend URL:', API_BASE_URL);
     
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please enter username and password');
@@ -38,7 +37,7 @@ export default function LoginScreen() {
     console.log('Loading set to true');
     
     try {
-      const apiUrl = `${EXPO_PUBLIC_BACKEND_URL}/api/mobile/auth/login`;
+      const apiUrl = `${API_BASE_URL}/api/mobile/auth/login`;
       console.log('Full API URL:', apiUrl);
       console.log('About to call fetch...');
       
