@@ -7,7 +7,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime
 import hashlib
@@ -15,15 +15,20 @@ import jwt
 from bson import ObjectId
 
 # Import GeoProx Integration
-from geoprox_integration import geoprox_auth, geoprox_permits, geoprox_db
+from .geoprox_integration import geoprox_auth, geoprox_permits, geoprox_db
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+db_name = os.environ.get('DB_NAME', 'geoprox_mobile')
+db = client[db_name]
+
+# Feature flag that decides whether to call the production GeoProx database.
+# Disable (set to "0") to work purely with the local sample data.
+USE_GEOPROX_PROD = os.environ.get("USE_GEOPROX_PROD", "1") == "1"
 
 # Create the main app
 app = FastAPI()
@@ -31,6 +36,7 @@ api_router = APIRouter(prefix="/api")
 
 # Security
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 JWT_SECRET = "geoprox-secret-key-2025"
 
 # Models
@@ -160,6 +166,9 @@ class InspectionCreate(BaseModel):
     permit_ref: str
     form_data: dict  # Flexible form data from mobile
 
+class MobileRefreshRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
 # Helper functions
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -170,6 +179,85 @@ def verify_password(password: str, hash: str) -> bool:
 def create_token(user_id: str) -> str:
     payload = {"user_id": user_id, "exp": datetime.utcnow().timestamp() + 86400}  # 24 hours
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+LOCAL_SAMPLE_USERS = [
+    {
+        "id": "local-user-1",
+        "username": "demo.user",
+        "email": "demo@geoprox.com",
+        "password_hash": hash_password("password123"),
+        "license_tier": "LOCAL",
+        "is_admin": False,
+    },
+]
+
+LOCAL_SAMPLE_PERMITS = [
+    {
+        "id": "local-permit-1",
+        "permit_number": "DEMO-0001",
+        "works_type": "Standard",
+        "location": "Public",
+        "address": "Demo Street, Demo City",
+        "latitude": 53.35,
+        "longitude": -6.26,
+        "highway_authority": "Demo Authority",
+        "status": "Active",
+        "proximity_risk_assessment": "LOW",
+        "created_by": "local-user-1",
+        "created_at": datetime.utcnow(),
+    },
+    {
+        "id": "local-permit-2",
+        "permit_number": "DEMO-0002",
+        "works_type": "Emergency",
+        "location": "Private",
+        "address": "Industrial Estate, Demo City",
+        "latitude": 53.38,
+        "longitude": -6.3,
+        "highway_authority": "Demo Authority",
+        "status": "Active",
+        "proximity_risk_assessment": "MEDIUM",
+        "created_by": "local-user-1",
+        "created_at": datetime.utcnow(),
+    },
+]
+
+LOCAL_INSPECTION_STORAGE: Dict[str, dict] = {}
+LOCAL_SAMPLE_STORAGE: Dict[str, dict] = {}
+
+async def authenticate_local_user(username: str, password: str) -> Optional[dict]:
+    """Validate credentials against the local Mongo sample dataset."""
+    try:
+        user = await db.users.find_one({"username": username})
+        if user and verify_password(password, user["password_hash"]):
+            return user
+    except Exception as e:
+        logging.warning(f"Mongo unavailable during local auth lookup: {e}")
+    for user in LOCAL_SAMPLE_USERS:
+        if user["username"] == username and verify_password(password, user["password_hash"]):
+            return user
+    return None
+
+def build_local_login_response(user: dict) -> dict:
+    """Return a login payload that mirrors the GeoProx response format."""
+    token = create_token(user["id"])
+    return {
+        "access_token": token,
+        "refresh_token": token,
+        "expires_in": 86400,
+        "refresh_expires_in": 86400,
+        "token_type": "Bearer",
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "license_tier": user.get("license_tier", "LOCAL"),
+            "is_admin": user.get("is_admin", False),
+        },
+        "mode": "local",
+    }
+
+def _datetime_to_iso(value: Optional[datetime]) -> str:
+    return value.isoformat() if isinstance(value, datetime) else ""
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
@@ -184,6 +272,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # Initialize sample data
 async def init_sample_data():
+    if os.getenv("SKIP_MONGO_INIT", "0") == "1":
+        logging.info("SKIP_MONGO_INIT=1 -> skipping Mongo sample data init")
+        return
     # Clear existing data to ensure schema compatibility
     await db.users.delete_many({})
     await db.permits.delete_many({})
@@ -410,57 +501,426 @@ async def init_sample_data():
 @api_router.post("/mobile/auth/login")
 async def mobile_login(user_login: UserLogin):
     """Mobile JWT authentication against production GeoProx database"""
+    remote_error: Optional[Exception] = None
+    if USE_GEOPROX_PROD:
+        try:
+            user = geoprox_auth.authenticate_user(user_login.username, user_login.password)
+            if user:
+                token = geoprox_auth.create_jwt_token(user)
+                return {
+                    "access_token": token,
+                    "refresh_token": token,
+                    "expires_in": 86400,
+                    "refresh_expires_in": 86400,
+                    "token_type": "Bearer",
+                    "user": {
+                        "id": str(user["id"]),
+                        "username": user["username"],
+                        "license_tier": user["license_tier"],
+                        "is_admin": user.get("is_admin", False),
+                    },
+                    "mode": "remote",
+                }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logging.error(f"Mobile login error (remote): {e}")
+            remote_error = e
+
+    # Local fallback (either because production is disabled or inaccessible)
+    local_user = await authenticate_local_user(user_login.username, user_login.password)
+    if local_user:
+        logging.info("Using local sample data for mobile login")
+        return build_local_login_response(local_user)
+
+    if remote_error:
+        error_msg = str(remote_error)
+        lowered = error_msg.lower()
+        timeout_terms = ["timeout", "timed out", "could not connect", "connection refused"]
+        if any(term in lowered for term in timeout_terms):
+            raise HTTPException(
+                status_code=503,
+                detail="Production database unavailable. The GeoProx database cannot be reached. Please contact your administrator.",
+            )
+        raise HTTPException(status_code=500, detail=f"Authentication service error: {error_msg}")
+
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@api_router.post("/mobile/auth/refresh")
+async def mobile_refresh_token(
+    body: MobileRefreshRequest | None = None,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_optional),
+):
+    """Refresh JWT token. Accepts Bearer token or body.refresh_token."""
+    token_in = None
+    if credentials and credentials.credentials:
+        token_in = credentials.credentials
+    elif body and body.refresh_token:
+        token_in = body.refresh_token
+
+    if not token_in:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    remote_error: Optional[Exception] = None
+    if USE_GEOPROX_PROD:
+        try:
+            new_token = geoprox_auth.refresh_token(token_in)
+            if new_token:
+                return {
+                    "access_token": new_token,
+                    "refresh_token": new_token,
+                    "expires_in": 86400,
+                    "refresh_expires_in": 86400,
+                    "token_type": "Bearer",
+                }
+        except Exception as e:
+            logging.warning(f"Remote token refresh failed: {e}")
+            remote_error = e
+
+    # Local fallback
     try:
-        user = geoprox_auth.authenticate_user(user_login.username, user_login.password)
+        payload = jwt.decode(token_in, JWT_SECRET, algorithms=["HS256"])
+        user = await db.users.find_one({"id": payload.get("user_id")})
         if not user:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-        token = geoprox_auth.create_jwt_token(user)
+            raise HTTPException(status_code=401, detail="Invalid token")
+        new_token = create_token(user["id"])
         return {
-            "access_token": token,
-            "refresh_token": token,  # Using same token for simplicity
-            "expires_in": 86400,  # 24 hours in seconds
+            "access_token": new_token,
+            "refresh_token": new_token,
+            "expires_in": 86400,
             "refresh_expires_in": 86400,
             "token_type": "Bearer",
-            "user": {
-                "id": str(user["id"]),
-                "username": user["username"],
-                "license_tier": user["license_tier"],
-                "is_admin": user.get("is_admin", False)
-            }
         }
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Mobile login error: {e}")
-        error_msg = str(e)
-        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-            raise HTTPException(
-                status_code=503, 
-                detail="Production database unavailable. The GeoProx database cannot be reached. Please contact your administrator."
-            )
-        raise HTTPException(status_code=500, detail=f"Authentication service error: {error_msg}")
-
-@api_router.post("/mobile/auth/refresh")
-async def mobile_refresh_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Refresh JWT token"""
-    try:
-        new_token = geoprox_auth.refresh_token(credentials.credentials)
-        if not new_token:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-        
-        return {"token": new_token}
-    except Exception as e:
         logging.error(f"Token refresh error: {e}")
+        if remote_error:
+            raise HTTPException(status_code=401, detail="Token refresh failed")
         raise HTTPException(status_code=401, detail="Token refresh failed")
+
+@api_router.post("/mobile/auth/logout")
+async def mobile_logout(credentials: HTTPAuthorizationCredentials | None = Depends(security_optional)):
+    """Stateless logout endpoint for mobile. Always succeeds."""
+    return {"message": "Logged out"}
+
+async def _get_local_user_by_username(username: str) -> Optional[dict]:
+    try:
+        user = await db.users.find_one({"username": username})
+        if user:
+            return user
+    except Exception as e:
+        logging.warning(f"Mongo unavailable during user lookup: {e}")
+    for user in LOCAL_SAMPLE_USERS:
+        if user["username"] == username:
+            return user
+    return None
+
+async def _get_local_permit_document(permit_ref: str) -> Optional[dict]:
+    try:
+        permit = await db.permits.find_one({"permit_number": permit_ref})
+        if permit:
+            return permit
+    except Exception as e:
+        logging.warning(f"Mongo unavailable during permit lookup: {e}")
+    for permit in LOCAL_SAMPLE_PERMITS:
+        if permit["permit_number"] == permit_ref:
+            return permit
+    return None
+
+async def _get_latest_local_record(collection, permit_ref: str, storage: Dict[str, dict]) -> Optional[dict]:
+    try:
+        record = await collection.find_one(
+            {"permit_ref": permit_ref},
+            sort=[("updated_at", -1), ("created_at", -1)],
+        )
+        if record:
+            return record
+    except Exception as e:
+        logging.warning(f"Mongo unavailable during record lookup: {e}")
+    return storage.get(permit_ref)
+
+def _extract_site_summary_from_form(form: dict) -> Optional[dict]:
+    if not isinstance(form, dict):
+        return None
+    bituminous = form.get("result_bituminous") or form.get("bituminous_result")
+    sub_base = form.get("result_sub_base") or form.get("sub_base_result")
+    if bituminous or sub_base:
+        return {
+            "bituminous": bituminous or "",
+            "sub_base": sub_base or "",
+        }
+    return None
+
+def _extract_sample_summary_from_form(form: dict) -> Optional[dict]:
+    if not isinstance(form, dict):
+        return None
+
+    def _collect(prefix: str) -> list[dict]:
+        items = []
+        determinants = [
+            ("coal_tar", "Coal tar"),
+            ("petroleum", "Petroleum"),
+            ("heavy_metal", "Heavy metal"),
+            ("asbestos", "Asbestos"),
+            ("other", "Other"),
+        ]
+        for key, label in determinants:
+            result = form.get(f"{key}_{prefix}")
+            conc = form.get(f"{key}_conc{prefix[-1:]}")
+            if result or conc:
+                items.append(
+                    {
+                        "name": label,
+                        "result": result or "",
+                        "concentration": conc or "",
+                    }
+                )
+        return items
+
+    summary: dict[str, Any] = {}
+    sample1 = _collect("sample1")
+    if sample1:
+        summary["sample1_determinants"] = sample1
+    sample2 = _collect("sample2")
+    if sample2:
+        summary["sample2_determinants"] = sample2
+
+    return summary or None
+
+def _build_location_display(permit: dict) -> dict:
+    lat = float(permit.get("latitude") or 0)
+    lon = float(permit.get("longitude") or 0)
+    display = permit.get("address")
+    if not display:
+        display = f"{lat}, {lon}"
+    return {
+        "display": display,
+        "lat": lat,
+        "lon": lon,
+        "radius_m": 0,
+    }
+
+async def _convert_local_permit_to_mobile(user: dict, permit: dict) -> dict:
+    permit_ref = permit.get("permit_number", permit.get("id"))
+    location = _build_location_display(permit)
+    desktop_summary = {
+        "risk_assessment": permit.get("proximity_risk_assessment", "LOW"),
+    }
+
+    inspection_doc = await _get_latest_local_record(db.inspections, permit_ref, LOCAL_INSPECTION_STORAGE)
+    site_status = inspection_doc.get("status", "pending") if inspection_doc else "pending"
+    site_payload = inspection_doc.get("payload", {}) if inspection_doc else {}
+    site_summary = None
+    site_notes = inspection_doc.get("notes") if inspection_doc else None
+    site_outcome = inspection_doc.get("outcome") if inspection_doc else None
+    if site_payload:
+        site_summary = _extract_site_summary_from_form(site_payload.get("form", {}))
+    if not site_summary and inspection_doc:
+        site_summary = {
+            "bituminous": inspection_doc.get("bituminous_result", ""),
+            "sub_base": inspection_doc.get("sub_base_result", ""),
+        } if inspection_doc.get("bituminous_result") or inspection_doc.get("sub_base_result") else None
+
+    sample_doc = await _get_latest_local_record(db.sample_testing, permit_ref, LOCAL_SAMPLE_STORAGE)
+    sample_status = sample_doc.get("status", "not_required") if sample_doc else "not_required"
+    sample_payload = sample_doc.get("payload", {}) if sample_doc else {}
+    sample_notes = sample_doc.get("notes") if sample_doc else None
+    sample_outcome = sample_doc.get("outcome") if sample_doc else None
+    sample_summary = None
+    if sample_payload:
+        sample_summary = _extract_sample_summary_from_form(sample_payload.get("form", {}))
+
+    return {
+        "permit_ref": permit_ref,
+        "created_at": _datetime_to_iso(permit.get("created_at")),
+        "updated_at": _datetime_to_iso(permit.get("updated_at", permit.get("created_at"))),
+        "owner_username": user.get("username", "local"),
+        "owner_display_name": user.get("username", "local"),
+        "desktop": {
+            "status": permit.get("status", "active").lower(),
+            "outcome": permit.get("proximity_risk_assessment"),
+            "notes": None,
+            "summary": desktop_summary,
+            "payload": {},
+        },
+        "site": {
+            "status": site_status,
+            "outcome": site_outcome,
+            "notes": site_notes,
+            "summary": site_summary,
+            "payload": site_payload,
+        },
+        "sample": {
+            "status": sample_status,
+            "outcome": sample_outcome,
+            "notes": sample_notes,
+            "summary": sample_summary,
+            "payload": sample_payload,
+        },
+        "location": location,
+    }
+
+async def _get_local_permits(username: str, search: str = "") -> List[Dict[str, Any]]:
+    user = await _get_local_user_by_username(username)
+    if not user:
+        return []
+
+    query: dict[str, Any] = {"created_by": user["id"]}
+    if search.strip():
+        query["permit_number"] = {"$regex": search.strip(), "$options": "i"}
+
+    permits: List[dict] = []
+    try:
+        permits = await db.permits.find(query).to_list(1000)
+    except Exception as e:
+        logging.warning(f"Mongo unavailable during permits lookup: {e}")
+
+    if not permits:
+        permits = [permit for permit in LOCAL_SAMPLE_PERMITS if permit.get("created_by") == user["id"]] or LOCAL_SAMPLE_PERMITS
+
+    result = []
+    for permit in permits:
+        converted = await _convert_local_permit_to_mobile(user, permit)
+        result.append(converted)
+    return result
+
+async def _get_local_permit(username: str, permit_ref: str) -> Optional[Dict[str, Any]]:
+    user = await _get_local_user_by_username(username)
+    if not user:
+        return None
+    permit = await _get_local_permit_document(permit_ref)
+    if not permit:
+        return None
+    return await _convert_local_permit_to_mobile(user, permit)
+
+def _prepare_site_payload(form_data: dict, is_draft: bool) -> tuple[dict, str, Optional[str], Optional[str]]:
+    if "payload" in form_data:
+        payload = form_data.get("payload", {})
+        status = form_data.get("status") or ("wip" if is_draft else "completed")
+        outcome = form_data.get("outcome")
+        notes = form_data.get("notes")
+    else:
+        payload = {"form": form_data}
+        status = "wip" if is_draft else "completed"
+        outcome = None
+        notes = form_data.get("notes")
+    return payload, status.lower(), outcome, notes
+
+async def _save_local_inspection_record(username: str, permit_ref: str, form_data: dict, is_draft: bool) -> Optional[dict]:
+    permit = await _get_local_permit_document(permit_ref)
+    if not permit:
+        return None
+
+    payload, status, outcome, notes = _prepare_site_payload(form_data, is_draft)
+    form = payload.get("form", {})
+    existing = await db.inspections.find_one({"permit_ref": permit_ref})
+    record_id = existing["id"] if existing else str(uuid.uuid4())
+    created_at = existing.get("created_at") if existing else datetime.utcnow()
+
+    document = {
+        "id": record_id,
+        "permit_id": permit["id"],
+        "permit_ref": permit_ref,
+        "username": username,
+        "status": status,
+        "outcome": outcome,
+        "notes": notes,
+        "payload": payload,
+        "bituminous_result": form.get("result_bituminous") or form.get("bituminous_result"),
+        "sub_base_result": form.get("result_sub_base") or form.get("sub_base_result"),
+        "created_at": created_at,
+        "updated_at": datetime.utcnow(),
+    }
+
+    try:
+        await db.inspections.update_one({"id": record_id}, {"$set": document}, upsert=True)
+    except Exception as e:
+        logging.warning(f"Mongo unavailable when saving inspection: {e}")
+    LOCAL_INSPECTION_STORAGE[permit_ref] = document.copy()
+
+    message = "Inspection saved successfully" if is_draft else "Inspection submitted successfully"
+    return {"message": message, "status": status}
+
+def _prepare_sample_payload(form_data: dict, is_draft: bool) -> tuple[dict, str, Optional[str], Optional[str]]:
+    if "payload" in form_data:
+        payload = form_data.get("payload", {})
+        status = form_data.get("status") or ("wip" if is_draft else "completed")
+        outcome = form_data.get("outcome")
+        notes = form_data.get("notes")
+    else:
+        payload = {"form": form_data}
+        status = "wip" if is_draft else "completed"
+        outcome = None
+        notes = form_data.get("notes")
+    return payload, status.lower(), outcome, notes
+
+async def _save_local_sample_record(username: str, permit_ref: str, form_data: dict, is_draft: bool) -> Optional[dict]:
+    permit = await _get_local_permit_document(permit_ref)
+    if not permit:
+        return None
+
+    payload, status, outcome, notes = _prepare_sample_payload(form_data, is_draft)
+    form = payload.get("form", {})
+    attachments = payload.get("attachments", {})
+    existing = await db.sample_testing.find_one({"permit_ref": permit_ref})
+    record_id = existing["id"] if existing else str(uuid.uuid4())
+    created_at = existing.get("created_at") if existing else datetime.utcnow()
+
+    document = {
+        "id": record_id,
+        "permit_id": permit["id"],
+        "permit_ref": permit_ref,
+        "username": username,
+        "status": status,
+        "outcome": outcome,
+        "notes": notes,
+        "payload": payload,
+        "attachments": attachments,
+        "created_at": created_at,
+        "updated_at": datetime.utcnow(),
+    }
+
+    # Preserve convenience fields for quick lookups
+    document.update({
+        "sample_status": form.get("sample_status"),
+        "sample1_lab_analysis": form.get("sample1_lab_analysis"),
+        "sample2_lab_analysis": form.get("sample2_lab_analysis"),
+    })
+
+    try:
+        await db.sample_testing.update_one({"id": record_id}, {"$set": document}, upsert=True)
+    except Exception as e:
+        logging.warning(f"Mongo unavailable when saving sample testing: {e}")
+    LOCAL_SAMPLE_STORAGE[permit_ref] = document.copy()
+
+    message = "Sample testing saved successfully" if is_draft else "Sample testing submitted successfully"
+    return {"message": message, "status": status}
 
 async def get_current_geoprox_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get current user from JWT token for GeoProx integration"""
     try:
-        payload = geoprox_auth.verify_jwt_token(credentials.credentials)
-        if not payload:
+        if USE_GEOPROX_PROD:
+            payload = geoprox_auth.verify_jwt_token(credentials.credentials)
+            if payload:
+                payload["mode"] = "remote"
+                return payload
+    except Exception as e:
+        logging.warning(f"Remote token verification error: {e}")
+
+    # Fallback to local JWT
+    try:
+        local_payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+        user = await db.users.find_one({"id": local_payload.get("user_id")})
+        if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return payload
+        return {
+            "mode": "local",
+            "user_id": user["id"],
+            "username": user["username"],
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Token verification error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -482,16 +942,29 @@ async def login(user_login: UserLogin):
 @api_router.get("/geoprox/permits")
 async def get_geoprox_permits(search: str = "", current_user = Depends(get_current_geoprox_user)):
     """Get permits from production GeoProx database"""
+    if current_user.get("mode") == "local" or not USE_GEOPROX_PROD:
+        return await _get_local_permits(current_user["username"], search)
+
     try:
         permits = geoprox_permits.get_user_permits(current_user["username"], search)
         return permits
     except Exception as e:
         logging.error(f"GeoProx permits error: {e}")
+        permits = await _get_local_permits(current_user["username"], search)
+        if permits:
+            logging.info("Serving local permits due to GeoProx production error")
+            return permits
         raise HTTPException(status_code=500, detail="Unable to fetch permits from GeoProx")
 
 @api_router.get("/geoprox/permits/{permit_ref}")
 async def get_geoprox_permit(permit_ref: str, current_user = Depends(get_current_geoprox_user)):
     """Get specific permit from production GeoProx database"""
+    if current_user.get("mode") == "local" or not USE_GEOPROX_PROD:
+        permit = await _get_local_permit(current_user["username"], permit_ref)
+        if not permit:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return permit
+
     try:
         permit = geoprox_permits.get_permit_details(current_user["username"], permit_ref)
         if not permit:
@@ -501,11 +974,21 @@ async def get_geoprox_permit(permit_ref: str, current_user = Depends(get_current
         raise  # Re-raise HTTPExceptions as-is
     except Exception as e:
         logging.error(f"GeoProx permit details error: {e}")
+        permit = await _get_local_permit(current_user["username"], permit_ref)
+        if permit:
+            logging.info("Serving local permit details due to GeoProx production error")
+            return permit
         raise HTTPException(status_code=500, detail="Unable to fetch permit details")
 
 @api_router.post("/geoprox/inspections/save")
 async def save_geoprox_inspection(inspection: InspectionCreate, current_user = Depends(get_current_geoprox_user)):
     """Save site inspection to production GeoProx database"""
+    if current_user.get("mode") == "local" or not USE_GEOPROX_PROD:
+        result = await _save_local_inspection_record(current_user["username"], inspection.permit_ref, inspection.form_data, True)
+        if not result:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return result
+
     try:
         success = geoprox_permits.save_site_inspection(
             current_user["username"], 
@@ -513,16 +996,30 @@ async def save_geoprox_inspection(inspection: InspectionCreate, current_user = D
             inspection.form_data, 
             is_draft=True
         )
-        if not success:
-            raise HTTPException(status_code=404, detail="Permit not found")
-        return {"message": "Inspection saved successfully", "status": "wip"}
+        if success:
+            return {"message": "Inspection saved successfully", "status": "wip"}
+        result = await _save_local_inspection_record(current_user["username"], inspection.permit_ref, inspection.form_data, True)
+        if result:
+            logging.info("Saved inspection locally because GeoProx permit was unavailable")
+            return result
+        raise HTTPException(status_code=404, detail="Permit not found")
     except Exception as e:
         logging.error(f"GeoProx save inspection error: {e}")
+        result = await _save_local_inspection_record(current_user["username"], inspection.permit_ref, inspection.form_data, True)
+        if result:
+            logging.info("Saved inspection locally due to GeoProx production error")
+            return result
         raise HTTPException(status_code=500, detail="Unable to save inspection")
 
 @api_router.post("/geoprox/inspections/submit")
 async def submit_geoprox_inspection(inspection: InspectionCreate, current_user = Depends(get_current_geoprox_user)):
     """Submit site inspection to production GeoProx database"""
+    if current_user.get("mode") == "local" or not USE_GEOPROX_PROD:
+        result = await _save_local_inspection_record(current_user["username"], inspection.permit_ref, inspection.form_data, False)
+        if not result:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return result
+
     try:
         success = geoprox_permits.save_site_inspection(
             current_user["username"], 
@@ -530,16 +1027,30 @@ async def submit_geoprox_inspection(inspection: InspectionCreate, current_user =
             inspection.form_data, 
             is_draft=False
         )
-        if not success:
-            raise HTTPException(status_code=404, detail="Permit not found")
-        return {"message": "Inspection submitted successfully", "status": "completed"}
+        if success:
+            return {"message": "Inspection submitted successfully", "status": "completed"}
+        result = await _save_local_inspection_record(current_user["username"], inspection.permit_ref, inspection.form_data, False)
+        if result:
+            logging.info("Submitted inspection locally because GeoProx permit was unavailable")
+            return result
+        raise HTTPException(status_code=404, detail="Permit not found")
     except Exception as e:
         logging.error(f"GeoProx submit inspection error: {e}")
+        result = await _save_local_inspection_record(current_user["username"], inspection.permit_ref, inspection.form_data, False)
+        if result:
+            logging.info("Submitted inspection locally due to GeoProx production error")
+            return result
         raise HTTPException(status_code=500, detail="Unable to submit inspection")
 
 @api_router.post("/geoprox/sample-testing/save")
 async def save_geoprox_sample_testing(sample_test: SampleTestingCreate, current_user = Depends(get_current_geoprox_user)):
     """Save sample testing to production GeoProx database"""
+    if current_user.get("mode") == "local" or not USE_GEOPROX_PROD:
+        result = await _save_local_sample_record(current_user["username"], sample_test.permit_ref, sample_test.form_data, True)
+        if not result:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return result
+
     try:
         success = geoprox_permits.save_sample_testing(
             current_user["username"], 
@@ -547,16 +1058,30 @@ async def save_geoprox_sample_testing(sample_test: SampleTestingCreate, current_
             sample_test.form_data, 
             is_draft=True
         )
-        if not success:
-            raise HTTPException(status_code=404, detail="Permit not found")
-        return {"message": "Sample testing saved successfully", "status": "wip"}
+        if success:
+            return {"message": "Sample testing saved successfully", "status": "wip"}
+        result = await _save_local_sample_record(current_user["username"], sample_test.permit_ref, sample_test.form_data, True)
+        if result:
+            logging.info("Saved sample testing locally because GeoProx permit was unavailable")
+            return result
+        raise HTTPException(status_code=404, detail="Permit not found")
     except Exception as e:
         logging.error(f"GeoProx save sample testing error: {e}")
+        result = await _save_local_sample_record(current_user["username"], sample_test.permit_ref, sample_test.form_data, True)
+        if result:
+            logging.info("Saved sample testing locally due to GeoProx production error")
+            return result
         raise HTTPException(status_code=500, detail="Unable to save sample testing")
 
 @api_router.post("/geoprox/sample-testing/submit")
 async def submit_geoprox_sample_testing(sample_test: SampleTestingCreate, current_user = Depends(get_current_geoprox_user)):
     """Submit sample testing to production GeoProx database"""
+    if current_user.get("mode") == "local" or not USE_GEOPROX_PROD:
+        result = await _save_local_sample_record(current_user["username"], sample_test.permit_ref, sample_test.form_data, False)
+        if not result:
+            raise HTTPException(status_code=404, detail="Permit not found")
+        return result
+
     try:
         success = geoprox_permits.save_sample_testing(
             current_user["username"], 
@@ -564,11 +1089,19 @@ async def submit_geoprox_sample_testing(sample_test: SampleTestingCreate, curren
             sample_test.form_data, 
             is_draft=False
         )
-        if not success:
-            raise HTTPException(status_code=404, detail="Permit not found")
-        return {"message": "Sample testing submitted successfully", "status": "completed"}
+        if success:
+            return {"message": "Sample testing submitted successfully", "status": "completed"}
+        result = await _save_local_sample_record(current_user["username"], sample_test.permit_ref, sample_test.form_data, False)
+        if result:
+            logging.info("Submitted sample testing locally because GeoProx permit was unavailable")
+            return result
+        raise HTTPException(status_code=404, detail="Permit not found")
     except Exception as e:
         logging.error(f"GeoProx submit sample testing error: {e}")
+        result = await _save_local_sample_record(current_user["username"], sample_test.permit_ref, sample_test.form_data, False)
+        if result:
+            logging.info("Submitted sample testing locally due to GeoProx production error")
+            return result
         raise HTTPException(status_code=500, detail="Unable to submit sample testing")
 
 # Legacy local database routes (for backwards compatibility)
@@ -878,8 +1411,13 @@ async def get_current_sample_testing(permit_id: str, current_user: User = Depend
     return SampleTesting(**sample_test)
 
 @api_router.get("/")
-async def root():
+async def api_root():
     return {"message": "GeoProx Mobile API"}
+
+
+@app.get("/")
+async def service_root():
+    return {"status": "ok", "service": "GeoProx Mobile API"}
 
 # Include router
 app.include_router(api_router)
@@ -896,7 +1434,10 @@ app.add_middleware(
 # Startup event
 @app.on_event("startup")
 async def startup_db():
-    await init_sample_data()
+    try:
+        await init_sample_data()
+    except Exception as exc:
+        logging.warning(f"Mongo init skipped due to error: {exc}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
