@@ -39,48 +39,46 @@ export default function LoginScreen() {
     try {
       const apiUrl = `${API_BASE_URL}/api/mobile/auth/login`;
       console.log('Full API URL:', apiUrl);
-      console.log('About to call fetch...');
-      
-      // Test with XMLHttpRequest as fallback
-      const testXHR = () => {
-        return new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const timeoutId = setTimeout(() => {
-            xhr.abort();
-            reject(new Error('XHR Timeout after 15 seconds'));
-          }, 15000);
-          
-          xhr.onload = () => {
-            clearTimeout(timeoutId);
-            console.log('XHR completed with status:', xhr.status);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(JSON.parse(xhr.responseText));
-            } else {
-              reject(new Error(`HTTP ${xhr.status}`));
-            }
-          };
-          
-          xhr.onerror = () => {
-            clearTimeout(timeoutId);
-            console.error('XHR error occurred');
-            reject(new Error('Network error'));
-          };
-          
-          xhr.ontimeout = () => {
-            console.error('XHR timeout occurred');
-            reject(new Error('Request timeout'));
-          };
-          
-          console.log('Opening XHR connection...');
-          xhr.open('POST', apiUrl);
-          xhr.setRequestHeader('Content-Type', 'application/json');
-          console.log('Sending XHR request...');
-          xhr.send(JSON.stringify({ username, password }));
-        });
-      };
-      
-      console.log('Using XMLHttpRequest for request...');
-      const data = await testXHR();
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const rawBody = await response.text();
+      let data: any = {};
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch (jsonError) {
+          console.warn('Failed to parse login response JSON', jsonError);
+        }
+      }
+
+      if (!response.ok) {
+        console.log('Login error response:', response.status, data);
+
+        if (response.status === 503) {
+          const detail =
+            data?.detail ??
+            'Production database unavailable. You can still sign in using the demo account (demo.user / password123).';
+          Alert.alert(
+            'Service unavailable',
+            `${detail}\n\nSwitch to the demo credentials to continue testing.`,
+          );
+        } else if (response.status === 401) {
+          Alert.alert('Login Failed', data?.detail ?? 'Invalid credentials');
+        } else {
+          const detail =
+            data?.detail ?? data?.error ?? `Unexpected error (HTTP ${response.status})`;
+          Alert.alert('Error', detail);
+        }
+        return;
+      }
+
       console.log('Request completed successfully');
       console.log('Response data keys:', Object.keys(data));
 
@@ -92,17 +90,31 @@ export default function LoginScreen() {
           data.expires_in,
           data.refresh_expires_in
         );
-        
+
+        if (data.mode) {
+          await AsyncStorage.setItem('auth_mode', data.mode);
+        } else {
+          await AsyncStorage.removeItem('auth_mode');
+        }
+
         await AsyncStorage.setItem('user', JSON.stringify({ username }));
         console.log('Tokens stored. Navigating to permits...');
         
-        router.replace('/permits');
+        if (data.mode === 'local') {
+          Alert.alert(
+            'Demo mode enabled',
+            'Production data is unavailable. You are signed in with the demo dataset.',
+            [{ text: 'Continue', onPress: () => router.replace('/permits') }],
+          );
+        } else {
+          router.replace('/permits');
+        }
       } else {
         const errorMsg = data.detail || data.error || 'Invalid credentials';
         console.error('Login failed:', errorMsg);
         Alert.alert('Login Failed', errorMsg);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('=== LOGIN ERROR ===');
       console.error('Error name:', error.name);
       console.error('Error message:', error.message);
@@ -110,7 +122,10 @@ export default function LoginScreen() {
       if (error.message.includes('Timeout') || error.message.includes('timeout')) {
         Alert.alert('Timeout', 'Login request timed out after 15 seconds. Please check your internet connection.');
       } else {
-        Alert.alert('Error', `Network error: ${error.message || 'Please try again.'}`);
+        Alert.alert(
+          'Error',
+          `Network error: ${error?.message ?? 'Please try again.'}`,
+        );
       }
     } finally {
       console.log('Finally block - setting loading to false');
