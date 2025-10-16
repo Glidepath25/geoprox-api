@@ -47,3 +47,32 @@ index b2fb68f..4967ba6 100644
    private var accessor: ReactNativeFeatureFlagsAccessor = accessorProvider()
  
    /**
+diff --git a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt
+index 512b9e9..743e2e7 100644
+--- a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt
++++ b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt
+@@ -8,6 +8,7 @@
+ package com.facebook.react.internal.featureflags
+ 
+ import android.annotation.SuppressLint
++import android.util.Log
+ import com.facebook.infer.annotation.Assertions
+ import com.facebook.react.common.build.ReactBuildConfig
+ 
+@@ -46,7 +47,15 @@ public object ReactNativeNewArchitectureFeatureFlags {
+           "ReactNativeFeatureFlags.enableFabricRenderer() should be set to TRUE when Strict Mode is enabled")
+       return true
+     }
+-    return ReactNativeFeatureFlags.enableFabricRenderer()
++    return try {
++      ReactNativeFeatureFlags.enableFabricRenderer()
++    } catch (error: Throwable) {
++      Log.w(
++          "RNFeatureFlags",
++          "Disabling Fabric renderer because native feature flag interop library failed to load.",
++          error)
++      false
++    }
+   }
+ 
+   @JvmStatic
