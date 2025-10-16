@@ -51,7 +51,9 @@
           "backgroundColor": "#000000"
         }
       ],
-      "./plugins/legacy-main-application"
+      "./plugins/legacy-main-application",
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
