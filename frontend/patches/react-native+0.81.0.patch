@@ -35,10 +35,21 @@ index 4d81bc5..8a6335b 100644
     * Do not use this constructor as it's not accounting for New Architecture at all. You should use
     * [ReactDelegate(Activity, ReactNativeHost, String, Bundle, boolean)] as it's the constructor
 diff --git a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
-index b2fb68f..4967ba6 100644
+index b2fb68f..60d75b5 100644
 --- a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
 +++ b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
-@@ -27,7 +27,7 @@ import androidx.annotation.VisibleForTesting
+@@ -17,8 +17,10 @@
+  *   yarn featureflags --update
+  */
+ 
++
+ package com.facebook.react.internal.featureflags
+ 
++import android.util.Log
+ import androidx.annotation.VisibleForTesting
+ 
+ /**
+@@ -27,7 +29,7 @@ import androidx.annotation.VisibleForTesting
   * All the methods are thread-safe if you handle `override` correctly.
   */
  public object ReactNativeFeatureFlags {
@@ -47,6 +58,25 @@ index b2fb68f..4967ba6 100644
    private var accessor: ReactNativeFeatureFlagsAccessor = accessorProvider()
  
    /**
+@@ -452,7 +454,17 @@ public object ReactNativeFeatureFlags {
+    */
+   @VisibleForTesting
+   internal fun setAccessorProvider(newAccessorProvider: () -> ReactNativeFeatureFlagsAccessor) {
+-    accessorProvider = newAccessorProvider
++    accessorProvider = {
++      try {
++        newAccessorProvider()
++      } catch (error: Throwable) {
++        Log.w(
++            "ReactNativeFeatureFlags",
++            "Falling back to default feature flags because the native provider failed to initialize.",
++            error)
++        ReactNativeFeatureFlagsDefaults()
++      }
++    }
+     accessor = accessorProvider()
+   }
+ }
 diff --git a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt
 index 512b9e9..743e2e7 100644
 --- a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeNewArchitectureFeatureFlags.kt
