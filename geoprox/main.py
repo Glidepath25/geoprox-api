@@ -3689,10 +3689,18 @@ async def report_unidentified_submit(request: Request) -> HTMLResponse:
 
 @app.get("/admin/reports/unidentified", response_class=HTMLResponse)
 async def admin_unidentified_reports_page(request: Request) -> HTMLResponse:
-    username, is_global_admin, managed_company_id = _require_user_management_scope(request)
+    manager_record, is_global_admin, managed_company_id = _require_user_management_scope(request)
     if not (is_global_admin or managed_company_id):
         raise HTTPException(status_code=403, detail="Administrator access required")
+    username = str(manager_record.get("username") if isinstance(manager_record, dict) else "").strip()
+    if not username:
+        raise HTTPException(status_code=401, detail="Authentication required")
     scope_usernames, user_map = _resolve_company_scope(username)
+    if username not in user_map and isinstance(manager_record, dict):
+        normalized_manager = dict(manager_record)
+        normalized_manager["name"] = normalized_manager.get("name") or ""
+        normalized_manager["company"] = normalized_manager.get("company") or ""
+        user_map[username] = normalized_manager
     if is_global_admin:
         try:
             for entry in user_store.list_users(include_disabled=True):
@@ -3739,7 +3747,7 @@ async def admin_unidentified_reports_page(request: Request) -> HTMLResponse:
             item["submitted_display"] = submitter or ""
             item["submitted_company"] = ""
         rows.append(item)
-    base_user = user_map.get(username, {})
+    base_user = user_map.get(username) or (dict(manager_record) if isinstance(manager_record, dict) else {})
     company_label = base_user.get("company") or ""
     context = {
         "request": request,
