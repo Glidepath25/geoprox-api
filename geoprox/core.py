@@ -61,6 +61,31 @@ OSM_FILTERS: Dict[str, List[str]] = {
     "waste_disposal": ["amenity=recycling", "amenity=waste_transfer_station", "amenity=waste_disposal"],
 }
 
+SEARCH_CATEGORY_OPTIONS: List[Tuple[str, str]] = [
+    ("manufacturing", "Industrial / Manufacturing"),
+    ("gas_holding", "Gas holder stations"),
+    ("mines", "Mining (coal, metalliferous)"),
+    ("petrol_stations", "Petrol stations / Garages"),
+    ("sewage_treatment", "Sewage Treatment Works"),
+    ("substations", "Sub-Stations"),
+    ("landfills", "Waste Site - Landfill & Treatment / Disposal"),
+    ("scrapyards", "Waste Site - Scrapyard / Metal Recycling"),
+    ("waste_disposal", "Waste Site - Other"),
+]
+SEARCH_CATEGORY_LABELS: Dict[str, str] = {key: label for key, label in SEARCH_CATEGORY_OPTIONS}
+_SEARCH_CATEGORY_KEYS = set(SEARCH_CATEGORY_LABELS)
+MANUAL_CATEGORY_TAGS: Dict[str, Dict[str, str]] = {
+    "manufacturing": {"landuse": "industrial"},
+    "gas_holding": {"man_made": "gasometer"},
+    "mines": {"landuse": "quarry"},
+    "petrol_stations": {"amenity": "fuel"},
+    "sewage_treatment": {"man_made": "wastewater_plant"},
+    "substations": {"power": "substation"},
+    "landfills": {"landuse": "landfill"},
+    "scrapyards": {"landuse": "scrap_yard"},
+    "waste_disposal": {"amenity": "recycling"},
+}
+
 
 # ---------- Basic helpers ----------
 def compute_outcome(summary_bins: Dict[str, Dict[str, int]]) -> str:
@@ -471,6 +496,85 @@ def osm_elements_to_df(data: Dict[str, Any]) -> pd.DataFrame:
     if df.empty:
         df = pd.DataFrame(columns=["type", "name", "lat", "lon", "tags", "geom"])
     return df
+
+
+def _manual_locations_to_df(
+    extra_locations: Optional[List[Dict[str, Any]]],
+    origin: Tuple[float, float],
+    query_radius_m: int,
+) -> pd.DataFrame:
+    if not extra_locations:
+        return pd.DataFrame(columns=["type", "name", "lat", "lon", "tags", "geom"])
+
+    lat0, lon0 = origin
+    try:
+        max_radius = float(query_radius_m or 0)
+    except Exception:
+        max_radius = 0.0
+    unlimited = max_radius <= 0.0
+
+    rows: List[Dict[str, Any]] = []
+    for feature in extra_locations:
+        if not isinstance(feature, dict):
+            continue
+        lat_raw = feature.get("lat", feature.get("latitude"))
+        lon_raw = feature.get("lon", feature.get("longitude"))
+        try:
+            lat = float(lat_raw)
+            lon = float(lon_raw)
+        except (TypeError, ValueError):
+            continue
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            continue
+
+        category_key = str(feature.get("category") or "").strip()
+        if category_key not in _SEARCH_CATEGORY_KEYS:
+            continue
+
+        distance = _haversine_m(lat0, lon0, lat, lon)
+        if not unlimited and distance > max_radius:
+            continue
+
+        tags = dict(MANUAL_CATEGORY_TAGS.get(category_key, {}))
+        tags["__source"] = "verified_report"
+        tags["__search_category"] = category_key
+
+        address = feature.get("address")
+        if address:
+            tags["addr:full"] = str(address).strip()
+
+        notes = feature.get("notes")
+        if notes:
+            tags["note"] = str(notes).strip()
+
+        submitted_by = feature.get("submitted_by")
+        if submitted_by:
+            tags["submitted_by"] = str(submitted_by).strip()
+
+        feature_id = feature.get("id")
+        if feature_id is not None:
+            tags["report_id"] = str(feature_id)
+
+        name = feature.get("name") or "(unlabelled location)"
+        try:
+            name_text = str(name)
+        except Exception:
+            name_text = "Unnamed location"
+
+        rows.append(
+            {
+                "type": "manual",
+                "name": name_text,
+                "lat": lat,
+                "lon": lon,
+                "tags": tags,
+                "geom": ShapelyPoint(lon, lat),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=["type", "name", "lat", "lon", "tags", "geom"])
+    return pd.DataFrame(rows, columns=["type", "name", "lat", "lon", "tags", "geom"])
 
 
 def summarise_by_bins(
@@ -1013,6 +1117,7 @@ def run_geoprox_search(
     user_name: str = DEFAULT_USER,
     selection_mode: str = "point",
     polygon: Optional[List[Tuple[float, float]]] = None,
+    extra_locations: Optional[List[Dict[str, Any]]] = None,
 ) -> dict:
     # filter/normalise categories
     valid = set(OSM_FILTERS.keys())
@@ -1060,6 +1165,12 @@ def run_geoprox_search(
     qi = QueryInput(lat=lat, lon=lon, radius_m=query_radius, selected_categories=categories)
     data = run_overpass_resilient(qi)
     df = osm_elements_to_df(data)
+    manual_df = _manual_locations_to_df(extra_locations, (lat, lon), query_radius)
+    if not manual_df.empty:
+        if df.empty:
+            df = manual_df
+        else:
+            df = pd.concat([df, manual_df], ignore_index=True)
     df = _annotate_distances(df, (lat, lon), reference_geom=reference_geom)
 
 

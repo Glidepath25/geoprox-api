@@ -42,7 +42,7 @@ from geoprox.auth_tokens import (
     decode_access_token,
     decode_refresh_token,
 )
-from geoprox.core import run_geoprox_search
+from geoprox.core import SEARCH_CATEGORY_LABELS, SEARCH_CATEGORY_OPTIONS, run_geoprox_search
 from geoprox.mobile_auth_models import (
     MobileAuthRequest,
     MobileAuthResponse,
@@ -194,6 +194,23 @@ UNIDENTIFIED_REPORT_CATEGORY_OPTIONS = [
     ("other", "Other"),
 ]
 UNIDENTIFIED_REPORT_CATEGORY_LABELS = {key: label for key, label in UNIDENTIFIED_REPORT_CATEGORY_OPTIONS}
+
+SEARCH_CATEGORY_KEYS = {key for key, _ in SEARCH_CATEGORY_OPTIONS}
+UNIDENTIFIED_TO_SEARCH_CATEGORY = {
+    "industrial": "manufacturing",
+    "gas_holder": "gas_holding",
+    "mining": "mines",
+    "petrol_station": "petrol_stations",
+}
+_SEARCH_CATEGORY_FALLBACK = "waste_disposal"
+
+
+def _default_search_category_for_report(category: Optional[str]) -> str:
+    key = str(category or "").strip().lower()
+    suggested = UNIDENTIFIED_TO_SEARCH_CATEGORY.get(key, _SEARCH_CATEGORY_FALLBACK)
+    if suggested not in SEARCH_CATEGORY_KEYS:
+        return next(iter(SEARCH_CATEGORY_KEYS)) if SEARCH_CATEGORY_KEYS else _SEARCH_CATEGORY_FALLBACK
+    return suggested
 
 SAMPLE_TESTING_FIELD_LABELS = [
     ('sampling_date', 'Sampling date'),
@@ -3718,6 +3735,7 @@ async def admin_unidentified_reports_page(request: Request) -> HTMLResponse:
         allowed = set(scope_usernames)
         records = [record for record in records if record.get("submitted_by") in allowed]
     rows: List[Dict[str, Any]] = []
+    verified_count = 0
     for record in records:
         item = dict(record)
         item["name"] = item.get("name") or ""
@@ -3746,19 +3764,80 @@ async def admin_unidentified_reports_page(request: Request) -> HTMLResponse:
         else:
             item["submitted_display"] = submitter or ""
             item["submitted_company"] = ""
+        is_verified = bool(record.get("is_verified"))
+        item["is_verified"] = is_verified
+        if is_verified:
+            verified_count += 1
+        verified_at_value = record.get("verified_at")
+        item["verified_at_display"] = _format_ddmmyy(verified_at_value, include_time=True) if verified_at_value else ""
+        item["verified_by"] = record.get("verified_by") or ""
+        stored_category = str(record.get("search_category") or "").strip()
+        suggested_category = _default_search_category_for_report(record.get("category"))
+        item["search_category"] = stored_category
+        item["search_category_label"] = SEARCH_CATEGORY_LABELS.get(stored_category, "")
+        item["suggested_category"] = suggested_category
+        item["suggested_label"] = SEARCH_CATEGORY_LABELS.get(suggested_category, "")
+        item["current_category_choice"] = stored_category or suggested_category
+        item["has_coordinates"] = latitude_value is not None and longitude_value is not None
         rows.append(item)
     base_user = user_map.get(username) or (dict(manager_record) if isinstance(manager_record, dict) else {})
     company_label = base_user.get("company") or ""
+    flashes = _consume_flashes(request)
     context = {
         "request": request,
         "records": rows,
         "record_count": len(rows),
+        "verified_count": verified_count,
         "category_labels": UNIDENTIFIED_REPORT_CATEGORY_LABELS,
         "is_global_admin": is_global_admin,
         "current_user": username,
         "company_label": company_label,
+        "flashes": flashes,
+        "search_category_options": SEARCH_CATEGORY_OPTIONS,
+        "search_category_labels": SEARCH_CATEGORY_LABELS,
     }
     return templates.TemplateResponse("admin_unidentified_reports.html", context)
+
+
+@app.post("/admin/reports/unidentified/{report_id}/verify", response_class=HTMLResponse)
+async def admin_unidentified_report_verify(request: Request, report_id: int) -> Response:
+    manager_record, is_global_admin, _ = _require_user_management_scope(request)
+    if not is_global_admin:
+        raise HTTPException(status_code=403, detail="Global administrator access required")
+    report = report_store.get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    form = await request.form()
+    selected_category = str(form.get("search_category") or "").strip()
+    if not selected_category:
+        selected_category = _default_search_category_for_report(report.get("category"))
+    if selected_category not in SEARCH_CATEGORY_LABELS:
+        _add_flash(request, "Select a valid search category before verifying.", "error")
+        return RedirectResponse(url="/admin/reports/unidentified", status_code=303)
+    if report.get("latitude") in (None, "") or report.get("longitude") in (None, ""):
+        _add_flash(request, "Cannot verify a report without latitude and longitude values.", "error")
+        return RedirectResponse(url="/admin/reports/unidentified", status_code=303)
+    verified_by = str(manager_record.get("username") if isinstance(manager_record, dict) else "").strip()
+    if not verified_by:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    updated = report_store.verify_report(
+        report_id,
+        verified_by=verified_by,
+        search_category=selected_category,
+    )
+    if not updated:
+        _add_flash(request, "Unable to verify the report. Please try again.", "error")
+    else:
+        label = SEARCH_CATEGORY_LABELS.get(selected_category, selected_category.title())
+        if updated.get("is_verified"):
+            _add_flash(
+                request,
+                f"Report '{updated.get('name') or 'Unnamed location'}' verified and added to {label}.",
+                "success",
+            )
+        else:
+            _add_flash(request, "Report updated.", "info")
+    return RedirectResponse(url="/admin/reports/unidentified", status_code=303)
 
 @app.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(request: Request, company_id: Optional[str] = None) -> HTMLResponse:
@@ -4637,6 +4716,33 @@ def api_search(request: Request, req: SearchReq):
 
         safe_location = _normalise_location(location_value)
 
+        extra_locations: List[Dict[str, Any]] = []
+        for verified in report_store.list_verified_reports():
+            lat_raw = verified.get("latitude")
+            lon_raw = verified.get("longitude")
+            try:
+                lat_val = float(lat_raw)
+                lon_val = float(lon_raw)
+            except (TypeError, ValueError):
+                continue
+            category_key = str(verified.get("search_category") or "").strip()
+            if not category_key:
+                category_key = _default_search_category_for_report(verified.get("category"))
+            if category_key not in SEARCH_CATEGORY_LABELS:
+                continue
+            extra_locations.append(
+                {
+                    "id": verified.get("id"),
+                    "name": verified.get("name"),
+                    "lat": lat_val,
+                    "lon": lon_val,
+                    "address": verified.get("address"),
+                    "notes": verified.get("notes"),
+                    "category": category_key,
+                    "submitted_by": verified.get("submitted_by"),
+                }
+            )
+
         result = run_geoprox_search(
             location=safe_location,
             radius_m=req.radius_m,
@@ -4648,6 +4754,7 @@ def api_search(request: Request, req: SearchReq):
             user_name=username,
             selection_mode=selection_mode,
             polygon=polygon_vertices,
+            extra_locations=extra_locations,
         )
 
         log.info(f"Search result: {result}")
