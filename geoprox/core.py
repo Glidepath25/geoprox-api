@@ -41,7 +41,7 @@ DEFAULT_LOGO_PATH = Path(__file__).resolve().parents[1] / 'static' / 'geoprox-lo
 DEFAULT_USER = "Contractor A - Streetworks coordinator"
 
 USER_AGENT = "GlidePath-GeoProx-API/1.0"
-HTTP_TIMEOUT = 25.0  # seconds per Overpass attempt
+HTTP_TIMEOUT = 40.0  # seconds per Overpass attempt
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.openstreetmap.fr/api/interpreter",
