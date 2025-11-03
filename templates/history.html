@@ -4,111 +4,101 @@
   <meta charset="utf-8">
   <title>GeoProx - History</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background:#0b1724; color:#e6f1ff; margin:0; }
-    header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#12263a; }
-    header h1 { margin:0; font-size:1.2rem; }
-    main { padding:2rem; }
-    a { color:#2b7cff; text-decoration:none; }
-    a:hover { text-decoration:underline; }
-    table { width:100%; border-collapse:collapse; margin-top:1.5rem; background:#12263a; border-radius:12px; overflow:hidden; }
-    th, td { padding:0.75rem 1rem; border-bottom:1px solid rgba(255,255,255,0.05); text-align:left; }
-    th { background:#18344d; text-transform:uppercase; font-size:0.8rem; letter-spacing:0.05em; }
-    tr:last-child td { border-bottom:none; }
-    .muted { color:#9fb3c7; }
-    .scope-note { margin-top:0.5rem; color:#9fb3c7; font-size:0.85rem; }
-    .empty { margin-top:2rem; color:#9fb3c7; }
-    .chip { display:inline-block; padding:0.1rem 0.5rem; border-radius:999px; font-size:0.75rem; font-weight:600; }
-    .chip-high { background:#6b1111; color:#fff; }
-    .chip-medium { background:#614a00; color:#fff; }
-    .chip-low { background:#0b4d27; color:#fff; }
-    .actions { display:flex; gap:0.6rem; align-items:center; }
-    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; display:inline-block; }
-    .btn:hover { background:rgba(255,255,255,0.08); }
-    form { margin:0; }
-  </style>
+  <link rel="stylesheet" href="/static/css/geoprox-theme.css">
 </head>
 <body>
-  <header>
-    <h1>Search History</h1>
-    <div class="actions">
-      <a class="btn" href="/app">Back to app</a>
-      {% set export_limit = items|length %}
-      <a class="btn" href="/history/export{% if export_limit %}?limit={{ export_limit }}{% endif %}" download>Download CSV</a>
-      <a class="btn" href="/change-password">Change password</a>
-      {% if is_admin %}<a class="btn" href="/admin/users">Manage users</a>{% endif %}
-      <form method="post" action="/logout">
-        <button class="btn" type="submit">Sign out</button>
-      </form>
-    </div>
-  </header>
-  <main>
-    <div class="muted">Signed in as {{ user }}</div>
-    <div class="muted">Access level: {{ user_type_label }}</div>
-    {% if not allow_desktop %}
-    <div class="scope-note">Desktop searches must be completed by a desktop user. You can review existing searches from your company.</div>
-    {% endif %}
-    {% if has_company_scope %}
-    <div class="scope-note">Showing searches from {{ visible_usernames | join(', ') }}.</div>
-    {% endif %}
-    {% if items %}
-    <table>
-      <thead>
-        <tr>
-          <th>When</th>
-          <th>Location</th>
-          <th>Radius (m)</th>
-          <th>Outcome</th>
-          <th>Permit</th>
-          <th>Created By</th>
-          <th>Artifacts</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in items %}
-        <tr>
-          <td>{{ row.timestamp_display }}</td>
-          <td>{{ row.location }}</td>
-          <td>{{ row.radius_m }}</td>
-          <td>
-            {% if row.outcome %}
-              {% set status = row.outcome|upper %}
-              <span class="chip chip-{{ status|lower }}">{{ status }}</span>
-            {% else %}
-              <span class="muted">-</span>
-            {% endif %}
-          </td>
-          <td>{{ row.permit or '-' }}</td>
-          <td>
-            {% if row.owner_username %}
-              <span{% if row.owner_display_name and row.owner_display_name != row.owner_username %} title="{{ row.owner_display_name }}"{% endif %}>{{ row.owner_username }}</span>
-            {% else %}
-              <span class="muted">-</span>
-            {% endif %}
-          </td>
-          <td>
-            {% set pdf = row.pdf_path %}
-            {% set map = row.map_path %}
-            {% if pdf %}
-              <a href="{{ pdf }}" target="_blank" rel="noopener">PDF</a>
-            {% endif %}
-            {% if pdf and map %}
-              <span class="muted">|</span>
-            {% endif %}
-            {% if map %}
-              <a href="{{ map }}" target="_blank" rel="noopener">Map</a>
-            {% endif %}
-            {% if not pdf and not map %}
-              <span class="muted">None</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">No searches recorded yet.</div>
-    {% endif %}
-  </main>
+  <div class="gp-app">
+    <header class="gp-header">
+      <div class="gp-header-title">
+        <img src="/static/geoprox-logo.png" alt="GeoProx logo" style="height:32px">
+        <span>Search History</span>
+      </div>
+      <nav class="gp-nav">
+        <a class="gp-btn gp-btn-outline" href="/app">Back to app</a>
+        {% set export_limit = items|length %}
+        <a class="gp-btn gp-btn-outline" href="/history/export{% if export_limit %}?limit={{ export_limit }}{% endif %}" download>Download CSV</a>
+        <a class="gp-btn gp-btn-outline" href="/change-password">Change password</a>
+        {% if is_admin %}<a class="gp-btn gp-btn-outline" href="/admin/users">Manage users</a>{% endif %}
+        <form method="post" action="/logout">
+          <button class="gp-btn gp-btn-outline" type="submit">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    <main class="gp-main">
+      <section class="gp-section headerless">
+        <div class="gp-muted">Signed in as {{ user }} &mdash; {{ user_type_label }}</div>
+        {% if not allow_desktop %}
+        <div class="gp-muted" style="margin-top:0.5rem">Desktop searches must be completed by a desktop user. You can review existing searches from your company.</div>
+        {% endif %}
+        {% if has_company_scope %}
+        <div class="gp-muted" style="margin-top:0.5rem">Showing searches from {{ visible_usernames | join(', ') }}.</div>
+        {% endif %}
+
+        {% if items %}
+        <table class="gp-table" style="margin-top:1.5rem">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Location</th>
+              <th>Radius (m)</th>
+              <th>Outcome</th>
+              <th>Permit</th>
+              <th>Created By</th>
+              <th>Artifacts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in items %}
+            <tr>
+              <td>{{ row.timestamp_display }}</td>
+              <td>{{ row.location }}</td>
+              <td>{{ row.radius_m }}</td>
+              <td>
+                {% if row.outcome %}
+                  {% set status = row.outcome|lower %}
+                  <span class="gp-chip status-{{ status }}">{{ row.outcome|upper }}</span>
+                {% else %}
+                  <span class="gp-muted">-</span>
+                {% endif %}
+              </td>
+              <td>{{ row.permit or '-' }}</td>
+              <td>
+                {% if row.owner_username %}
+                  <span{% if row.owner_display_name and row.owner_display_name != row.owner_username %} title="{{ row.owner_display_name }}"{% endif %}>{{ row.owner_username }}</span>
+                {% else %}
+                  <span class="gp-muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% set pdf = row.pdf_path %}
+                {% set map = row.map_path %}
+                {% if pdf %}
+                  <a class="gp-link" href="{{ pdf }}" target="_blank" rel="noopener">PDF</a>
+                {% endif %}
+                {% if pdf and map %}
+                  <span class="gp-muted">|</span>
+                {% endif %}
+                {% if map %}
+                  <a class="gp-link" href="{{ map }}" target="_blank" rel="noopener">Map</a>
+                {% endif %}
+                {% if not pdf and not map %}
+                  <span class="gp-muted">None</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="gp-muted" style="margin-top:2rem">No searches recorded yet.</div>
+        {% endif %}
+      </section>
+    </main>
+
+    <footer class="gp-footer">
+      Need older records? Contact useradmin@geoprox.co.uk
+    </footer>
+  </div>
 </body>
 </html>

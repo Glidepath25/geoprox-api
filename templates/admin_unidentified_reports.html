@@ -1,158 +1,142 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>GeoProx - Unidentified Reports</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:#0b1724; color:#e6f1ff; margin:0; }
-    header { display:flex; justify-content:space-between; align-items:center; padding:1rem 2rem; background:#12263a; border-bottom:1px solid rgba(255,255,255,0.08); }
-    header h1 { margin:0; font-size:1.2rem; letter-spacing:0.05em; text-transform:uppercase; }
-    main { padding:2rem; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.5rem; }
-    .btn { padding:0.45rem 0.9rem; border-radius:8px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#e6f1ff; text-decoration:none; cursor:pointer; display:inline-block; font-size:0.85rem; }
-    .btn:hover { background:rgba(255,255,255,0.08); }
-    .btn.primary { background:#2b7cff; border-color:#2b7cff; color:#fff; }
-    .btn[disabled] { opacity:0.6; cursor:not-allowed; }
-    .muted { color:#9fb3c7; font-size:0.85rem; }
-    .small { font-size:0.75rem; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:0.6rem 0.75rem; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; vertical-align:top; font-size:0.86rem; }
-    th { background:#18344d; text-transform:uppercase; letter-spacing:0.04em; font-size:0.72rem; }
-    tbody tr:nth-child(even) td { background:#112436; }
-    .no-data { padding:1.2rem 1.4rem; border-radius:10px; border:1px dashed rgba(255,255,255,0.18); color:#9fb3c7; background:rgba(255,255,255,0.04); }
-    .cards { display:flex; gap:1rem; flex-wrap:wrap; }
-    .card { background:#12263a; border-radius:12px; padding:1.1rem 1.3rem; border:1px solid rgba(255,255,255,0.08); min-width:200px; }
-    .card h2 { margin:0 0 0.35rem; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.05em; color:#9fb3c7; }
-    .card strong { font-size:1.4rem; }
-    .note { font-size:0.78rem; color:#9fb3c7; }
-    .flash-list { display:flex; flex-direction:column; gap:0.65rem; }
-    .flash { padding:0.8rem 1rem; border-radius:10px; border-left:4px solid transparent; background:rgba(43,124,255,0.12); color:#c8dcff; }
-    .flash.flash-success { border-color:#2ecc71; background:rgba(46,204,113,0.12); color:#c9f5db; }
-    .flash.flash-error { border-color:#ff5f57; background:rgba(255,95,87,0.12); color:#ffd4d0; }
-    .flash.flash-info { border-color:#2b7cff; }
-    .status { display:inline-flex; align-items:center; gap:0.4rem; padding:0.2rem 0.65rem; border-radius:999px; font-size:0.74rem; letter-spacing:0.06em; text-transform:uppercase; }
-    .status.verified { background:rgba(46,204,113,0.22); color:#bdf4d7; }
-    .status.pending { background:rgba(255,153,0,0.18); color:#ffe0b0; }
-    .inline-form { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
-    .inline-form select { background:#0f2235; border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:0.4rem 0.6rem; color:#e6f1ff; font-size:0.82rem; min-width:180px; }
-    .inline-form select:focus { outline:2px solid #2b7cff; }
-    .inline-form .btn { flex-shrink:0; }
-    @media (max-width:720px) {
-      header, main { padding:1.25rem; }
-      table { font-size:0.78rem; }
-      th, td { padding:0.5rem; }
-      .inline-form { flex-direction:column; align-items:flex-start; }
-      .inline-form select { width:100%; }
-    }
-  </style>
+  <link rel="stylesheet" href="/static/css/geoprox-theme.css">
 </head>
 <body>
-  <header>
-    <h1>Unidentified location reports</h1>
-    <div class="actions" style="display:flex; gap:0.75rem; align-items:center;">
-      <a class="btn" href="/admin/users">Manage users</a>
-      <a class="btn" href="/dashboard">Dashboard</a>
-      <form method="post" action="/logout" style="margin:0;">
-        <button class="btn" type="submit">Sign out</button>
-      </form>
-    </div>
-  </header>
-  <main>
-    <div class="cards">
-      <div class="card">
-        <h2>Total reports</h2>
-        <strong>{{ record_count }}</strong>
+  <div class="gp-app">
+    <header class="gp-header">
+      <div class="gp-header-title">
+        <img src="/static/geoprox-logo.png" alt="GeoProx logo" style="height:32px">
+        <span>Unidentified location reports</span>
       </div>
-      <div class="card">
-        <h2>Verified</h2>
-        <strong>{{ verified_count }}</strong>
-        <div class="muted small">{{ verified_count }} of {{ record_count }}</div>
-      </div>
-      <div class="card">
-        <h2>Viewing scope</h2>
-        {% if is_global_admin %}
-          <div class="muted">All organisations</div>
+      <nav class="gp-nav">
+        <a class="gp-btn gp-btn-outline" href="/dashboard">Dashboard</a>
+        <a class="gp-btn gp-btn-outline" href="/admin/users">Manage users</a>
+        <form method="post" action="/logout">
+          <button class="gp-btn gp-btn-outline" type="submit">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    <main class="gp-main">
+      <section class="gp-section">
+        <h1>Verification queue</h1>
+        <div class="gp-muted gp-small">Admins can verify unidentified locations so they appear in desktop searches.</div>
+        <div class="gp-stats" style="margin-top:1.2rem">
+          <div class="gp-stat">
+            <div class="gp-stat-title">Total reports</div>
+            <div class="gp-stat-value">{{ record_count }}</div>
+          </div>
+          <div class="gp-stat">
+            <div class="gp-stat-title">Verified</div>
+            <div class="gp-stat-value">{{ verified_count }}</div>
+            <div class="gp-muted gp-small">{{ verified_count }} of {{ record_count }}</div>
+          </div>
+          <div class="gp-stat">
+            <div class="gp-stat-title">Viewing scope</div>
+            <div class="gp-muted gp-small">
+              {% if is_global_admin %}
+                All organisations
+              {% else %}
+                {{ company_label or 'Company users only' }}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {% if flashes %}
+      <section class="gp-section">
+        <div class="gp-grid">
+          {% for flash in flashes %}
+            {% set category = flash.category or 'info' %}
+            <div class="gp-flash {{ 'success' if category == 'success' else 'error' if category == 'error' else 'info' }}">{{ flash.message }}</div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="gp-section headerless">
+        {% if records %}
+        <table class="gp-table">
+          <thead>
+            <tr>
+              <th>Recorded</th>
+              <th>Category</th>
+              <th>Name</th>
+              <th>Coordinates</th>
+              <th>Address</th>
+              <th>Notes</th>
+              <th>Submitted by</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in records %}
+            <tr>
+              <td>{{ item.created_at_display }}</td>
+              <td>{{ item.category_label }}</td>
+              <td>{{ item.name }}</td>
+              <td>{% if item.latitude_display and item.longitude_display %}{{ item.latitude_display }}, {{ item.longitude_display }}{% else %}&mdash;{% endif %}</td>
+              <td>{% if item.address %}{{ item.address }}{% else %}&mdash;{% endif %}</td>
+              <td>{% if item.notes %}{{ item.notes }}{% else %}&mdash;{% endif %}</td>
+              <td>
+                {{ item.submitted_display }}
+                {% if item.submitted_company %}<br><span class="gp-muted gp-small">{{ item.submitted_company }}</span>{% endif %}
+              </td>
+              <td>
+                {% if item.is_verified %}
+                  <span class="gp-chip status-low">Verified</span>
+                  {% if item.verified_at_display or item.verified_by %}
+                  <div class="gp-muted gp-small" style="margin-top:0.4rem">
+                    {% if item.verified_at_display %}{{ item.verified_at_display }}{% endif %}
+                    {% if item.verified_by %}{% if item.verified_at_display %}<br>{% endif %}by {{ item.verified_by }}{% endif %}
+                  </div>
+                  {% endif %}
+                  {% if item.search_category_label %}
+                  <div class="gp-muted gp-small">Category: {{ item.search_category_label }}</div>
+                  {% endif %}
+                {% else %}
+                  <span class="gp-chip status-medium">Pending</span>
+                  {% if item.suggested_label %}
+                  <div class="gp-muted gp-small" style="margin-top:0.4rem">Suggested: {{ item.suggested_label }}</div>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="/admin/reports/unidentified/{{ item.id }}/verify" class="gp-inline-form">
+                  <select name="search_category">
+                    {% for value, label in search_category_options %}
+                      <option value="{{ value }}" {% if value == item.current_category_choice %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="gp-btn" type="submit" {% if not item.has_coordinates %}disabled{% endif %}>
+                    {% if item.is_verified %}Update{% else %}Verify &amp; add{% endif %}
+                  </button>
+                </form>
+                {% if not item.has_coordinates %}
+                <div class="gp-muted gp-small" style="margin-top:0.25rem">Add latitude and longitude before verifying.</div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
         {% else %}
-          <div class="muted">{{ company_label or 'Company users only' }}</div>
+        <div class="gp-muted">No unidentified location reports have been submitted yet.</div>
         {% endif %}
-      </div>
-    </div>
+      </section>
+    </main>
 
-    {% if flashes %}
-    <div class="flash-list">
-      {% for flash in flashes %}
-        <div class="flash flash-{{ flash.category or 'info' }}">{{ flash.message }}</div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    {% if records %}
-    <table>
-      <thead>
-        <tr>
-          <th>Recorded</th>
-          <th>Category</th>
-          <th>Name</th>
-          <th>Coordinates</th>
-          <th>Address</th>
-          <th>Notes</th>
-          <th>Submitted by</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in records %}
-        <tr>
-          <td>{{ item.created_at_display }}</td>
-          <td>{{ item.category_label }}</td>
-          <td>{{ item.name }}</td>
-          <td>{% if item.latitude_display and item.longitude_display %}{{ item.latitude_display }}, {{ item.longitude_display }}{% else %}&mdash;{% endif %}</td>
-          <td>{% if item.address %}{{ item.address }}{% else %}&mdash;{% endif %}</td>
-          <td>{% if item.notes %}{{ item.notes }}{% else %}&mdash;{% endif %}</td>
-          <td>{{ item.submitted_display }}{% if item.submitted_company %}<br><span class="note">{{ item.submitted_company }}</span>{% endif %}</td>
-          <td>
-            {% if item.is_verified %}
-              <div class="status verified">Verified</div>
-              {% if item.verified_at_display or item.verified_by %}
-                <div class="muted small">
-                  {% if item.verified_at_display %}{{ item.verified_at_display }}{% endif %}
-                  {% if item.verified_by %}{% if item.verified_at_display %}<br>{% endif %}by {{ item.verified_by }}{% endif %}
-                </div>
-              {% endif %}
-              {% if item.search_category_label %}
-                <div class="muted small">Category: {{ item.search_category_label }}</div>
-              {% endif %}
-            {% else %}
-              <div class="status pending">Pending</div>
-              {% if item.suggested_label %}
-                <div class="muted small">Suggested: {{ item.suggested_label }}</div>
-              {% endif %}
-            {% endif %}
-          </td>
-          <td>
-            <form method="post" action="/admin/reports/unidentified/{{ item.id }}/verify" class="inline-form">
-              <select name="search_category">
-                {% for value, label in search_category_options %}
-                  <option value="{{ value }}" {% if value == item.current_category_choice %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-              <button class="btn primary" type="submit" {% if not item.has_coordinates %}disabled{% endif %}>
-                {% if item.is_verified %}Update{% else %}Verify &amp; add{% endif %}
-              </button>
-            </form>
-            {% if not item.has_coordinates %}
-              <div class="muted small">Add latitude and longitude before verifying.</div>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="no-data">No unidentified location reports have been submitted yet.</div>
-    {% endif %}
-  </main>
+    <footer class="gp-footer">
+      Data verified here feeds the desktop search experience.
+    </footer>
+  </div>
 </body>
 </html>
-
