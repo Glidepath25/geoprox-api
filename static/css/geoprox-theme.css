@@ -308,6 +308,37 @@ select:focus {
   color: var(--muted);
 }
 
+.gp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.gp-badge.green {
+  background: rgba(76, 175, 125, 0.2);
+  border-color: rgba(76, 175, 125, 0.35);
+  color: var(--success-green);
+}
+
+.gp-badge.amber {
+  background: rgba(243, 167, 18, 0.22);
+  border-color: rgba(243, 167, 18, 0.35);
+  color: var(--warning-amber);
+}
+
+.gp-badge.red {
+  background: rgba(227, 91, 10, 0.2);
+  border-color: rgba(227, 91, 10, 0.35);
+  color: var(--danger-red);
+}
+
 .gp-chip {
   display: inline-flex;
   align-items: center;
@@ -374,6 +405,109 @@ select:focus {
 
 .gp-small {
   font-size: 0.78rem;
+}
+
+.gp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gp-form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.gp-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.gp-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.gp-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.gp-checkbox input {
+  accent-color: var(--accent-blue);
+}
+
+.gp-note {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.gp-collapsible {
+  position: relative;
+  padding-top: 1.75rem;
+}
+
+.gp-collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.gp-collapsible-title {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.gp-toggle {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 0.35rem 0.8rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.gp-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.gp-collapsible.collapsed .gp-collapsible-body {
+  display: none;
+}
+
+.gp-table-note {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.gp-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.gp-filter-bar {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 1rem;
 }
 
 .gp-flash {
@@ -516,6 +650,7 @@ select:focus {
     justify-content: flex-start;
   }
 
+  .gp-table-actions,
   .gp-btn,
   button.gp-btn,
   input.gp-btn {

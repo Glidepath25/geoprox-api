@@ -4,455 +4,213 @@
   <meta charset="utf-8">
   <title>Permit Records - GeoProx</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/css/geoprox-theme.css">
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0b1724;
-      --panel: #14283d;
-      --panel-alt: #102033;
-      --text: #f2f7ff;
-      --muted: #8ea2ba;
-      --accent: #2b7cff;
-      --accent-soft: rgba(43, 124, 255, 0.12);
-      --border: rgba(255, 255, 255, 0.08);
-      --success: #44d19f;
-      --error: #ff9e9e;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: linear-gradient(160deg, rgba(43,124,255,0.08), transparent 50%), var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1.25rem 2rem;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      font-size: 0.85rem;
-    }
-    .brand span {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.35rem 0.8rem;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      border: 1px solid rgba(43,124,255,0.45);
-    }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-    }
-    .nav-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-      padding: 0.45rem 1rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.06);
-      color: var(--text);
-      text-decoration: none;
-      font-size: 0.86rem;
-      transition: background 0.15s ease, border-color 0.15s ease;
-    }
-    .nav-btn:hover {
-      background: rgba(43,124,255,0.2);
-      border-color: rgba(43,124,255,0.45);
-    }
-    main {
-      width: 100%;
-      max-width: none;
-      margin: 2.5rem auto 3rem;
-      padding: 0 2rem 3rem;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 1.75rem;
-    }
-    h1 {
-      margin: 0 0 0.4rem;
-      font-size: 2rem;
-      font-weight: 600;
-    }
-    .subtitle {
-      margin: 0;
-      color: var(--muted);
-      font-size: 1rem;
-    }
-    .card {
-      background: var(--panel);
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      padding: 1.75rem;
-      box-shadow: 0 20px 50px rgba(10, 22, 40, 0.35);
-    }
-    .card h2 {
-      margin-top: 0;
-      margin-bottom: 1rem;
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
-    .search-form {
+    .permit-search-grid {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 0.9rem;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       align-items: end;
     }
-    label {
-      font-size: 0.85rem;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.76);
+    .permit-search-grid button {
+      min-width: 160px;
     }
-    input[type="text"] {
-      width: 100%;
-      padding: 0.7rem 0.85rem;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.15);
-      background: var(--panel-alt);
-      color: var(--text);
-      font-size: 0.95rem;
-    }
-    input[type="text"]:focus {
-      outline: none;
-      border-color: rgba(43,124,255,0.65);
-      box-shadow: 0 0 0 2px rgba(43,124,255,0.18);
-    }
-    .primary-btn {
-      padding: 0.75rem 1.4rem;
-      border-radius: 12px;
-      border: 0;
-      background: linear-gradient(135deg, rgba(43,124,255,0.9), rgba(24,96,168,0.9));
-      color: var(--text);
-      font-weight: 600;
-      font-size: 0.95rem;
-      cursor: pointer;
-      box-shadow: 0 18px 40px rgba(30,84,158,0.45);
-      transition: transform 0.16s ease, box-shadow 0.16s ease;
-    }
-    .primary-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 22px 46px rgba(30,84,158,0.55);
-    }
-    .hint {
-      margin-top: 0.7rem;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-    .scope-note {
-      margin: 0 0 1rem;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-    .flash-list {
-      display: grid;
-      gap: 0.6rem;
-    }
-    .flash {
-      padding: 0.75rem 1rem;
-      border-radius: 12px;
-      font-size: 0.9rem;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.06);
-    }
-    .flash-success { border-color: rgba(68,209,159,0.35); background: rgba(68,209,159,0.18); color: #a7f2d4; }
-    .flash-error { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.18); color: #ffb3b3; }
-    .table-wrapper {
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(9,20,36,0.75);
+    .permit-table-wrapper {
       overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
-    .card-heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      margin-bottom: 1.1rem;
+    .permit-results-table {
+      width: 100%;
+      min-width: 960px;
+      border-collapse: collapse;
     }
-    .card-heading h2 {
-      margin: 0;
+    .permit-results-table th,
+    .permit-results-table td {
+      padding: 0.65rem 0.8rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      text-align: left;
+      vertical-align: top;
+    }
+    .permit-results-table thead th {
+      background: rgba(18, 20, 24, 0.9);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.72rem;
+      color: var(--muted);
     }
     .filter-row th {
-      padding: 0.35rem 0.9rem;
-      background: rgba(255,255,255,0.03);
-      position: relative;
+      background: rgba(0, 0, 0, 0.18);
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
     .filter-anchor {
-      position: relative;
       display: flex;
-      justify-content: flex-end;
-      min-height: 1.8rem;
-    }
-    .filter-button {
-      border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(255,255,255,0.06);
-      color: var(--text);
-      border-radius: 12px;
-      padding: 0.25rem 0.65rem;
-      font-size: 0.75rem;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-    }
-    .filter-button:hover,
-    .filter-button.menu-open {
-      background: rgba(43,124,255,0.18);
-      border-color: rgba(43,124,255,0.4);
-    }
-    .filter-button.has-filter {
-      border-color: rgba(68,209,159,0.45);
-      background: rgba(68,209,159,0.18);
-    }
-    .filter-menu {
-      position: absolute;
-      top: calc(100% + 0.45rem);
-      right: 0;
-      min-width: 210px;
-      max-height: 260px;
-      overflow-y: auto;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.18);
-      background: rgba(10,22,40,0.95);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
-      padding: 0.65rem 0.75rem;
-      z-index: 20;
-    }
-    .filter-menu.hidden {
-      display: none;
-    }
-    .filter-menu-actions {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin-bottom: 0.55rem;
-    }
-    .filter-menu-actions button {
-      border: none;
-      background: rgba(255,255,255,0.08);
-      color: var(--text);
-      font-size: 0.7rem;
-      border-radius: 10px;
-      padding: 0.25rem 0.6rem;
-      cursor: pointer;
-    }
-    .filter-menu-actions button:hover {
-      background: rgba(43,124,255,0.25);
-    }
-    .filter-menu-options {
-      display: grid;
-      gap: 0.35rem;
-    }
-    .filter-menu-options label {
-      display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: 0.45rem;
-      font-size: 0.78rem;
-      color: rgba(255,255,255,0.86);
+      min-height: 32px;
     }
-    .filter-menu-options input[type="checkbox"] {
-      width: 0.9rem;
-      height: 0.9rem;
-      accent-color: var(--accent);
-    }
-    .filter-empty {
-      margin: 0;
-      font-size: 0.78rem;
-      color: rgba(255,255,255,0.6);
-    }
-    .results-table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 760px;
-    }
-    .results-table thead {
-      background: rgba(255,255,255,0.08);
-    }
-    .results-table th,
-    .results-table td {
-      padding: 0.65rem 0.9rem;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      text-align: center;
-      font-size: 0.85rem;
-    }
-    .results-table th {
-      font-size: 0.78rem;
-      letter-spacing: 0.06em;
+    .filter-chip {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: rgba(255,255,255,0.78);
-      white-space: nowrap;
-    }
-    .results-table tbody tr:nth-child(odd) {
-      background: rgba(255,255,255,0.03);
-    }
-    .results-table tbody tr:hover {
-      background: rgba(43,124,255,0.1);
-    }
-    .results-table td a {
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 600;
-    }
-    button.nav-btn {
-      border: none;
-      font: inherit;
-    }
-    button.nav-btn:hover {
       cursor: pointer;
+    }
+    .filter-chip:hover,
+    .filter-chip.active {
+      background: rgba(43, 124, 255, 0.2);
+      border-color: rgba(43, 124, 255, 0.45);
     }
     .status-pill {
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
-      padding: 0.3rem 0.7rem;
+      padding: 0.25rem 0.65rem;
       border-radius: 999px;
       font-size: 0.75rem;
-      letter-spacing: 0.03em;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.08);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
     }
-    .status-pill.status-done { border-color: rgba(68,209,159,0.4); background: rgba(68,209,159,0.15); color: #a7f2d4; }
-    .status-pill.status-progress { border-color: rgba(255,200,87,0.4); background: rgba(255,200,87,0.15); color: #ffe5a0; }
-    .status-pill.status-pending { border-color: rgba(255,158,158,0.35); background: rgba(255,158,158,0.15); color: #ffb3b3; }
-    .empty-state {
+    .status-pill.status-done {
+      border-color: rgba(76, 175, 125, 0.35);
+      background: rgba(76, 175, 125, 0.2);
+      color: var(--success-green);
+    }
+    .status-pill.status-progress {
+      border-color: rgba(243, 167, 18, 0.35);
+      background: rgba(243, 167, 18, 0.2);
+      color: var(--warning-amber);
+    }
+    .status-pill.status-pending {
+      border-color: rgba(227, 91, 10, 0.35);
+      background: rgba(227, 91, 10, 0.2);
+      color: var(--danger-red);
+    }
+    .permit-empty {
+      margin-top: 1.5rem;
       text-align: center;
-      padding: 1.4rem;
       color: var(--muted);
-      font-size: 0.9rem;
     }
-    .hidden { display: none !important; }
+    .hidden {
+      display: none !important;
+    }
     @media (max-width: 720px) {
-      header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.9rem;
-        padding: 1.1rem 1.5rem;
-      }
-      main {
-        padding: 0 1.4rem 2.5rem;
-        margin-top: 2.5rem;
-      }
-      .search-form {
+      .permit-search-grid {
         grid-template-columns: 1fr;
       }
-      .table-wrapper {
-        border-radius: 12px;
-      }
-      .results-table {
-        min-width: 600px;
-      }
-      .filter-menu {
-        left: 0;
-        right: auto;
+      .permit-search-grid button {
+        width: 100%;
       }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <span>GeoProx</span>
-      <div>Permit workspace</div>
-    </div>
-    <div class="actions">
-      <a class="nav-btn" href="/dashboard">Dashboard</a>
-      <a class="nav-btn" href="/app">Desktop check</a>
-      <a class="nav-btn" href="/permits">Permits</a>
-    </div>
-  </header>
-  <main>
-    <section>
-      <h1>Permit records</h1>
-      <p class="subtitle">{{ user_type_label }} access. Search for saved desktop proximity checks and complete the remaining permit stages.</p>
-    </section>
-
-    {% if flashes %}
-    <div class="flash-list">
-      {% for flash in flashes %}
-      <div class="flash flash-{{ flash.category }}">{{ flash.message }}</div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    <section class="card">
-      <h2>Find a permit</h2>
-      <form id="permitSearchForm" class="search-form" autocomplete="off">
-        <div>
-          <label for="permitQuery">Permit reference</label>
-          <input id="permitQuery" name="permitQuery" type="text" placeholder="Type a permit reference e.g. TEST-123">
-        </div>
-        <div>
-          <button class="primary-btn" type="submit">Search</button>
-        </div>
-      </form>
-      <p class="hint">Enter part of a reference to see matching permits. Leave blank and search to show your most recent records.</p>
-    </section>
-
-    <section class="card">
-      <div class="card-heading">
-        <h2>Matching permits</h2>
-        <button id="downloadBtn" type="button" class="nav-btn hidden">Download data</button>
+  <div class="gp-app">
+    <header class="gp-header">
+      <div class="gp-header-title">
+        <img src="/static/geoprox-logo.png" alt="GeoProx logo" style="height:32px">
+        <span>Permit workspace</span>
       </div>
-      {% if not allow_desktop %}
-      <p class="scope-note">Desktop searches must be completed by a desktop user. You can view and update existing permits from your company.</p>
+      <nav class="gp-nav">
+        <a class="gp-btn gp-btn-outline" href="/dashboard">Dashboard</a>
+        <a class="gp-btn gp-btn-outline" href="/app">Desktop map</a>
+      </nav>
+    </header>
+
+    <main class="gp-main">
+      <section class="gp-section">
+        <h1>Permit records</h1>
+        <div class="gp-muted">Search for saved desktop proximity checks and complete the remaining permit stages.</div>
+      </section>
+
+      {% if flashes %}
+      <section class="gp-section">
+        {% for flash in flashes %}
+          <div class="gp-flash {{ flash.category }}">{{ flash.message }}</div>
+        {% endfor %}
+      </section>
       {% endif %}
-      {% if has_company_scope %}
-      <p class="scope-note">Showing permits created by {{ visible_usernames | join(', ') }}.</p>
-      {% endif %}
-      <div id="resultsWrapper" class="table-wrapper hidden">
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th scope="col">Permit</th>
-              <th scope="col">Created By</th>
-              <th scope="col">Desktop Status</th>
-              <th scope="col">Desktop Outcome</th>
-              <th scope="col">Field Status</th>
-              <th scope="col">Bituminous Outcome</th>
-              <th scope="col">Sub-base Outcome</th>
-              <th scope="col">Sample Status</th>
-              <th scope="col">Sample Outcome</th>
-              <th scope="col">Sample Date</th>
-              <th scope="col">Desktop Date</th>
-              <th scope="col">Site Date</th>
-            </tr>
-            <tr class="filter-row">
-              <th><div class="filter-anchor" data-field="permit_ref"></div></th>
-              <th><div class="filter-anchor" data-field="owner_username"></div></th>
-              <th><div class="filter-anchor" data-field="desktop_status"></div></th>
-              <th><div class="filter-anchor" data-field="desktop_outcome"></div></th>
-              <th><div class="filter-anchor" data-field="site_status"></div></th>
-              <th><div class="filter-anchor" data-field="site_bituminous"></div></th>
-              <th><div class="filter-anchor" data-field="site_sub_base"></div></th>
-              <th><div class="filter-anchor" data-field="sample_status"></div></th>
-              <th><div class="filter-anchor" data-field="sample_outcome"></div></th>
-              <th><div class="filter-anchor" data-field="sample_date"></div></th>
-              <th><div class="filter-anchor" data-field="desktop_date"></div></th>
-              <th><div class="filter-anchor" data-field="site_date"></div></th>
-            </tr>
-          </thead>
-          <tbody id="permitResults" data-initial='{{ (initial_results or []) | tojson }}'></tbody>
-        </table>
-      </div>
-      <div id="resultsEmpty" class="empty-state hidden">No permits found. Try another search phrase or create a permit from the desktop module.</div>
-    </section>
-  </main>
+
+      <section class="gp-section">
+        <h2>Find a permit</h2>
+        <form id="permitSearchForm" class="permit-search-grid" autocomplete="off">
+          <div class="gp-form-group">
+            <label for="permitQuery">Permit reference</label>
+            <input id="permitQuery" name="permitQuery" type="text" placeholder="Type a permit reference e.g. TEST-123">
+          </div>
+          <button class="gp-btn" type="submit">Search</button>
+        </form>
+        <div class="gp-note" style="margin-top:0.75rem;">
+          Enter part of a reference to see matching permits. Leave blank and search to show your most recent records.
+        </div>
+      </section>
+
+      <section class="gp-section">
+        <div class="gp-toolbar">
+          <h2>Matching permits</h2>
+          <div class="gp-toolbar-group">
+            <button id="downloadBtn" type="button" class="gp-btn gp-btn-outline hidden">Download data</button>
+          </div>
+        </div>
+        {% if not allow_desktop %}
+        <div class="gp-note">Desktop searches must be completed by a desktop user. You can review existing permits from your company.</div>
+        {% endif %}
+        {% if has_company_scope %}
+        <div class="gp-note" style="margin-top:0.4rem;">Showing permits created by {{ visible_usernames | join(', ') }}.</div>
+        {% endif %}
+
+        <div id="resultsWrapper" class="permit-table-wrapper hidden" style="margin-top:1.2rem;">
+          <table class="permit-results-table">
+            <thead>
+              <tr>
+                <th scope="col">Permit</th>
+                <th scope="col">Created By</th>
+                <th scope="col">Desktop Status</th>
+                <th scope="col">Desktop Outcome</th>
+                <th scope="col">Field Status</th>
+                <th scope="col">Bituminous Outcome</th>
+                <th scope="col">Sub-base Outcome</th>
+                <th scope="col">Sample Status</th>
+                <th scope="col">Sample Outcome</th>
+                <th scope="col">Sample Date</th>
+                <th scope="col">Desktop Date</th>
+                <th scope="col">Site Date</th>
+              </tr>
+              <tr class="filter-row">
+                <th><div class="filter-anchor" data-field="permit_ref"></div></th>
+                <th><div class="filter-anchor" data-field="owner_username"></div></th>
+                <th><div class="filter-anchor" data-field="desktop_status"></div></th>
+                <th><div class="filter-anchor" data-field="desktop_outcome"></div></th>
+                <th><div class="filter-anchor" data-field="site_status"></div></th>
+                <th><div class="filter-anchor" data-field="site_bituminous"></div></th>
+                <th><div class="filter-anchor" data-field="site_sub_base"></div></th>
+                <th><div class="filter-anchor" data-field="sample_status"></div></th>
+                <th><div class="filter-anchor" data-field="sample_outcome"></div></th>
+                <th><div class="filter-anchor" data-field="sample_date"></div></th>
+                <th><div class="filter-anchor" data-field="desktop_date"></div></th>
+                <th><div class="filter-anchor" data-field="site_date"></div></th>
+              </tr>
+            </thead>
+            <tbody id="permitResults" data-initial='{{ (initial_results or []) | tojson }}'></tbody>
+          </table>
+        </div>
+        <div id="resultsEmpty" class="permit-empty hidden">
+          No permits found. Try another search phrase or create a permit from the desktop module.
+        </div>
+      </section>
+    </main>
+
+    <footer class="gp-footer">
+      Permit data syncs with your desktop proximity checks and site assessments.
+    </footer>
+  </div>
 
   <script>
     (function () {
@@ -480,264 +238,119 @@
         return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${String(date.getUTCFullYear()).slice(-2)}`;
       };
 
-      const filterConfig = [
-        { field: 'permit_ref', accessor: (item) => item.permit_ref || '' },
-        { field: 'owner_username', accessor: (item) => item.owner_username || '' },
-        { field: 'desktop_status', accessor: (item) => item.desktop_status || '' },
-        { field: 'desktop_outcome', accessor: (item) => item.desktop_outcome || '' },
-        { field: 'site_status', accessor: (item) => item.site_status || '' },
-        { field: 'site_bituminous', accessor: (item) => item.site_bituminous || item.site_outcome || '' },
-        { field: 'site_sub_base', accessor: (item) => item.site_sub_base || item.site_outcome || '' },
-        { field: 'sample_status', accessor: (item) => item.sample_status || '' },
-        { field: 'sample_outcome', accessor: (item) => item.sample_outcome || '' },
-        { field: 'sample_date', accessor: (item) => renderDate(item.sample_date, item.updated_at) },
-        { field: 'desktop_date', accessor: (item) => renderDate(item.desktop_date, item.created_at) },
-        { field: 'site_date', accessor: (item) => renderDate(item.site_date, item.updated_at) },
-      ];
-
-      const EMPTY_TOKEN = '__EMPTY__';
-      const EMPTY_LABEL = '(blank)';
-      const EXPORT_LIMIT = 500;
-
-      let allItems = [];
-      let filterOptions = {};
-      let filterState = {};
-      let lastQuery = '';
-      let isLoading = false;
-      let documentClickBound = false;
-
-      const parseInitial = () => {
-        try {
-          return JSON.parse(resultsContainer.dataset.initial || '[]');
-        } catch (err) {
-          console.warn('Failed to parse initial permit results', err);
-          return [];
-        }
-      };
-
-      const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => {
-        switch (char) {
-          case '&': return '&amp;';
-          case '<': return '&lt;';
-          case '>': return '&gt;';
-          case '"': return '&quot;';
-          case "'": return '&#39;';
-          default: return char;
-        }
-      });
-
-      const statusClass = (status) => {
-        if (!status) return 'status-pill';
-        const key = String(status).toLowerCase();
-        if (key.includes('complete')) return 'status-pill status-done';
-        if (key.includes('progress') || key.includes('follow')) return 'status-pill status-progress';
-        if (key.includes('pending') || key.includes('start')) return 'status-pill status-pending';
-        return 'status-pill';
-      };
-
       const valueOrDash = (value) => {
-        if (value === undefined || value === null) return '-';
-        const text = String(value).trim();
-        return text ? text : '-';
+        if (!value && value !== 0) return '—';
+        return typeof value === 'string' ? value : String(value);
       };
 
-      const extractOutcome = (text, prefix) => {
-        if (typeof text !== 'string' || !text.trim()) return '';
-        const loweredPrefix = prefix.toLowerCase();
-        const segments = text.split('|');
-        for (const segment of segments) {
-          const part = segment.trim();
-          if (!part.toLowerCase().startsWith(loweredPrefix)) continue;
-          const delimiterIndex = part.indexOf(':');
-          if (delimiterIndex === -1) continue;
-          const trimmed = part.slice(delimiterIndex + 1).trim();
-          if (trimmed) return trimmed;
+      const buildStatusCell = (status, fallback) => {
+        const pill = document.createElement('span');
+        pill.className = 'status-pill';
+        const text = (status || fallback || '').toString();
+        pill.textContent = text || '—';
+        const lower = text.toLowerCase();
+        if (lower.includes('complete') || lower.includes('done')) {
+          pill.classList.add('status-done');
+        } else if (lower.includes('pending') || lower.includes('progress')) {
+          pill.classList.add('status-progress');
+        } else if (!text || text === '—') {
+          pill.classList.add('status-pending');
         }
-        return '';
-      };
-
-      const buildStatusCell = (value, fallback) => {
-        const statusValue = value || fallback;
-        const badge = document.createElement('span');
-        badge.className = statusClass(statusValue);
-        badge.textContent = statusValue;
         const cell = document.createElement('td');
-        cell.appendChild(badge);
+        cell.appendChild(pill);
         return cell;
       };
 
-      const normaliseValue = (value) => {
-        if (value === undefined || value === null) return EMPTY_TOKEN;
-        const text = String(value).trim();
-        return text ? text : EMPTY_TOKEN;
-      };
+      const filterConfig = [
+        { field: 'permit_ref', label: 'Permit' },
+        { field: 'owner_username', label: 'Owner' },
+        { field: 'desktop_status', label: 'Desktop status' },
+        { field: 'desktop_outcome', label: 'Desktop outcome' },
+        { field: 'site_status', label: 'Field status' },
+        { field: 'site_bituminous', label: 'Bituminous outcome' },
+        { field: 'site_sub_base', label: 'Sub-base outcome' },
+        { field: 'sample_status', label: 'Sample status' },
+        { field: 'sample_outcome', label: 'Sample outcome' },
+        { field: 'sample_date', label: 'Sample date' },
+        { field: 'desktop_date', label: 'Desktop date' },
+        { field: 'site_date', label: 'Site date' },
+      ];
+
+      let lastQuery = '';
+      let allItems = [];
+      let filterOptions = {};
+      let filterState = {};
+      let isLoading = false;
 
       const buildFilterOptions = (items) => {
-        const options = {};
-        filterConfig.forEach(({ field, accessor }) => {
-          const map = new Map();
-          items.forEach((item) => {
-            const rawValue = accessor(item);
-            const key = normaliseValue(rawValue);
-            if (!map.has(key)) {
-              const label = key === EMPTY_TOKEN ? EMPTY_LABEL : String(rawValue).trim() || EMPTY_LABEL;
-              map.set(key, label);
-            }
+        const map = {};
+        filterConfig.forEach(({ field }) => { map[field] = new Map(); });
+        items.forEach((item) => {
+          filterConfig.forEach(({ field }) => {
+            const raw = item[field];
+            if (raw === undefined || raw === null || raw === '') return;
+            const value = String(raw);
+            const store = map[field];
+            store.set(value, (store.get(value) || 0) + 1);
           });
-          const sorted = Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base', numeric: true }));
-          options[field] = sorted;
         });
-        return options;
+        const result = {};
+        Object.entries(map).forEach(([field, store]) => {
+          result[field] = Array.from(store.entries()).sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
+        });
+        return result;
       };
 
       const renderFilterControls = () => {
-        closeAllMenus();
-        Object.entries(filterOptions).forEach(([field, entries]) => {
+        Object.values(filterAnchorMap).forEach((anchor) => { anchor.innerHTML = ''; });
+        filterConfig.forEach(({ field }) => {
           const anchor = filterAnchorMap[field];
           if (!anchor) return;
-          const activeSet = filterState[field];
-          const hasFilter = activeSet !== undefined;
-          const optionsHtml = entries.length
-            ? entries.map(([key, label]) => {
-                const checked = !activeSet || activeSet.has(key) ? 'checked' : '';
-                return `<label><input type="checkbox" value="${escapeHtml(key)}" ${checked}>${escapeHtml(label)}</label>`;
-              }).join('')
-            : '<p class="filter-empty">No values</p>';
-          anchor.innerHTML = `
-            <button type="button" class="filter-button ${hasFilter ? 'has-filter' : ''}" data-field="${field}">Filter</button>
-            <div class="filter-menu hidden" data-field="${field}">
-              <div class="filter-menu-actions">
-                <button type="button" data-action="select-all">Select all</button>
-                <button type="button" data-action="clear-filter">Clear</button>
-              </div>
-              <div class="filter-menu-options">${optionsHtml}</div>
-            </div>
-          `;
+          const chips = filterOptions[field] || [];
+          chips.forEach(([value, count]) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'filter-chip';
+            chip.dataset.field = field;
+            chip.dataset.value = value;
+            chip.textContent = `${value} (${count})`;
+            if (filterState[field] && filterState[field].has(value)) {
+              chip.classList.add('active');
+            }
+            chip.addEventListener('click', () => {
+              const state = filterState[field] || new Set();
+              if (state.has(value)) {
+                state.delete(value);
+                if (state.size === 0) delete filterState[field];
+              } else {
+                state.add(value);
+                filterState[field] = state;
+              }
+              renderFilterControls();
+              refreshTable();
+            });
+            anchor.appendChild(chip);
+          });
         });
-        attachFilterEventListeners();
-      };
-
-      const attachFilterEventListeners = () => {
-        document.querySelectorAll('.filter-button').forEach((button) => {
-          button.addEventListener('click', handleFilterButton);
-        });
-        document.querySelectorAll('.filter-menu').forEach((menu) => {
-          menu.addEventListener('click', (event) => event.stopPropagation());
-        });
-        document.querySelectorAll('.filter-menu input[type="checkbox"]').forEach((input) => {
-          input.addEventListener('change', handleCheckboxChange);
-        });
-        document.querySelectorAll('.filter-menu button[data-action]').forEach((button) => {
-          button.addEventListener('click', handleFilterAction);
-        });
-        if (!documentClickBound) {
-          document.addEventListener('click', handleDocumentClick);
-          documentClickBound = true;
-        }
-      };
-
-      const handleFilterButton = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const field = event.currentTarget.dataset.field;
-        const anchor = filterAnchorMap[field];
-        if (!anchor) return;
-        const menu = anchor.querySelector('.filter-menu');
-        const isOpen = menu.classList.contains('open');
-        closeAllMenus();
-        if (!isOpen) {
-          menu.classList.remove('hidden');
-          menu.classList.add('open');
-          event.currentTarget.classList.add('menu-open');
-        }
-      };
-
-      const handleCheckboxChange = (event) => {
-        event.stopPropagation();
-        const menu = event.currentTarget.closest('.filter-menu');
-        const field = menu.dataset.field;
-        const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]'));
-        const checkedValues = checkboxes.filter((input) => input.checked).map((input) => input.value);
-        if (checkedValues.length === checkboxes.length) {
-          delete filterState[field];
-        } else {
-          filterState[field] = new Set(checkedValues);
-        }
-        updateButtonFilterClass(field);
-        refreshTable();
-      };
-
-      const handleFilterAction = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const action = event.currentTarget.dataset.action;
-        const menu = event.currentTarget.closest('.filter-menu');
-        const field = menu.dataset.field;
-        const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]'));
-        if (action === 'select-all') {
-          checkboxes.forEach((input) => { input.checked = true; });
-          delete filterState[field];
-        } else if (action === 'clear-filter') {
-          checkboxes.forEach((input) => { input.checked = false; });
-          filterState[field] = new Set();
-        }
-        updateButtonFilterClass(field);
-        refreshTable();
-      };
-
-      const handleDocumentClick = (event) => {
-        if (event.target.closest('.filter-menu') || event.target.closest('.filter-button')) {
-          return;
-        }
-        closeAllMenus();
-      };
-
-      const closeAllMenus = () => {
-        document.querySelectorAll('.filter-menu').forEach((menu) => {
-          menu.classList.remove('open');
-          menu.classList.add('hidden');
-        });
-        document.querySelectorAll('.filter-button').forEach((button) => {
-          button.classList.remove('menu-open');
-        });
-      };
-
-      const updateButtonFilterClass = (field) => {
-        const anchor = filterAnchorMap[field];
-        if (!anchor) return;
-        const button = anchor.querySelector('.filter-button');
-        if (!button) return;
-        const activeSet = filterState[field];
-        if (activeSet !== undefined) {
-          button.classList.add('has-filter');
-        } else {
-          button.classList.remove('has-filter');
-        }
       };
 
       const applyFilters = (items) => {
-        const activeFields = Object.keys(filterState);
-        if (activeFields.length === 0) {
-          return items.slice();
-        }
+        const entries = Object.entries(filterState);
+        if (!entries.length) return items;
         return items.filter((item) => {
-          return filterConfig.every(({ field, accessor }) => {
-            const selections = filterState[field];
-            if (selections === undefined) return true;
-            const key = normaliseValue(accessor(item));
-            return selections.has(key);
+          return entries.every(([field, selected]) => {
+            if (!selected || selected.size === 0) return true;
+            const value = item[field];
+            if (value === undefined || value === null) return false;
+            return selected.has(String(value));
           });
         });
       };
 
       const renderTable = (items) => {
         resultsContainer.innerHTML = '';
-        if (!Array.isArray(items) || items.length === 0) {
+        if (!items.length) {
           resultsWrapper.classList.add('hidden');
-          const hasBaseData = allItems.length > 0;
-          emptyState.textContent = hasBaseData
-            ? 'No permits match the selected filters.'
-            : 'No permits found. Try another search phrase or create a permit from the desktop module.';
           emptyState.classList.remove('hidden');
           updateDownloadState(false);
           return;
@@ -747,28 +360,16 @@
         updateDownloadState(true);
         items.forEach((item) => {
           const row = document.createElement('tr');
-
           const permitCell = document.createElement('td');
-          if (item.permit_ref) {
-            const link = document.createElement('a');
-            let href = `/permits/${encodeURIComponent(item.permit_ref)}/view`;
-            if (item.owner_username) {
-              href += `?owner=${encodeURIComponent(item.owner_username)}`;
-            }
-            link.href = href;
-            link.textContent = item.permit_ref;
-            permitCell.appendChild(link);
-          } else {
-            permitCell.textContent = '-';
-          }
+          const permitLink = document.createElement('a');
+          permitLink.href = `/permits/${encodeURIComponent(item.permit_ref)}/view`;
+          permitLink.className = 'gp-link';
+          permitLink.textContent = item.permit_ref || '—';
+          permitCell.appendChild(permitLink);
           row.appendChild(permitCell);
 
           const ownerCell = document.createElement('td');
-          const ownerLabel = item.owner_username || '-';
-          ownerCell.textContent = ownerLabel;
-          if (item.owner_display_name && item.owner_display_name !== ownerLabel) {
-            ownerCell.title = item.owner_display_name;
-          }
+          ownerCell.textContent = valueOrDash(item.owner_username);
           row.appendChild(ownerCell);
 
           row.appendChild(buildStatusCell(item.desktop_status, 'Pending'));
@@ -777,16 +378,14 @@
           desktopOutcomeCell.textContent = valueOrDash(item.desktop_outcome);
           row.appendChild(desktopOutcomeCell);
 
-          row.appendChild(buildStatusCell(item.site_status, 'Not started'));
+          row.appendChild(buildStatusCell(item.site_status, 'Pending'));
 
-          const bituminousValue = item.site_bituminous || extractOutcome(item.site_outcome, 'bituminous');
           const bituminousCell = document.createElement('td');
-          bituminousCell.textContent = valueOrDash(bituminousValue);
+          bituminousCell.textContent = valueOrDash(item.site_bituminous || item.bituminous_outcome);
           row.appendChild(bituminousCell);
 
-          const subBaseValue = item.site_sub_base || extractOutcome(item.site_outcome, 'sub-base');
           const subBaseCell = document.createElement('td');
-          subBaseCell.textContent = valueOrDash(subBaseValue);
+          subBaseCell.textContent = valueOrDash(item.site_sub_base || item.sub_base_outcome);
           row.appendChild(subBaseCell);
 
           row.appendChild(buildStatusCell(item.sample_status, 'Not required'));
@@ -796,15 +395,15 @@
           row.appendChild(sampleOutcomeCell);
 
           const sampleDateCell = document.createElement('td');
-          sampleDateCell.textContent = renderDate(item.sample_date, item.updated_at) || '-';
+          sampleDateCell.textContent = renderDate(item.sample_date, item.updated_at) || '—';
           row.appendChild(sampleDateCell);
 
           const desktopDateCell = document.createElement('td');
-          desktopDateCell.textContent = renderDate(item.desktop_date, item.created_at) || '-';
+          desktopDateCell.textContent = renderDate(item.desktop_date, item.created_at) || '—';
           row.appendChild(desktopDateCell);
 
           const siteDateCell = document.createElement('td');
-          siteDateCell.textContent = renderDate(item.site_date, item.updated_at) || '-';
+          siteDateCell.textContent = renderDate(item.site_date, item.updated_at) || '—';
           row.appendChild(siteDateCell);
 
           resultsContainer.appendChild(row);
@@ -832,8 +431,8 @@
         filterConfig.forEach(({ field }) => {
           if (filterState[field] === undefined) return;
           const existing = filterState[field];
-          if (existing.size === 0) {
-            filterState[field] = new Set();
+          if (!existing || existing.size === 0) {
+            delete filterState[field];
             return;
           }
           const validKeys = new Set((filterOptions[field] || []).map(([key]) => key));
@@ -845,7 +444,18 @@
           }
         });
         renderFilterControls();
-        Object.keys(filterAnchorMap).forEach(updateButtonFilterClass);
+      };
+
+      const parseInitial = () => {
+        try {
+          const attr = resultsContainer?.dataset?.initial;
+          if (!attr) return [];
+          const parsed = JSON.parse(attr);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          console.warn('Failed to parse initial permits', err);
+          return [];
+        }
       };
 
       const fetchResults = async (query) => {
@@ -884,7 +494,7 @@
           if (lastQuery) {
             url.searchParams.set('query', lastQuery);
           }
-          url.searchParams.set('limit', String(EXPORT_LIMIT));
+          url.searchParams.set('limit', '1000');
           Object.entries(filterState).forEach(([field, values]) => {
             if (!values || values.size === 0) return;
             values.forEach((value) => {
