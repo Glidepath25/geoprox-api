@@ -183,20 +183,20 @@
                 <th scope="col">Desktop Date</th>
                 <th scope="col">Site Date</th>
               </tr>
-              <tr class="filter-row">
-                <th><div class="filter-anchor" data-field="permit_ref"></div></th>
-                <th><div class="filter-anchor" data-field="owner_username"></div></th>
-                <th><div class="filter-anchor" data-field="desktop_status"></div></th>
-                <th><div class="filter-anchor" data-field="desktop_outcome"></div></th>
-                <th><div class="filter-anchor" data-field="site_status"></div></th>
-                <th><div class="filter-anchor" data-field="site_bituminous"></div></th>
-                <th><div class="filter-anchor" data-field="site_sub_base"></div></th>
-                <th><div class="filter-anchor" data-field="sample_status"></div></th>
-                <th><div class="filter-anchor" data-field="sample_outcome"></div></th>
-                <th><div class="filter-anchor" data-field="sample_date"></div></th>
-                <th><div class="filter-anchor" data-field="desktop_date"></div></th>
-                <th><div class="filter-anchor" data-field="site_date"></div></th>
-              </tr>
+            <tr class="filter-row">
+              <th></th>
+              <th><div class="filter-anchor" data-field="owner_username"></div></th>
+              <th><div class="filter-anchor" data-field="desktop_status"></div></th>
+              <th><div class="filter-anchor" data-field="desktop_outcome"></div></th>
+              <th><div class="filter-anchor" data-field="site_status"></div></th>
+              <th><div class="filter-anchor" data-field="site_bituminous"></div></th>
+              <th><div class="filter-anchor" data-field="site_sub_base"></div></th>
+              <th><div class="filter-anchor" data-field="sample_status"></div></th>
+              <th></th>
+              <th></th>
+              <th></th>
+              <th></th>
+            </tr>
             </thead>
             <tbody id="permitResults" data-initial='{{ (initial_results or []) | tojson }}'></tbody>
           </table>
@@ -262,7 +262,6 @@
       };
 
       const filterConfig = [
-        { field: 'permit_ref', label: 'Permit' },
         { field: 'owner_username', label: 'Owner' },
         { field: 'desktop_status', label: 'Desktop status' },
         { field: 'desktop_outcome', label: 'Desktop outcome' },
@@ -270,10 +269,6 @@
         { field: 'site_bituminous', label: 'Bituminous outcome' },
         { field: 'site_sub_base', label: 'Sub-base outcome' },
         { field: 'sample_status', label: 'Sample status' },
-        { field: 'sample_outcome', label: 'Sample outcome' },
-        { field: 'sample_date', label: 'Sample date' },
-        { field: 'desktop_date', label: 'Desktop date' },
-        { field: 'site_date', label: 'Site date' },
       ];
 
       let lastQuery = '';
