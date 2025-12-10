@@ -24,11 +24,11 @@ run:
     - name: SMTP_USE_TLS
       value: 'true'
     - name: GRAPH_TENANT_ID
-      value: ''
+      value: '3e0c1701-288f-4268-a162-94af1ccb4c46'
     - name: GRAPH_CLIENT_ID
-      value: ''
+      value: '341fc86c-3872-4b43-8e44-8c712c62c4b9'
     - name: GRAPH_SENDER_UPN
-      value: ''
+      value: notifications@geoprox.co.uk
     - name: SIGNUP_NOTIFY_EMAIL
       value: useradmin@geoprox.co.uk
     - name: DB_HOST
@@ -47,5 +47,5 @@ run:
     - name: DB_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::'
     - name: GRAPH_CLIENT_SECRET
-      value-from: ''  # TODO: set Secrets Manager ARN for Graph client secret
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/graph-mailer-sbhmWw'
 
