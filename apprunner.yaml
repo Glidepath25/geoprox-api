@@ -47,5 +47,5 @@ run:
     - name: DB_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::'
     - name: GRAPH_CLIENT_SECRET
-      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/graph-mailer-sbhmWw'
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/graph-mailer-sbhmWw:GRAPH_CLIENT_SECRET::'
 
