@@ -1159,7 +1159,13 @@ def _graph_send_mail(subject: str, body: str, *, to_address: str) -> bool:
             },
             timeout=10,
         )
-        token_resp.raise_for_status()
+        if not token_resp.ok:
+            log.warning(
+                "Graph token request failed: status=%s body=%s",
+                token_resp.status_code,
+                token_resp.text,
+            )
+            return False
         access_token = token_resp.json().get("access_token")
         if not access_token:
             log.warning("Graph token response missing access_token")

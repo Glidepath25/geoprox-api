@@ -250,6 +250,11 @@
       color: var(--dark-grey);
     }
 
+    .invalid {
+      border-color: var(--alert-red);
+      box-shadow: 0 0 0 2px rgba(227, 91, 10, 0.25);
+    }
+
     textarea {
       resize: vertical;
       min-height: 140px;
@@ -540,5 +545,48 @@
     });
   </script>
   {% endif %}
+
+  <script>
+    (function () {
+      const form = document.querySelector('form[action="/signup/free-trial"]');
+      if (!form) return;
+      const requiredFields = form.querySelectorAll("[required]");
+      const submitBtn = form.querySelector('button[type="submit"]');
+
+      const validate = () => {
+        let allValid = true;
+        requiredFields.forEach((field) => {
+          const valid = field.value.trim() !== "" && field.checkValidity();
+          if (!valid) {
+            field.classList.add("invalid");
+            allValid = false;
+          } else {
+            field.classList.remove("invalid");
+          }
+        });
+        if (submitBtn) {
+          submitBtn.disabled = !allValid;
+        }
+        return allValid;
+      };
+
+      requiredFields.forEach((field) => {
+        field.addEventListener("input", validate);
+        field.addEventListener("blur", validate);
+      });
+
+      validate();
+
+      form.addEventListener("submit", (event) => {
+        if (!validate()) {
+          event.preventDefault();
+          const firstInvalid = form.querySelector(".invalid");
+          if (firstInvalid) {
+            firstInvalid.focus();
+          }
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
