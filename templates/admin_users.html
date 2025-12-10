@@ -270,6 +270,7 @@
                 <td>
                   <div class="gp-table-actions">
                     <form method="post" action="/admin/users/{{ user.id }}/toggle">
+                      <input type="hidden" name="action" value="{{ 'disable' if user.is_active else 'enable' }}">
                       <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                       <button class="gp-btn gp-btn-outline" type="submit">
                         {{ 'Disable' if user.is_active else 'Enable' }}
