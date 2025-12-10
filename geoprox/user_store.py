@@ -644,6 +644,14 @@ def delete_user(user_id: int) -> None:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
+def delete_company(company_id: int) -> None:
+    with _get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) AS total FROM users WHERE company_id = ?", (company_id,)).fetchone()
+        if row and int(row["total"]) > 0:
+            raise ValueError("Cannot delete company with existing users. Remove or move users first.")
+        conn.execute("DELETE FROM companies WHERE id = ?", (company_id,))
+
+
 def update_user(user_id: int, **fields: Any) -> None:
     allowed = {
         "name",
@@ -840,4 +848,5 @@ __all__ = [
     "update_company",
     "update_user",
     "verify_credentials",
+    "delete_company",
 ]
