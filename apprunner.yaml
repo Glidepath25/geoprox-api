@@ -23,6 +23,14 @@ run:
       value: useradmin@geoprox.co.uk
     - name: SMTP_USE_TLS
       value: 'true'
+    - name: GRAPH_TENANT_ID
+      value: ''
+    - name: GRAPH_CLIENT_ID
+      value: ''
+    - name: GRAPH_SENDER_UPN
+      value: ''
+    - name: SIGNUP_NOTIFY_EMAIL
+      value: useradmin@geoprox.co.uk
     - name: DB_HOST
       value: geoprox-serverless-instance-1.c3ooeicas6w8.eu-west-1.rds.amazonaws.com
     - name: DB_NAME
@@ -38,4 +46,6 @@ run:
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:WHAT3WORDS_API_KEY::'
     - name: DB_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:geoprox/app-db-shZWbT:DB_PASSWORD::'
+    - name: GRAPH_CLIENT_SECRET
+      value-from: ''  # TODO: set Secrets Manager ARN for Graph client secret
 
