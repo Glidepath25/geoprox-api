@@ -107,6 +107,7 @@
                       <option value="false" {% if not company.is_active %}selected{% endif %}>Inactive</option>
                     </select>
                     <button class="gp-btn gp-btn-outline" type="submit">Update</button>
+                    <button class="gp-btn gp-btn-outline gp-btn-danger" type="submit" name="action" value="delete" onclick="return confirm('Delete company {{ company.name }}? This cannot be undone. All users will be orphaned.');">Delete</button>
                   </form>
                 </td>
               </tr>

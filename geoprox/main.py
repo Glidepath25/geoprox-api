@@ -4333,6 +4333,13 @@ async def admin_update_company_form(request: Request, company_id: int):
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     action = (form.get("action") or "update").lower()
+    if action == "delete":
+        try:
+            user_store.delete_company(company_id)
+            _add_flash(request, f"Company '{company['name']}' deleted.", "success")
+        except Exception:
+            _add_flash(request, f"Could not delete company '{company['name']}'. Remove users first or try again.", "error")
+        return _redirect_admin_users(None)
     if action == "activate":
         user_store.update_company(company_id, is_active=True)
         _add_flash(request, f"Company '{company['name']}' activated.", "success")
