@@ -28,7 +28,7 @@ run:
     - name: GRAPH_CLIENT_ID
       value: '341fc86c-3872-4b43-8e44-8c712c62c4b9'
     - name: GRAPH_SENDER_UPN
-      value: notifications@geoprox.co.uk
+      value: useradmin@geoprox.co.uk
     - name: SIGNUP_NOTIFY_EMAIL
       value: useradmin@geoprox.co.uk
     - name: DB_HOST
