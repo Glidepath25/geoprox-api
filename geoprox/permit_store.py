@@ -613,3 +613,21 @@ init_db()
 
 __all__ = ["get_permit", "save_permit", "update_site_assessment", "update_sample_assessment", "search_permits"]
 
+
+def count_completed_sites_between(start_iso: str, end_iso: str) -> int:
+    if USE_POSTGRES:
+        sql = """
+            SELECT COUNT(*) AS total
+            FROM permit_records
+            WHERE site_status = 'Completed' AND updated_at >= %s AND updated_at < %s
+        """
+    else:
+        sql = """
+            SELECT COUNT(*) AS total
+            FROM permit_records
+            WHERE site_status = 'Completed' AND updated_at >= ? AND updated_at < ?
+        """
+    with _get_conn() as conn:
+        row = conn.execute(sql, (start_iso, end_iso)).fetchone()
+    return int(row["total"]) if row else 0
+

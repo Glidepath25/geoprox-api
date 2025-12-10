@@ -303,5 +303,14 @@ def get_user_search_counts() -> Dict[str, int]:
     return {row['username']: int(row['total']) for row in rows}
 
 
-init_db()
+def get_total_searches_between(start_iso: str, end_iso: str) -> int:
+    if USE_POSTGRES:
+        sql = "SELECT COUNT(*) AS total FROM search_history WHERE timestamp >= %s AND timestamp < %s"
+    else:
+        sql = "SELECT COUNT(*) AS total FROM search_history WHERE timestamp >= ? AND timestamp < ?"
+    with _get_conn() as conn:
+        row = conn.execute(sql, (start_iso, end_iso)).fetchone()
+    return int(row["total"]) if row else 0
 
+
+init_db()

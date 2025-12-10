@@ -31,6 +31,10 @@ run:
       value: useradmin@geoprox.co.uk
     - name: SIGNUP_NOTIFY_EMAIL
       value: useradmin@geoprox.co.uk
+    - name: DAILY_SUMMARY_EMAIL
+      value: useradmin@geoprox.co.uk
+    - name: DAILY_SUMMARY_ENABLED
+      value: 'true'
     - name: DB_HOST
       value: geoprox-serverless-instance-1.c3ooeicas6w8.eu-west-1.rds.amazonaws.com
     - name: DB_NAME

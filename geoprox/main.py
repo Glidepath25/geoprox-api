@@ -13,7 +13,7 @@ import secrets
 import time
 import requests
 from email.message import EmailMessage
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, time as dt_time
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -240,6 +240,8 @@ _S3_CLIENT = None
 
 SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@geoprox.co.uk")
 SIGNUP_NOTIFY_EMAIL = os.environ.get("SIGNUP_NOTIFY_EMAIL", SUPPORT_EMAIL)
+DAILY_SUMMARY_EMAIL = os.environ.get("DAILY_SUMMARY_EMAIL", SUPPORT_EMAIL)
+DAILY_SUMMARY_ENABLED = os.environ.get("DAILY_SUMMARY_ENABLED", "true").strip().lower() not in {"false", "0", "no"}
 GRAPH_TENANT_ID = os.environ.get("GRAPH_TENANT_ID")
 GRAPH_CLIENT_ID = os.environ.get("GRAPH_CLIENT_ID")
 GRAPH_CLIENT_SECRET = os.environ.get("GRAPH_CLIENT_SECRET")
@@ -332,6 +334,12 @@ def _bootstrap_admin_from_env() -> None:
 @app.on_event("startup")
 async def _on_startup() -> None:
     _bootstrap_admin_from_env()
+    if DAILY_SUMMARY_ENABLED:
+        try:
+            asyncio.create_task(_daily_summary_loop())
+            log.info("Daily summary loop started")
+        except Exception:
+            log.exception("Failed to start daily summary loop")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1210,6 +1218,55 @@ def _send_signup_notification(name: str, email: str, company: str, phone: str) -
     )
     return _graph_send_mail(subject, body, to_address=to_address)
 
+
+def _daily_summary_window(reference: Optional[datetime] = None) -> Tuple[str, str, str]:
+    now = reference or datetime.utcnow()
+    today = now.date()
+    start_dt = datetime.combine(today - timedelta(days=1), dt_time.min)
+    end_dt = datetime.combine(today, dt_time.min)
+    start_iso = start_dt.isoformat(timespec="seconds") + "Z"
+    end_iso = end_dt.isoformat(timespec="seconds") + "Z"
+    label = f"{start_dt.date().isoformat()}"
+    return start_iso, end_iso, label
+
+
+def _send_daily_summary() -> bool:
+    if not DAILY_SUMMARY_ENABLED:
+        return False
+    to_address = (DAILY_SUMMARY_EMAIL or "").strip()
+    if not to_address:
+        log.info("Daily summary skipped: DAILY_SUMMARY_EMAIL not set")
+        return False
+    start_iso, end_iso, label = _daily_summary_window()
+    search_count = history_store.get_total_searches_between(start_iso, end_iso)
+    site_completed = permit_store.count_completed_sites_between(start_iso, end_iso)
+    subject = f"GeoProx daily summary ({label})"
+    body = (
+        f"Daily summary for {label} (UTC window {start_iso} to {end_iso}).\n\n"
+        f"Desktop searches: {search_count}\n"
+        f"Site inspections completed: {site_completed}\n"
+    )
+    sent = _graph_send_mail(subject, body, to_address=to_address)
+    if not sent:
+        log.info("Daily summary email not sent")
+    return sent
+
+
+async def _daily_summary_loop() -> None:
+    if not DAILY_SUMMARY_ENABLED:
+        return
+    while True:
+        now = datetime.utcnow()
+        next_run = datetime.combine(now.date() + timedelta(days=1), dt_time(hour=0, minute=5))
+        sleep_for = (next_run - now).total_seconds()
+        if sleep_for < 0:
+            sleep_for = 3600
+        try:
+            await asyncio.sleep(sleep_for)
+            _send_daily_summary()
+        except Exception:
+            log.exception("Daily summary loop failed")
+            await asyncio.sleep(3600)
 
 def _parse_optional_int(value: Optional[str]) -> Optional[int]:
     if value is None:
