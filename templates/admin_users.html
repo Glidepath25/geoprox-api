@@ -278,6 +278,7 @@
                     </form>
                     <form method="post" action="/admin/users/{{ user.id }}/reset-password">
                       <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
+                      <input type="password" name="new_password" placeholder="New password" required>
                       <button class="gp-btn gp-btn-outline" type="submit">Reset password</button>
                     </form>
                     <form method="post" action="/admin/users/{{ user.id }}/delete" onsubmit="return confirm('Delete user {{ user.username }}? This cannot be undone.');">
