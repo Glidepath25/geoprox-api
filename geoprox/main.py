@@ -11,6 +11,7 @@ import mimetypes
 import re
 import secrets
 import time
+import requests
 from email.message import EmailMessage
 from datetime import datetime, timezone
 from io import BytesIO, StringIO
@@ -238,6 +239,11 @@ S3_ARTIFACT_PREFIX = os.environ.get("GEOPROX_ARTIFACT_PREFIX", "").strip()
 _S3_CLIENT = None
 
 SUPPORT_EMAIL = os.environ.get("GEOPROX_SUPPORT_EMAIL", "useradmin@geoprox.co.uk")
+SIGNUP_NOTIFY_EMAIL = os.environ.get("SIGNUP_NOTIFY_EMAIL", SUPPORT_EMAIL)
+GRAPH_TENANT_ID = os.environ.get("GRAPH_TENANT_ID")
+GRAPH_CLIENT_ID = os.environ.get("GRAPH_CLIENT_ID")
+GRAPH_CLIENT_SECRET = os.environ.get("GRAPH_CLIENT_SECRET")
+GRAPH_SENDER_UPN = os.environ.get("GRAPH_SENDER_UPN")
 
 DEFAULT_W3W_KEY = "OXT6XQ19"
 
@@ -1136,6 +1142,67 @@ def _send_upgrade_email(
         log.exception("Failed to send upgrade enquiry email")
         return False
     return True
+
+
+def _graph_send_mail(subject: str, body: str, *, to_address: str) -> bool:
+    if not (GRAPH_TENANT_ID and GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET and GRAPH_SENDER_UPN):
+        log.info("Graph mail not configured; skipping sendMail")
+        return False
+    try:
+        token_resp = requests.post(
+            f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": GRAPH_CLIENT_ID,
+                "client_secret": GRAPH_CLIENT_SECRET,
+                "scope": "https://graph.microsoft.com/.default",
+            },
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        access_token = token_resp.json().get("access_token")
+        if not access_token:
+            log.warning("Graph token response missing access_token")
+            return False
+        send_resp = requests.post(
+            f"https://graph.microsoft.com/v1.0/users/{GRAPH_SENDER_UPN}/sendMail",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "message": {
+                    "subject": subject,
+                    "body": {"contentType": "Text", "content": body},
+                    "toRecipients": [{"emailAddress": {"address": to_address}}],
+                },
+                "saveToSentItems": False,
+            },
+            timeout=10,
+        )
+        if send_resp.status_code not in {200, 202}:
+            log.warning("Graph sendMail failed: status=%s body=%s", send_resp.status_code, send_resp.text)
+            return False
+        return True
+    except Exception:
+        log.exception("Graph sendMail error")
+        return False
+
+
+def _send_signup_notification(name: str, email: str, company: str, phone: str) -> bool:
+    to_address = (SIGNUP_NOTIFY_EMAIL or "").strip()
+    if not to_address:
+        log.info("Signup notification skipped: SIGNUP_NOTIFY_EMAIL not set")
+        return False
+    subject = "New GeoProx signup"
+    body = (
+        "A new user signed up.\n\n"
+        f"Name: {name or 'N/A'}\n"
+        f"Email: {email or 'N/A'}\n"
+        f"Company: {company or 'N/A'}\n"
+        f"Phone: {phone or 'N/A'}\n"
+    )
+    return _graph_send_mail(subject, body, to_address=to_address)
 
 
 def _parse_optional_int(value: Optional[str]) -> Optional[int]:
@@ -2120,6 +2187,15 @@ async def signup_free_trial(
     user_record = user_store.get_user_by_username(username)
     if not user_record:
         return render_error("Something went wrong creating your account. Please try again.")
+
+    notified = _send_signup_notification(
+        name=data["full_name"],
+        email=data["email"],
+        company=data["company_name"],
+        phone=data["phone"],
+    )
+    if not notified:
+        log.info("Signup notification not sent for %s", username)
 
     user_record["session_token"] = user_store.set_session_token(user_record["id"])
     _start_session_for_user(request, user_record)
