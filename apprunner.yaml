@@ -24,7 +24,7 @@ run:
     - name: SMTP_USE_TLS
       value: 'true'
     - name: GRAPH_TENANT_ID
-      value: '3e0c1701-288f-4268-a162-94af1ccb4c46'
+      value: '3e0c1701-288f-4268-a162-94af1ccbc4c6'
     - name: GRAPH_CLIENT_ID
       value: '341fc86c-3872-4b43-8e44-8c712c62c4b9'
     - name: GRAPH_SENDER_UPN
