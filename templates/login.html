@@ -452,12 +452,12 @@
         <div class="alert alert-success">{{ signup_success }}</div>
         {% endif %}
       </div>
-      <form method="post" action="/signup/free-trial" novalidate>
+      <form method="post" action="/signup/free-trial" novalidate autocomplete="off">
         <label for="trial_name">Full name</label>
         <input id="trial_name" name="full_name" type="text" value="{{ signup_data.get('full_name', '') }}" required placeholder="Jane Citizen">
 
         <label for="trial_email">Work email</label>
-        <input id="trial_email" name="email" type="email" value="{{ signup_data.get('email', '') }}" required placeholder="you@example.com">
+        <input id="trial_email" name="email" type="email" value="{{ signup_data.get('email', '') }}" required placeholder="you@example.com" autocomplete="off" inputmode="email">
 
         <label for="trial_phone">Phone</label>
         <input id="trial_phone" name="phone" type="tel" value="{{ signup_data.get('phone', '') }}" placeholder="+44 20 7123 4567">
@@ -469,10 +469,10 @@
         <input id="trial_company_number" name="company_number" type="text" value="{{ signup_data.get('company_number', '') }}">
 
         <label for="trial_password">Password</label>
-        <input id="trial_password" name="password" type="password" required minlength="8" placeholder="Create a password">
+        <input id="trial_password" name="password" type="password" required minlength="8" placeholder="Create a password" autocomplete="new-password">
 
         <label for="trial_password_confirm">Confirm password</label>
-        <input id="trial_password_confirm" name="confirm_password" type="password" required minlength="8" placeholder="Repeat password">
+        <input id="trial_password_confirm" name="confirm_password" type="password" required minlength="8" placeholder="Repeat password" autocomplete="new-password">
 
         <button class="btn btn-primary" type="submit">Create free trial account</button>
       </form>
