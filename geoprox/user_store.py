@@ -496,6 +496,42 @@ def update_company(company_id: int, **fields: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def count_users_for_company(
+    company_name: str,
+    *,
+    license_tier: Optional[str] = None,
+    include_inactive: bool = True,
+) -> int:
+    """
+    Count users linked to a company by name (case-insensitive).
+    Optionally filter by license tier and active status.
+    """
+    cleaned = (company_name or "").strip()
+    if not cleaned:
+        return 0
+    company_filters: List[str] = []
+    params: List[Any] = []
+    existing_company = get_company_by_name(cleaned)
+    if existing_company and existing_company.get("id") is not None:
+        company_filters.append("company_id = ?")
+        params.append(existing_company["id"])
+    company_filters.append("lower(company) = lower(?)")
+    params.append(cleaned)
+    conditions = [f"({' OR '.join(company_filters)})"]
+    if license_tier:
+        normalized_tier = normalize_license_tier(license_tier)
+        conditions.append("license_tier = ?")
+        params.append(normalized_tier)
+    if not include_inactive:
+        conditions.append("is_active = ?")
+        params.append(True)
+    where_clause = " AND ".join(conditions)
+    sql = f"SELECT COUNT(*) AS total FROM users WHERE {where_clause}"
+    with _get_conn() as conn:
+        row = conn.execute(sql, tuple(params)).fetchone()
+    return int(row["total"]) if row and row.get("total") is not None else 0
+
+
 def list_users(*, include_disabled: bool = True, company_id: Optional[int] = None) -> List[Dict[str, Any]]:
     sql = "SELECT * FROM users"
     params: List[Any] = []
@@ -829,6 +865,7 @@ __all__ = [
     "get_license_monthly_limit",
     "normalize_license_tier",
     "normalize_user_type",
+    "count_users_for_company",
     "create_company",
     "create_user",
     "delete_user",

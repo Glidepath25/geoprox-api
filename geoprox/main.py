@@ -248,6 +248,10 @@ GRAPH_CLIENT_SECRET = os.environ.get("GRAPH_CLIENT_SECRET")
 GRAPH_SENDER_UPN = os.environ.get("GRAPH_SENDER_UPN")
 
 DEFAULT_W3W_KEY = "OXT6XQ19"
+try:
+    MAX_FREE_TRIAL_USERS_PER_COMPANY = max(1, int(os.environ.get("FREE_TRIAL_COMPANY_LIMIT", "5")))
+except ValueError:
+    MAX_FREE_TRIAL_USERS_PER_COMPANY = 5
 
 # Ensure templates directory exists
 if not TEMPLATES_DIR.exists():
@@ -2226,6 +2230,28 @@ async def signup_free_trial(
         return render_error("Password must be at least 8 characters long.")
     if password != confirm_password:
         return render_error("Passwords do not match.")
+
+    try:
+        existing_trial_users = user_store.count_users_for_company(
+            data["company_name"],
+            license_tier="free_trial",
+        )
+    except Exception:
+        log.exception("Unable to check free trial limit for company '%s'", data["company_name"])
+        return render_error("Unable to create an account right now. Please try again later.", status=503)
+    if existing_trial_users >= MAX_FREE_TRIAL_USERS_PER_COMPANY:
+        message = (
+            "This company has reached the limit for demo accounts. "
+            "Please contact the administrator to get access."
+        )
+        log.info(
+            "Free trial signup blocked for company '%s' (count=%s, limit=%s, email=%s)",
+            data["company_name"],
+            existing_trial_users,
+            MAX_FREE_TRIAL_USERS_PER_COMPANY,
+            username,
+        )
+        return render_error(message, status=429)
 
     try:
         user_store.create_user(
