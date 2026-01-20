@@ -885,9 +885,15 @@ def _render_static_map_image(
             ys.extend(y_coords)
 
         feature_pts: List[Tuple[float, float]] = []
+        feature_labels: List[Tuple[float, float, str]] = []
         edge_pts: List[Tuple[float, float]] = []
         boundary_pts: List[Tuple[float, float]] = []
-        for _, row in df.iterrows():
+        # Order features by distance so labels are meaningful
+        try:
+            df_iter = df.sort_values(by=["distance_m"])
+        except Exception:
+            df_iter = df
+        for idx, row in df_iter.iterrows():
             lat = row.get('lat')
             lon = row.get('lon')
             if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
@@ -896,6 +902,21 @@ def _render_static_map_image(
             feature_pts.append((fx, fy))
             xs.append(fx)
             ys.append(fy)
+            # Prepare compact labels (1-based index, distance, category)
+            try:
+                dist_val = row.get("distance_m")
+                dist_txt = f"{float(dist_val):.0f}m" if dist_val is not None and not pd.isna(dist_val) else ""
+            except Exception:
+                dist_txt = ""
+            cat_txt = str(row.get("category") or "").strip()
+            if len(cat_txt) > 12:
+                cat_txt = cat_txt[:12] + "…"
+            label_txt = f"{len(feature_labels)+1}"
+            if dist_txt:
+                label_txt += f": {dist_txt}"
+            if cat_txt:
+                label_txt += f" {cat_txt}"
+            feature_labels.append((fx, fy, label_txt))
 
             edge_lat = row.get('feature_edge_lat')
             edge_lon = row.get('feature_edge_lon')
@@ -944,6 +965,32 @@ def _render_static_map_image(
                 transform=ax.transAxes,
                 bbox=dict(boxstyle='round,pad=0.35', facecolor='white', edgecolor='#d0d7e2', alpha=0.85),
                 zorder=10,
+            )
+        else:
+            # Label up to 20 features with distance/category
+            for fx, fy, txt in feature_labels[:20]:
+                ax.text(
+                    fx,
+                    fy,
+                    txt,
+                    fontsize=7.5,
+                    color='#0b1b2b',
+                    ha='left',
+                    va='bottom',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8),
+                    zorder=9,
+                )
+            ax.text(
+                0.01,
+                0.99,
+                f"{len(feature_pts)} features shown",
+                ha='left',
+                va='top',
+                fontsize=8,
+                color='#0b1b2b',
+                transform=ax.transAxes,
+                bbox=dict(boxstyle='round,pad=0.25', facecolor='white', edgecolor='#d0d7e2', alpha=0.9),
+                zorder=9,
             )
 
         if xs and ys:
