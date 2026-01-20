@@ -1191,6 +1191,8 @@ def generate_pdf_summary(
     details_rows: Optional[List[Tuple[Any, ...]]] = None,
     map_html: Optional[str] = None,
     permit: str = "K6001-DAF-ACON-95841",
+    address: Optional[str] = None,
+    highway_authority: Optional[str] = None,
     user_name: str = DEFAULT_USER,
     search_dt: Optional[datetime] = None,
     outcome: Optional[str] = None,
@@ -1262,6 +1264,10 @@ def generate_pdf_summary(
         [
             Paragraph(f"<b>Search center:</b> {display_center}", body),
             Paragraph(f"<b>Selection mode:</b> {selection_label}", body),
+        ],
+        [
+            Paragraph(f"<b>Address:</b> {address or ''}", body),
+            Paragraph(f"<b>Highway Authority:</b> {highway_authority or ''}", body),
         ],
     ]
     info_tbl = Table(info_data, colWidths=[95 * mm, 95 * mm])
@@ -1404,6 +1410,8 @@ def run_geoprox_search(
     radius_m: int,
     categories: Optional[List[str]],
     permit: Optional[str],
+    address: Optional[str] = None,
+    highway_authority: Optional[str] = None,
     out_dir: Path,
     w3w_key: Optional[str] = None,
     max_results: int = 500,
@@ -1508,6 +1516,10 @@ def run_geoprox_search(
         lat=lat,
         lon=lon,
     )
+    if address:
+        summary_payload["address"] = address
+    if highway_authority:
+        summary_payload["highway_authority"] = highway_authority
     summary_payload["user"] = user_name
     summary_payload["selection_mode"] = effective_mode
     if polygon_latlon:
@@ -1520,6 +1532,8 @@ def run_geoprox_search(
         details_rows=details,
         map_html=str(map_html),
         permit=_permit,
+        address=address,
+        highway_authority=highway_authority,
         user_name=user_name,
         search_dt=_now,
         outcome=_outcome,

@@ -2757,6 +2757,8 @@ class SearchReq(BaseModel):
     radius_m: int = Field(..., ge=10, le=20000, examples=[2000])
     categories: List[str] = Field(default_factory=list)
     permit: Optional[str] = None
+    address: Optional[str] = None
+    highway_authority: Optional[str] = None
     max_results: Optional[int] = Field(default=None, ge=1, le=10000)
     selection_mode: str = Field(default="point", description="Search selection mode (point or polygon)")
     polygon: Optional[List[List[float]]] = Field(default=None, description="Polygon vertices as [lat, lon] pairs")
@@ -4889,6 +4891,8 @@ def api_search(request: Request, req: SearchReq):
             location_value = req.location
 
         safe_location = _normalise_location(location_value)
+        address_clean = (req.address or "").strip()
+        highway_authority_clean = (req.highway_authority or "").strip()
 
         extra_locations: List[Dict[str, Any]] = []
         for verified in report_store.list_verified_reports():
@@ -4922,6 +4926,8 @@ def api_search(request: Request, req: SearchReq):
             radius_m=req.radius_m,
             categories=req.categories,
             permit=req.permit or "",
+            address=address_clean,
+            highway_authority=highway_authority_clean,
             out_dir=ARTIFACTS_DIR,
             w3w_key=w3w_key,
             max_results=req.max_results,
