@@ -8,6 +8,7 @@ import re
 import json
 import math
 import time
+from io import BytesIO
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -882,9 +883,85 @@ def _render_static_map_image(
             log.warning("Tile static map fetch failed: %s", exc)
             return None
 
+    def _stitch_osm_tiles() -> Optional[Path]:
+        """
+        Stitch a small grid of OSM tiles around the search centre to include roads/streets.
+        Requires Pillow (via matplotlib dependency in most environments).
+        """
+        try:
+            from PIL import Image
+        except Exception as exc:
+            log.warning("Pillow missing for tile stitching: %s", exc)
+            return None
+
+        try:
+            lat0, lon0 = center
+            size_px = 800
+            cos_lat = max(0.1, math.cos(math.radians(lat0)))
+
+            # Choose zoom so that 80% of the canvas spans ~2*radius.
+            desired_mpp = max((radius_m * 2) / (size_px * 0.8), 0.5)
+            zoom_float = math.log2((156543.03392 * cos_lat) / desired_mpp)
+            zoom = max(2, min(int(zoom_float), 18))
+
+            def _xy(la: float, lo: float, z: int) -> Tuple[float, float]:
+                n = 2 ** z
+                xt = (lo + 180.0) / 360.0 * n
+                lat_rad = math.radians(la)
+                yt = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+                return xt, yt
+
+            xtile, ytile = _xy(lat0, lon0, zoom)
+            # number of tiles to cover radius; cap to avoid large downloads
+            mpp = 156543.03392 * cos_lat / (2 ** zoom)
+            span_px = (radius_m * 2) / mpp
+            tiles_needed = min(5, max(2, int(math.ceil(span_px / 256.0) + 1)))
+
+            x_start = int(math.floor(xtile - tiles_needed / 2))
+            y_start = int(math.floor(ytile - tiles_needed / 2))
+            width_tiles = tiles_needed
+            height_tiles = tiles_needed
+            canvas = Image.new("RGB", (width_tiles * 256, height_tiles * 256), (247, 249, 252))
+
+            headers = {"User-Agent": USER_AGENT}
+            for dx in range(width_tiles):
+                for dy in range(height_tiles):
+                    tx = x_start + dx
+                    ty = y_start + dy
+                    if tx < 0 or ty < 0 or tx >= 2 ** zoom or ty >= 2 ** zoom:
+                        continue
+                    url = f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png"
+                    try:
+                        r = requests.get(url, timeout=8, headers=headers)
+                        r.raise_for_status()
+                        tile_img = Image.open(BytesIO(r.content)).convert("RGB")
+                        canvas.paste(tile_img, (dx * 256, dy * 256))
+                    except Exception:
+                        # Leave the default background for missing tiles.
+                        continue
+
+            # Crop around the centre to desired size.
+            center_px = (xtile - x_start) * 256
+            center_py = (ytile - y_start) * 256
+            left = int(center_px - size_px / 2)
+            top = int(center_py - size_px / 2)
+            left = max(0, min(left, canvas.width - size_px))
+            top = max(0, min(top, canvas.height - size_px))
+            cropped = canvas.crop((left, top, left + size_px, top + size_px))
+
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            cropped.save(out_path, format="PNG")
+            return out_path
+        except Exception as exc:
+            log.warning("OSM tile stitching failed: %s", exc)
+            return None
+
     try:
         # Try tile-based static map first to capture streets/roads.
         tile_result = _try_tile_image()
+        if tile_result:
+            return tile_result
+        tile_result = _stitch_osm_tiles()
         if tile_result:
             return tile_result
 
