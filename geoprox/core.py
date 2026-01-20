@@ -834,7 +834,60 @@ def _render_static_map_image(
     selection_mode: str,
     selection_geom: Optional[BaseGeometry],
 ) -> Optional[Path]:
+    def _try_tile_image() -> Optional[Path]:
+        """
+        Fetch a tile-based static map (OSM) so we can show streets/background.
+        Falls back to matplotlib plot if the request fails.
+        """
+        try:
+            lat0, lon0 = center
+            # Pick a zoom level based on radius and map size (800x800 px).
+            size_px = 800
+            desired_mpp = max((radius_m * 2) / (size_px * 0.8), 0.5)  # keep some margin, cap to avoid huge zooms
+            zoom_float = math.log2((156543.03392 * math.cos(math.radians(lat0))) / desired_mpp)
+            zoom = max(2, min(int(zoom_float), 19))
+
+            markers: List[str] = []
+            # Center marker (red)
+            markers.append(f"{lat0},{lon0},red")
+            # Feature markers (blue)
+            max_markers = 50
+            count = 0
+            for _, row in df.iterrows():
+                if count >= max_markers:
+                    break
+                lat = row.get("lat")
+                lon = row.get("lon")
+                if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
+                    continue
+                markers.append(f"{float(lat)},{float(lon)},blue")
+                count += 1
+
+            markers_param = "|".join(markers)
+            url = (
+                "https://staticmap.openstreetmap.de/staticmap.php"
+                f"?center={lat0},{lon0}"
+                f"&zoom={zoom}"
+                f"&size={size_px}x{size_px}"
+                f"&maptype=mapnik"
+                f"&markers={markers_param}"
+            )
+
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(resp.content)
+            return out_path
+        except Exception as exc:
+            log.warning("Tile static map fetch failed: %s", exc)
+            return None
+
     try:
+        # Try tile-based static map first to capture streets/roads.
+        tile_result = _try_tile_image()
+        if tile_result:
+            return tile_result
+
         lat0, lon0 = center
         transformer = _utm_transformer(lat0, lon0)
 
