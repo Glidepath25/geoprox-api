@@ -904,12 +904,12 @@ def _render_static_map_image(
             zoom_float = math.log2((156543.03392 * cos_lat) / desired_mpp)
             zoom = max(2, min(int(zoom_float), 18))
 
-            def _xy(la: float, lo: float, z: int) -> Tuple[float, float]:
-                n = 2 ** z
-                xt = (lo + 180.0) / 360.0 * n
-                lat_rad = math.radians(la)
-                yt = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n
-                return xt, yt
+        def _xy(la: float, lo: float, z: int) -> Tuple[float, float]:
+            n = 2 ** z
+            xt = (lo + 180.0) / 360.0 * n
+            lat_rad = math.radians(la)
+            yt = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+            return xt, yt
 
             xtile, ytile = _xy(lat0, lon0, zoom)
             # number of tiles to cover radius; cap to avoid large downloads
@@ -950,6 +950,66 @@ def _render_static_map_image(
             cropped = canvas.crop((left, top, left + size_px, top + size_px))
 
             out_path.parent.mkdir(parents=True, exist_ok=True)
+            # Draw overlays (radius circle + markers) on top of the tiles.
+            try:
+                from PIL import ImageDraw, ImageFont
+
+                draw = ImageDraw.Draw(cropped, "RGBA")
+
+                # Circle for search radius
+                mpp = 156543.03392 * cos_lat / (2 ** zoom)
+                radius_px = max(8, radius_m / mpp)
+                cx = size_px / 2
+                cy = size_px / 2
+                draw.ellipse(
+                    (cx - radius_px, cy - radius_px, cx + radius_px, cy + radius_px),
+                    outline=(43, 124, 255, 255),
+                    width=4,
+                    fill=(43, 124, 255, 35),
+                )
+
+                # Markers: center (red) and features (blue)
+                def to_px(lat_val: float, lon_val: float) -> Tuple[float, float]:
+                    xt, yt = _xy(lat_val, lon_val, zoom)
+                    px = (xt - x_start) * 256 - left
+                    py = (yt - y_start) * 256 - top
+                    return px, py
+
+                def draw_dot(px: float, py: float, color: Tuple[int, int, int], size: int = 10, outline=None):
+                    r = size / 2
+                    bbox = (px - r, py - r, px + r, py + r)
+                    draw.ellipse(bbox, fill=color + (255,), outline=outline or (255, 255, 255, 220), width=2)
+
+                # Center
+                draw_dot(cx, cy, (255, 82, 82), size=16)
+
+                # Features (limit 50)
+                count = 0
+                for _, row in df.iterrows():
+                    if count >= 50:
+                        break
+                    lat = row.get("lat")
+                    lon = row.get("lon")
+                    if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
+                        continue
+                    fx, fy = to_px(float(lat), float(lon))
+                    draw_dot(fx, fy, (79, 179, 255), size=12)
+                    count += 1
+
+                # Radius badge
+                try:
+                    font = ImageFont.truetype("arial.ttf", 14)
+                except Exception:
+                    font = None
+                badge_text = f"Radius: {radius_m} m"
+                text_w, text_h = draw.textsize(badge_text, font=font)
+                pad = 6
+                badge_box = (cx + radius_px * 0.2, cy - radius_px * 0.9 - text_h - pad * 2, cx + radius_px * 0.2 + text_w + pad * 2, cy - radius_px * 0.9)
+                draw.rounded_rectangle(badge_box, radius=6, fill=(255, 255, 255, 235), outline=(180, 186, 195, 255))
+                draw.text((badge_box[0] + pad, badge_box[1] + pad), badge_text, fill=(66, 92, 122, 255), font=font)
+            except Exception as exc:
+                log.warning("Failed to overlay markers on stitched tiles: %s", exc)
+
             cropped.save(out_path, format="PNG")
             return out_path
         except Exception as exc:
