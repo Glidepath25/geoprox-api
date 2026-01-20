@@ -141,7 +141,8 @@ def geocode_location_flex(
     if loc.startswith("///"):
         if not w3w_key:
             raise ValueError("what3words location supplied but WHAT3WORDS_API_KEY is not set")
-        words = loc.lstrip("/")
+        words = loc.lstrip("/").strip()
+        display = f"///{words}"
 
         # very small inline call (keeps existing requests flow and avoids None returns)
         import requests
@@ -156,7 +157,7 @@ def geocode_location_flex(
             raise ValueError(f"what3words could not geocode '{loc}'")
         lat = float(data["coordinates"]["lat"])
         lon = float(data["coordinates"]["lng"])
-        return lat, lon, f"{lat:.6f}, {lon:.6f}"
+        return lat, lon, display
 
     # numeric lat/lon - handle "lat, lon" OR "lat lon"
     # normalise separators to comma, then split
@@ -180,6 +181,40 @@ def geocode_location_flex(
         raise ValueError("Latitude/Longitude out of bounds")
 
     return lat, lon, f"{lat:.6f}, {lon:.6f}"
+
+
+def _resolve_display_center(
+    raw_loc: str,
+    lat: float,
+    lon: float,
+    w3w_key: Optional[str],
+    fallback: str,
+) -> str:
+    """
+    Pick the best human-readable label for the search centre.
+    - honour an explicit what3words string if the user supplied one
+    - otherwise, try to reverse-geocode coordinates to what3words when a key is available
+    - finally, fall back to the provided display string
+    """
+    raw = (raw_loc or "").strip()
+    if raw.startswith("///"):
+        return raw
+    if fallback and fallback.startswith("///"):
+        return fallback
+    if w3w_key:
+        try:
+            r = requests.get(
+                "https://api.what3words.com/v3/convert-to-3wa",
+                params={"coordinates": f"{lat},{lon}", "key": w3w_key},
+                timeout=10,
+            )
+            r.raise_for_status()
+            words = (r.json() or {}).get("words")
+            if words:
+                return f"///{words}"
+        except Exception as exc:
+            log.warning("Failed to reverse what3words for search centre: %s", exc)
+    return fallback or f"{lat:.6f}, {lon:.6f}"
 
 
 
@@ -1127,6 +1162,7 @@ def run_geoprox_search(
 
     # 1) Geocode
     lat, lon, disp = geocode_location_flex(location, w3w_key)
+    display_center = _resolve_display_center(location, lat, lon, w3w_key, disp)
 
     effective_mode = (selection_mode or "point").lower()
     selection_polygon: Optional[Polygon] = None
@@ -1208,7 +1244,7 @@ def run_geoprox_search(
     summary_payload = _build_summary_payload(
         summary_bins=summary,
         outcome=_outcome,
-        center=disp,
+        center=display_center,
         radius=radius_m,
         permit=_permit,
         lat=lat,
@@ -1219,7 +1255,7 @@ def run_geoprox_search(
     if polygon_latlon:
         summary_payload["polygon"] = polygon_latlon
     generate_pdf_summary(
-        display_center=disp,
+        display_center=display_center,
         summary_bins=summary,
         pdf_path=str(pdf_path),
         map_image=str(map_image_file) if map_image_file else None,
@@ -1288,7 +1324,7 @@ def run_geoprox_search(
             artifacts = {k: v for k, v in artifacts.items() if v}
 
             return {
-                "center": {"lat": lat, "lon": lon, "display": disp},
+                "center": {"lat": lat, "lon": lon, "display": display_center},
                 "radius_m": radius_m,
                 "permit": _permit,
                 "summary": summary_payload,
@@ -1300,7 +1336,7 @@ def run_geoprox_search(
         except Exception as e:
             # Fall through to local paths with a warning
             return {
-                "center": {"lat": lat, "lon": lon, "display": disp},
+                "center": {"lat": lat, "lon": lon, "display": display_center},
                 "radius_m": radius_m,
                 "permit": _permit,
                 "summary": summary_payload,
@@ -1313,7 +1349,7 @@ def run_geoprox_search(
 
     # 7) No S3 configured â†’ local paths
     return {
-        "center": {"lat": lat, "lon": lon, "display": disp},
+        "center": {"lat": lat, "lon": lon, "display": display_center},
         "radius_m": radius_m,
         "permit": _permit,
         "summary": summary_payload,
