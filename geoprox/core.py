@@ -904,12 +904,12 @@ def _render_static_map_image(
             zoom_float = math.log2((156543.03392 * cos_lat) / desired_mpp)
             zoom = max(2, min(int(zoom_float), 18))
 
-        def _xy(la: float, lo: float, z: int) -> Tuple[float, float]:
-            n = 2 ** z
-            xt = (lo + 180.0) / 360.0 * n
-            lat_rad = math.radians(la)
-            yt = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n
-            return xt, yt
+            def _xy(la: float, lo: float, z: int) -> Tuple[float, float]:
+                n = 2 ** z
+                xt = (lo + 180.0) / 360.0 * n
+                lat_rad = math.radians(la)
+                yt = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+                return xt, yt
 
             xtile, ytile = _xy(lat0, lon0, zoom)
             # number of tiles to cover radius; cap to avoid large downloads
