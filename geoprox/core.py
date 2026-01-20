@@ -1141,6 +1141,7 @@ def generate_pdf_summary(
     )
     details_flow.append(det_tbl)
 
+    flow.extend(details_flow)
     map_img_path = Path(map_image) if map_image else None
     has_map_img = map_img_path.exists() if map_img_path else False
     if has_map_img:
@@ -1157,9 +1158,6 @@ def generate_pdf_summary(
         except Exception:
             flow.append(Image(str(map_img_path), width=doc.width, hAlign='CENTER'))
         flow.append(Spacer(1, 6 * mm))
-        flow.append(PageBreak())
-
-    flow.extend(details_flow)
     doc.build(flow, onFirstPage=_apply_metadata, onLaterPages=_apply_metadata)
 
 
