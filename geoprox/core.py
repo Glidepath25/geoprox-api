@@ -907,17 +907,36 @@ def _render_static_map_image(
 
                 draw = ImageDraw.Draw(cropped, "RGBA")
 
-                # Circle for search radius
-                mpp = 156543.03392 * cos_lat / (2 ** zoom)
-                radius_px = max(8, radius_m / mpp)
                 cx = size_px / 2
                 cy = size_px / 2
-                draw.ellipse(
-                    (cx - radius_px, cy - radius_px, cx + radius_px, cy + radius_px),
-                    outline=(43, 124, 255, 255),
-                    width=4,
-                    fill=(43, 124, 255, 35),
-                )
+
+                # Circle for search radius (point mode) or polygon overlay
+                if selection_mode == "polygon" and isinstance(selection_geom, BaseGeometry):
+                    polygons: List[BaseGeometry] = []
+                    if isinstance(selection_geom, Polygon):
+                        polygons = [selection_geom]
+                    else:
+                        polygons = [g for g in getattr(selection_geom, "geoms", []) if isinstance(g, Polygon)]
+                    for poly in polygons:
+                        try:
+                            coords = list(poly.exterior.coords)
+                        except Exception:
+                            continue
+                        pts = []
+                        for lon_val, lat_val in coords:
+                            px, py = to_px(lat_val, lon_val)
+                            pts.append((px, py))
+                        if len(pts) >= 3:
+                            draw.polygon(pts, outline=(43, 124, 255, 255), fill=(43, 124, 255, 35), width=4)
+                else:
+                    mpp = 156543.03392 * cos_lat / (2 ** zoom)
+                    radius_px = max(8, radius_m / mpp)
+                    draw.ellipse(
+                        (cx - radius_px, cy - radius_px, cx + radius_px, cy + radius_px),
+                        outline=(43, 124, 255, 255),
+                        width=4,
+                        fill=(43, 124, 255, 35),
+                    )
 
                 # Markers: center (red) and features (blue)
                 def to_px(lat_val: float, lon_val: float) -> Tuple[float, float]:
