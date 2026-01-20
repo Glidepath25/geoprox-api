@@ -21,6 +21,7 @@ from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform, nearest_points
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import pyproj
 from pyproj.enums import TransformDirection
@@ -855,8 +856,9 @@ def _render_static_map_image(
 
         fig = Figure(figsize=(6, 6), dpi=150)
         ax = fig.add_subplot(111)
-        fig.patch.set_facecolor('#ffffff')
-        ax.set_facecolor('#ffffff')
+        fig.patch.set_facecolor('#f7f9fc')
+        ax.set_facecolor('#f7f9fc')
+        ax.grid(True, color='#dce3f0', linewidth=0.6, alpha=0.5, zorder=0)
 
         xs: List[float] = []
         ys: List[float] = []
@@ -877,7 +879,8 @@ def _render_static_map_image(
         else:
             buffer_geom = center_xy.buffer(radius_m if transformer is not None else radius_m / 111_000.0)
             x_coords, y_coords = buffer_geom.exterior.xy
-            ax.plot(x_coords, y_coords, color='#1F6FEB', linewidth=2.2)
+            ax.fill(x_coords, y_coords, color='#2b7cff', alpha=0.08, zorder=1)
+            ax.plot(x_coords, y_coords, color='#1F6FEB', linewidth=2.2, zorder=2)
             xs.extend(x_coords)
             ys.extend(y_coords)
 
@@ -922,26 +925,52 @@ def _render_static_map_image(
             ax.plot([start_x, end_x], [start_y, end_y], color='#ff9800', linewidth=1.6, alpha=0.9)
 
         if feature_pts:
-            ax.scatter([p[0] for p in feature_pts], [p[1] for p in feature_pts], color='#4fb3ff', s=16, zorder=5)
+            ax.scatter([p[0] for p in feature_pts], [p[1] for p in feature_pts], color='#4fb3ff', s=28, zorder=5)
         if edge_pts:
-            ax.scatter([p[0] for p in edge_pts], [p[1] for p in edge_pts], color='#4fb3ff', s=10, zorder=5, alpha=0.6)
+            ax.scatter([p[0] for p in edge_pts], [p[1] for p in edge_pts], color='#4fb3ff', s=18, zorder=5, alpha=0.7)
         if boundary_pts:
-            ax.scatter([p[0] for p in boundary_pts], [p[1] for p in boundary_pts], color='#ff9800', s=20, zorder=6)
+            ax.scatter([p[0] for p in boundary_pts], [p[1] for p in boundary_pts], color='#ff9800', s=36, zorder=6)
 
-        ax.scatter([center_xy.x], [center_xy.y], color='#ff5252', s=24, zorder=7)
+        ax.scatter([center_xy.x], [center_xy.y], color='#ff5252', s=40, zorder=8)
 
         if xs and ys:
             # Clamp view to the search radius so the map is zoomed appropriately.
             radius_units = float(radius_m)
             if transformer is None:
                 radius_units = float(radius_m) / 111_000.0  # rough degrees per metre
-            pad = radius_units * 0.1
+            pad = radius_units * 0.15
             cx, cy = center_xy.x, center_xy.y
             ax.set_xlim(cx - radius_units - pad, cx + radius_units + pad)
             ax.set_ylim(cy - radius_units - pad, cy + radius_units + pad)
 
         ax.set_aspect('equal', 'box')
         ax.axis('off')
+
+        # Legend and annotations for clarity on otherwise sparse views
+        legend_items = [
+            Line2D([0], [0], marker='o', color='w', label='Search center', markerfacecolor='#ff5252', markersize=8),
+            Line2D([0], [0], marker='o', color='w', label='Nearby feature', markerfacecolor='#4fb3ff', markersize=8),
+            Line2D([0], [0], marker='o', color='w', label='Nearest boundary', markerfacecolor='#ff9800', markersize=8),
+        ]
+        ax.legend(
+            handles=legend_items,
+            loc='lower left',
+            frameon=True,
+            framealpha=0.9,
+            facecolor='#ffffff',
+            edgecolor='#d0d7e2',
+        )
+        ax.text(
+            0.99,
+            0.98,
+            f"Radius: {radius_m} m",
+            ha='right',
+            va='top',
+            fontsize=9,
+            color='#0b1b2b',
+            transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='white', edgecolor='#d0d7e2', alpha=0.9),
+        )
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         FigureCanvasAgg(fig).print_png(str(out_path))
