@@ -1171,8 +1171,8 @@ def generate_pdf_summary(
     details_flow.append(det_tbl)
 
     flow.extend(details_flow)
-    map_img_path = Path(map_image) if map_image else None
-    has_map_img = map_img_path.exists() if map_img_path else False
+    map_img_path = Path(map_image).expanduser().resolve() if map_image else None
+    has_map_img = map_img_path.is_file() if map_img_path else False
     if has_map_img:
         flow.append(PageBreak())
         flow.append(Paragraph("Search map", heading))
@@ -1187,6 +1187,11 @@ def generate_pdf_summary(
         except Exception:
             flow.append(Image(str(map_img_path), width=doc.width, hAlign='CENTER'))
         flow.append(Spacer(1, 6 * mm))
+    elif map_image:
+        # If a path was supplied but the file is missing, still surface the intent in the PDF.
+        flow.append(PageBreak())
+        flow.append(Paragraph("Search map (unavailable)", heading))
+        flow.append(Paragraph(f"Map image not found at: {map_image}", body))
     doc.build(flow, onFirstPage=_apply_metadata, onLaterPages=_apply_metadata)
 
 
