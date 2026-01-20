@@ -932,6 +932,19 @@ def _render_static_map_image(
             ax.scatter([p[0] for p in boundary_pts], [p[1] for p in boundary_pts], color='#ff9800', s=36, zorder=6)
 
         ax.scatter([center_xy.x], [center_xy.y], color='#ff5252', s=40, zorder=8)
+        if not feature_pts:
+            ax.text(
+                0.5,
+                0.5,
+                f"No nearby features within {radius_m} m",
+                ha='center',
+                va='center',
+                fontsize=11,
+                color='#425c7a',
+                transform=ax.transAxes,
+                bbox=dict(boxstyle='round,pad=0.35', facecolor='white', edgecolor='#d0d7e2', alpha=0.85),
+                zorder=10,
+            )
 
         if xs and ys:
             # Clamp view to the search radius so the map is zoomed appropriately.
