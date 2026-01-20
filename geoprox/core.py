@@ -29,8 +29,9 @@ from pyproj.enums import TransformDirection
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.utils import ImageReader
 
 
 log = logging.getLogger("uvicorn.error")
@@ -930,13 +931,14 @@ def _render_static_map_image(
         ax.scatter([center_xy.x], [center_xy.y], color='#ff5252', s=24, zorder=7)
 
         if xs and ys:
-            min_x, max_x = min(xs), max(xs)
-            min_y, max_y = min(ys), max(ys)
-            span_x = max(max_x - min_x, 1.0)
-            span_y = max(max_y - min_y, 1.0)
-            pad = max(span_x, span_y) * 0.15
-            ax.set_xlim(min_x - pad, max_x + pad)
-            ax.set_ylim(min_y - pad, max_y + pad)
+            # Clamp view to the search radius so the map is zoomed appropriately.
+            radius_units = float(radius_m)
+            if transformer is None:
+                radius_units = float(radius_m) / 111_000.0  # rough degrees per metre
+            pad = radius_units * 0.1
+            cx, cy = center_xy.x, center_xy.y
+            ax.set_xlim(cx - radius_units - pad, cx + radius_units + pad)
+            ax.set_ylim(cy - radius_units - pad, cy + radius_units + pad)
 
         ax.set_aspect('equal', 'box')
         ax.axis('off')
@@ -968,6 +970,7 @@ def generate_pdf_summary(
     body = styles["BodyText"]
     body.leading = 12
     title = styles["Title"]
+    heading = styles["Heading2"]
 
     resolved_logo: Optional[Path] = None
     if logo_path:
@@ -1080,7 +1083,8 @@ def generate_pdf_summary(
     flow.append(Spacer(1, 6 * mm))
 
     # Details table (<=100 m)
-    flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
+    details_flow: List[Any] = []
+    details_flow.append(Paragraph("<b>Found items within 100 m (nearest -> farthest)</b>", body))
     det_header = ["Distance (m)", "Category", "Name", "Lat", "Lon", "Address"]
     det_data: List[List[Any]] = [det_header]
 
@@ -1135,7 +1139,27 @@ def generate_pdf_summary(
             ]
         )
     )
-    flow.append(det_tbl)
+    details_flow.append(det_tbl)
+
+    map_img_path = Path(map_image) if map_image else None
+    has_map_img = map_img_path.exists() if map_img_path else False
+    if has_map_img:
+        flow.append(PageBreak())
+        flow.append(Paragraph("Search map", heading))
+        flow.append(Spacer(1, 4 * mm))
+        try:
+            reader = ImageReader(str(map_img_path))
+            img_w, img_h = reader.getSize()
+            max_w = doc.width
+            max_h = doc.height
+            scale = min(max_w / float(img_w), max_h / float(img_h))
+            flow.append(Image(str(map_img_path), width=img_w * scale, height=img_h * scale, hAlign='CENTER'))
+        except Exception:
+            flow.append(Image(str(map_img_path), width=doc.width, hAlign='CENTER'))
+        flow.append(Spacer(1, 6 * mm))
+        flow.append(PageBreak())
+
+    flow.extend(details_flow)
     doc.build(flow, onFirstPage=_apply_metadata, onLaterPages=_apply_metadata)
 
 
