@@ -1024,6 +1024,7 @@ def _render_static_map_image(
 
         feature_pts: List[Tuple[float, float]] = []
         feature_labels: List[Tuple[float, float, str]] = []
+        feature_lines: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
         edge_pts: List[Tuple[float, float]] = []
         boundary_pts: List[Tuple[float, float]] = []
         # Order features by distance so labels are meaningful
@@ -1081,7 +1082,7 @@ def _render_static_map_image(
             else:
                 start_x, start_y = center_xy.x, center_xy.y
                 end_x, end_y = edge_x, edge_y
-            ax.plot([start_x, end_x], [start_y, end_y], color='#ff9800', linewidth=1.6, alpha=0.9)
+            feature_lines.append(((start_x, start_y), (end_x, end_y)))
 
         if feature_pts:
             ax.scatter([p[0] for p in feature_pts], [p[1] for p in feature_pts], color='#4fb3ff', s=28, zorder=5)
@@ -1089,6 +1090,9 @@ def _render_static_map_image(
             ax.scatter([p[0] for p in edge_pts], [p[1] for p in edge_pts], color='#4fb3ff', s=18, zorder=5, alpha=0.7)
         if boundary_pts:
             ax.scatter([p[0] for p in boundary_pts], [p[1] for p in boundary_pts], color='#ff9800', s=36, zorder=6)
+        if feature_lines:
+            for (sx, sy), (ex, ey) in feature_lines:
+                ax.plot([sx, ex], [sy, ey], color='#ff9800', linewidth=1.8, alpha=0.9, zorder=4)
 
         ax.scatter([center_xy.x], [center_xy.y], color='#ff5252', s=40, zorder=8)
         if not feature_pts:
