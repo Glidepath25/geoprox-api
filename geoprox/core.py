@@ -889,6 +889,7 @@ def _render_static_map_image(
 
             out_path.parent.mkdir(parents=True, exist_ok=True)
             # Draw overlays (radius circle + markers) on top of the tiles.
+            overlay_ok = False
             try:
                 from PIL import ImageDraw, ImageFont
 
@@ -964,11 +965,14 @@ def _render_static_map_image(
                 badge_box = (cx + radius_px * 0.2, cy - radius_px * 0.9 - text_h - pad * 2, cx + radius_px * 0.2 + text_w + pad * 2, cy - radius_px * 0.9)
                 draw.rounded_rectangle(badge_box, radius=6, fill=(255, 255, 255, 235), outline=(180, 186, 195, 255))
                 draw.text((badge_box[0] + pad, badge_box[1] + pad), badge_text, fill=(66, 92, 122, 255), font=font)
+                overlay_ok = True
             except Exception as exc:
                 log.warning("Failed to overlay markers on stitched tiles: %s", exc)
 
-            cropped.save(out_path, format="PNG")
-            return out_path
+            if overlay_ok:
+                cropped.save(out_path, format="PNG")
+                return out_path
+            # fall back to matplotlib path below if overlays fail
         except Exception as exc:
             log.warning("OSM tile stitching failed: %s", exc)
             return None
