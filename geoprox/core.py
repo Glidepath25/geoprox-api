@@ -896,6 +896,8 @@ def _render_static_map_image(
 
                 cx = size_px / 2
                 cy = size_px / 2
+                mpp = 156543.03392 * cos_lat / (2 ** zoom)
+                radius_px = max(8, radius_m / mpp)
 
                 # Circle for search radius (point mode) or polygon overlay
                 if selection_mode == "polygon" and isinstance(selection_geom, BaseGeometry):
@@ -916,8 +918,6 @@ def _render_static_map_image(
                         if len(pts) >= 3:
                             draw.polygon(pts, outline=(43, 124, 255, 255), fill=(43, 124, 255, 35), width=4)
                 else:
-                    mpp = 156543.03392 * cos_lat / (2 ** zoom)
-                    radius_px = max(8, radius_m / mpp)
                     draw.ellipse(
                         (cx - radius_px, cy - radius_px, cx + radius_px, cy + radius_px),
                         outline=(43, 124, 255, 255),
