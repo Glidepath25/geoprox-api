@@ -900,6 +900,17 @@ def _render_static_map_image(
                 mpp = 156543.03392 * cos_lat / (2 ** zoom)
                 radius_px = max(8, radius_m / mpp)
 
+                def to_px(lat_val: float, lon_val: float) -> Tuple[float, float]:
+                    xt, yt = _xy(lat_val, lon_val, zoom)
+                    px = (xt - x_start) * 256 - left
+                    py = (yt - y_start) * 256 - top
+                    return px, py
+
+                def draw_dot(px: float, py: float, color: Tuple[int, int, int], size: int = 10, outline=None):
+                    r = size / 2
+                    bbox = (px - r, py - r, px + r, py + r)
+                    draw.ellipse(bbox, fill=color + (255,), outline=outline or (255, 255, 255, 220), width=2)
+
                 # Circle for search radius (point mode) or polygon overlay
                 if selection_mode == "polygon" and isinstance(selection_geom, BaseGeometry):
                     polygons: List[BaseGeometry] = []
@@ -927,17 +938,6 @@ def _render_static_map_image(
                     )
 
                 # Markers: center (red) and features (blue)
-                def to_px(lat_val: float, lon_val: float) -> Tuple[float, float]:
-                    xt, yt = _xy(lat_val, lon_val, zoom)
-                    px = (xt - x_start) * 256 - left
-                    py = (yt - y_start) * 256 - top
-                    return px, py
-
-                def draw_dot(px: float, py: float, color: Tuple[int, int, int], size: int = 10, outline=None):
-                    r = size / 2
-                    bbox = (px - r, py - r, px + r, py + r)
-                    draw.ellipse(bbox, fill=color + (255,), outline=outline or (255, 255, 255, 220), width=2)
-
                 # Center
                 draw_dot(cx, cy, (255, 82, 82), size=16)
 
