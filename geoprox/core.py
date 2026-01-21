@@ -196,7 +196,7 @@ def _resolve_display_center(
     """
     Pick the best human-readable label for the search centre.
     - honour an explicit what3words string if the user supplied one
-    - otherwise, try to reverse-geocode coordinates to what3words when a key is available
+    - otherwise, keep the coordinate display (do not auto-convert to what3words)
     - finally, fall back to the provided display string
     """
     raw = (raw_loc or "").strip()
@@ -204,19 +204,6 @@ def _resolve_display_center(
         return raw
     if fallback and fallback.startswith("///"):
         return fallback
-    if w3w_key:
-        try:
-            r = requests.get(
-                "https://api.what3words.com/v3/convert-to-3wa",
-                params={"coordinates": f"{lat},{lon}", "key": w3w_key},
-                timeout=10,
-            )
-            r.raise_for_status()
-            words = (r.json() or {}).get("words")
-            if words:
-                return f"///{words}"
-        except Exception as exc:
-            log.warning("Failed to reverse what3words for search centre: %s", exc)
     return fallback or f"{lat:.6f}, {lon:.6f}"
 
 
