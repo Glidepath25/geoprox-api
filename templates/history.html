@@ -41,6 +41,8 @@
             <tr>
               <th>When</th>
               <th>Location</th>
+              <th>Address</th>
+              <th>Highway Authority</th>
               <th>Radius (m)</th>
               <th>Outcome</th>
               <th>Permit</th>
@@ -53,6 +55,8 @@
             <tr>
               <td>{{ row.timestamp_display }}</td>
               <td>{{ row.location }}</td>
+              <td>{{ row.address or '-' }}</td>
+              <td>{{ row.highway_authority or '-' }}</td>
               <td>{{ row.radius_m }}</td>
               <td>
                 {% if row.outcome %}

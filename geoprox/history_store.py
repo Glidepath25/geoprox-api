@@ -271,13 +271,32 @@ def get_history(
         data = dict(row)
         payload = data.pop("result_json", None)
         artifacts: Dict[str, Any] = {}
+        summary: Dict[str, Any] = {}
+        address_value = None
+        highway_authority_value = None
         if payload:
             try:
                 parsed = json.loads(payload)
-                artifacts = parsed.get("artifacts") or {}
+                if isinstance(parsed, dict):
+                    artifacts = parsed.get("artifacts") or {}
+                    summary = parsed.get("summary") or {}
+                    address_value = parsed.get("address")
+                    highway_authority_value = parsed.get("highway_authority")
             except json.JSONDecodeError:
                 artifacts = {}
+                summary = {}
         _resolve_links(data, artifacts)
+        if isinstance(summary, dict):
+            address = summary.get("address")
+            if address is None or not str(address).strip():
+                address = address_value
+            highway_authority = summary.get("highway_authority")
+            if highway_authority is None or not str(highway_authority).strip():
+                highway_authority = highway_authority_value
+            if address is not None and str(address).strip():
+                data["address"] = str(address).strip()
+            if highway_authority is not None and str(highway_authority).strip():
+                data["highway_authority"] = str(highway_authority).strip()
         items.append(data)
     return items
 
