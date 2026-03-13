@@ -175,6 +175,10 @@
                   {% endfor %}
                 </select>
               </div>
+              <div class="gp-checkbox" style="margin-top:1.8rem">
+                <input type="checkbox" id="user_mfa_required" name="mfa_required">
+                <label for="user_mfa_required">Require authenticator code</label>
+              </div>
               {% if is_global_admin %}
               <div class="gp-checkbox" style="margin-top:1.8rem">
                 <input type="checkbox" id="user_is_admin" name="is_admin">
@@ -234,6 +238,7 @@
                 <th>User type</th>
                 <th>Role</th>
                 <th>Status</th>
+                <th>MFA</th>
                 <th>Searches</th>
                 <th style="width:320px;">Actions</th>
               </tr>
@@ -267,6 +272,16 @@
                   <div class="gp-note">Password change required</div>
                   {% endif %}
                 </td>
+                <td>
+                  {% if user.mfa_required %}
+                    <span class="gp-badge {{ 'green' if user.mfa_enabled else 'red' }}">{{ 'Enabled' if user.mfa_enabled else 'Setup pending' }}</span>
+                  {% else %}
+                    <span class="gp-badge">Not required</span>
+                    {% if user.mfa_enabled %}
+                    <div class="gp-note">Secret stored</div>
+                    {% endif %}
+                  {% endif %}
+                </td>
                 <td>{{ search_counts.get(user.username, 0) }}</td>
                 <td>
                   <div class="gp-table-actions">
@@ -281,6 +296,10 @@
                       <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
                       <input type="password" name="new_password" placeholder="New password" required>
                       <button class="gp-btn gp-btn-outline" type="submit">Reset password</button>
+                    </form>
+                    <form method="post" action="/admin/users/{{ user.id }}/reset-mfa" onsubmit="return confirm('Reset MFA for {{ user.username }}? They will need to scan a new QR code.');">
+                      <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
+                      <button class="gp-btn gp-btn-outline" type="submit">Reset MFA</button>
                     </form>
                     <form method="post" action="/admin/users/{{ user.id }}/delete" onsubmit="return confirm('Delete user {{ user.username }}? This cannot be undone.');">
                       <input type="hidden" name="redirect_company_id" value="{{ selected_company or '' }}">
@@ -319,6 +338,11 @@
                         <input type="hidden" name="require_password_change" value="off">
                         <input type="checkbox" id="pwreset_{{ user.id }}" name="require_password_change" value="on" {% if user.require_password_change %}checked{% endif %}>
                         <label for="pwreset_{{ user.id }}">Require password change</label>
+                      </div>
+                      <div class="gp-checkbox">
+                        <input type="hidden" name="mfa_required" value="off">
+                        <input type="checkbox" id="mfa_{{ user.id }}" name="mfa_required" value="on" {% if user.mfa_required %}checked{% endif %}>
+                        <label for="mfa_{{ user.id }}">Require authenticator code</label>
                       </div>
                       <button class="gp-btn gp-btn-outline" type="submit">Save changes</button>
                     </form>

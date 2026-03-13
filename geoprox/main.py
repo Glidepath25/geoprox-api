@@ -1,6 +1,7 @@
 # geoprox/main.py
 from __future__ import annotations
 
+import base64
 import os
 import logging
 import sqlite3
@@ -34,6 +35,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.datastructures import UploadFile
 from pydantic import BaseModel, Field
 import pandas as pd
+import pyotp
+import qrcode
+import qrcode.image.svg
 
 from geoprox import history_store, permit_store, report_store, user_store
 from geoprox.auth_tokens import (
@@ -246,6 +250,7 @@ GRAPH_TENANT_ID = os.environ.get("GRAPH_TENANT_ID")
 GRAPH_CLIENT_ID = os.environ.get("GRAPH_CLIENT_ID")
 GRAPH_CLIENT_SECRET = os.environ.get("GRAPH_CLIENT_SECRET")
 GRAPH_SENDER_UPN = os.environ.get("GRAPH_SENDER_UPN")
+MFA_ISSUER = (os.environ.get("MFA_ISSUER") or "GeoProx").strip() or "GeoProx"
 
 DEFAULT_W3W_KEY = "OXT6XQ19"
 try:
@@ -847,6 +852,140 @@ def _start_session_for_user(request: Request, user: Dict[str, Any]) -> None:
 
 
 
+def _clear_pending_auth(request: Request) -> None:
+    for key in (
+        "pending_user_id",
+        "pending_username",
+        "pending_password_change",
+        "pending_mfa_secret",
+    ):
+        request.session.pop(key, None)
+
+
+def _user_requires_mfa(user: Dict[str, Any]) -> bool:
+    return bool(user.get("mfa_required"))
+
+
+def _user_has_mfa_enrolled(user: Dict[str, Any]) -> bool:
+    return bool(user.get("mfa_enabled")) and bool(user.get("mfa_secret"))
+
+
+def _clean_otp_code(value: Optional[str]) -> str:
+    return re.sub(r"\D+", "", value or "")
+
+
+def _verify_totp_code(secret: Optional[str], otp_code: Optional[str]) -> bool:
+    if not secret:
+        return False
+    code = _clean_otp_code(otp_code)
+    if len(code) != 6:
+        return False
+    try:
+        return bool(pyotp.TOTP(secret).verify(code, valid_window=1))
+    except Exception:
+        log.exception("Failed to verify TOTP code")
+        return False
+
+
+def _format_totp_secret(secret: str) -> str:
+    return " ".join(secret[i:i + 4] for i in range(0, len(secret), 4))
+
+
+def _build_mfa_setup_context(user: Dict[str, Any], secret: str) -> Dict[str, str]:
+    account_name = (user.get("email") or user.get("username") or "").strip() or "GeoProx user"
+    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(name=account_name, issuer_name=MFA_ISSUER)
+    qr_image = qrcode.make(provisioning_uri, image_factory=qrcode.image.svg.SvgPathImage)
+    buffer = BytesIO()
+    qr_image.save(buffer)
+    qr_data = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return {
+        "issuer": MFA_ISSUER,
+        "account_name": account_name,
+        "manual_key": _format_totp_secret(secret),
+        "qr_code_data_uri": f"data:image/svg+xml;base64,{qr_data}",
+    }
+
+
+def _render_mfa_setup(
+    request: Request,
+    user: Dict[str, Any],
+    secret: str,
+    *,
+    error: Optional[str] = None,
+) -> HTMLResponse:
+    context = {
+        "request": request,
+        "username": user["username"],
+        "error": error,
+    }
+    context.update(_build_mfa_setup_context(user, secret))
+    return templates.TemplateResponse("mfa_setup.html", context, status_code=400 if error else 200)
+
+
+def _render_mfa_challenge(
+    request: Request,
+    user: Dict[str, Any],
+    *,
+    error: Optional[str] = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "mfa_challenge.html",
+        {"request": request, "username": user["username"], "error": error},
+        status_code=400 if error else 200,
+    )
+
+
+def _pending_user_record(request: Request) -> Optional[Dict[str, Any]]:
+    pending_user_id = request.session.get("pending_user_id")
+    if not pending_user_id:
+        return None
+    try:
+        return user_store.get_user_by_id(int(pending_user_id))
+    except (TypeError, ValueError):
+        return None
+
+
+def _redirect_pending_auth(request: Request) -> Optional[RedirectResponse]:
+    if request.session.get("user"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    pending_user = _pending_user_record(request)
+    if not pending_user:
+        if request.session.get("pending_user_id"):
+            _clear_pending_auth(request)
+        return None
+    if request.session.get("pending_password_change"):
+        return RedirectResponse(url="/change-password", status_code=303)
+    if _user_requires_mfa(pending_user):
+        if _user_has_mfa_enrolled(pending_user):
+            return RedirectResponse(url="/mfa/verify", status_code=303)
+        return RedirectResponse(url="/mfa/setup", status_code=303)
+    _clear_pending_auth(request)
+    return None
+
+
+def _begin_mfa_flow(request: Request, user: Dict[str, Any]) -> RedirectResponse:
+    request.session.clear()
+    request.session["pending_user_id"] = user["id"]
+    request.session["pending_username"] = user["username"]
+    if _user_has_mfa_enrolled(user):
+        request.session.pop("pending_mfa_secret", None)
+        return RedirectResponse(url="/mfa/verify", status_code=303)
+    request.session["pending_mfa_secret"] = pyotp.random_base32()
+    return RedirectResponse(url="/mfa/setup", status_code=303)
+
+
+def _complete_login(request: Request, user: Dict[str, Any]) -> RedirectResponse:
+    user["session_token"] = user_store.set_session_token(user["id"])
+    _start_session_for_user(request, user)
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+def _complete_primary_auth(request: Request, user: Dict[str, Any]) -> RedirectResponse:
+    if _user_requires_mfa(user):
+        return _begin_mfa_flow(request, user)
+    return _complete_login(request, user)
+
+
 def _resolve_company_scope(username: str) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
     scope: List[str] = []
     user_map: Dict[str, Dict[str, Any]] = {}
@@ -1377,6 +1516,8 @@ def _user_to_out(
         is_company_admin=bool(user.get("is_company_admin")),
         is_active=bool(user["is_active"]),
         require_password_change=bool(user.get("require_password_change")),
+        mfa_required=bool(user.get("mfa_required")),
+        mfa_enabled=_user_has_mfa_enrolled(user),
         license_tier=normalized_tier,
         license_label=tier_label,
         user_type=normalized_user_type,
@@ -2163,8 +2304,9 @@ def _permit_to_response(record: Dict[str, Any], owner_display_name: Optional[str
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def login_page(request: Request) -> HTMLResponse:
-    if request.session.get("user"):
-        return RedirectResponse(url="/dashboard", status_code=303)
+    pending_redirect = _redirect_pending_auth(request)
+    if pending_redirect is not None:
+        return pending_redirect
     return _render_login(request)
 
 
@@ -2181,15 +2323,98 @@ async def login_action(request: Request, username: str = Form(...), password: st
             request.session.clear()
             request.session["pending_user_id"] = user["id"]
             request.session["pending_username"] = username
+            request.session["pending_password_change"] = True
             log.info("User %s must change password on next login", username)
             return RedirectResponse(url="/change-password", status_code=303)
-        user["session_token"] = user_store.set_session_token(user["id"])
-        _start_session_for_user(request, user)
+        response = _complete_primary_auth(request, user)
         log.info("User %s logged in", username)
-        return RedirectResponse(url="/dashboard", status_code=303)
+        return response
     else:
         error = "Invalid username or password."
     return _render_login(request, status=401, login_error=error, username=username)
+
+
+@app.get("/mfa/setup", response_class=HTMLResponse)
+async def mfa_setup_page(request: Request) -> HTMLResponse:
+    if request.session.get("user"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    if request.session.get("pending_password_change"):
+        return RedirectResponse(url="/change-password", status_code=303)
+    user = _pending_user_record(request)
+    if not user:
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    if not _user_requires_mfa(user):
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    if _user_has_mfa_enrolled(user):
+        return RedirectResponse(url="/mfa/verify", status_code=303)
+    secret = request.session.get("pending_mfa_secret")
+    if not isinstance(secret, str) or not secret:
+        secret = pyotp.random_base32()
+        request.session["pending_mfa_secret"] = secret
+    return _render_mfa_setup(request, user, secret)
+
+
+@app.post("/mfa/setup", response_class=HTMLResponse)
+async def mfa_setup_action(request: Request, otp_code: str = Form(...)) -> HTMLResponse:
+    if request.session.get("user"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    if request.session.get("pending_password_change"):
+        return RedirectResponse(url="/change-password", status_code=303)
+    user = _pending_user_record(request)
+    if not user:
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    secret = request.session.get("pending_mfa_secret")
+    if not isinstance(secret, str) or not secret:
+        secret = pyotp.random_base32()
+        request.session["pending_mfa_secret"] = secret
+    if not _verify_totp_code(secret, otp_code):
+        return _render_mfa_setup(request, user, secret, error="Enter the current 6 digit code from Microsoft Authenticator.")
+    user_store.set_mfa_secret(user["id"], secret, required=bool(user.get("mfa_required")))
+    updated = user_store.get_user_by_id(user["id"])
+    if not updated:
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    log.info("MFA enrolled for %s", updated["username"])
+    return _complete_login(request, updated)
+
+
+@app.get("/mfa/verify", response_class=HTMLResponse)
+async def mfa_verify_page(request: Request) -> HTMLResponse:
+    if request.session.get("user"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    if request.session.get("pending_password_change"):
+        return RedirectResponse(url="/change-password", status_code=303)
+    user = _pending_user_record(request)
+    if not user:
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    if not _user_requires_mfa(user):
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    if not _user_has_mfa_enrolled(user):
+        return RedirectResponse(url="/mfa/setup", status_code=303)
+    return _render_mfa_challenge(request, user)
+
+
+@app.post("/mfa/verify", response_class=HTMLResponse)
+async def mfa_verify_action(request: Request, otp_code: str = Form(...)) -> HTMLResponse:
+    if request.session.get("user"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+    if request.session.get("pending_password_change"):
+        return RedirectResponse(url="/change-password", status_code=303)
+    user = _pending_user_record(request)
+    if not user:
+        _clear_pending_auth(request)
+        return RedirectResponse(url="/", status_code=303)
+    if not _user_has_mfa_enrolled(user):
+        return RedirectResponse(url="/mfa/setup", status_code=303)
+    if not _verify_totp_code(user.get("mfa_secret"), otp_code):
+        return _render_mfa_challenge(request, user, error="Enter the current 6 digit code from Microsoft Authenticator.")
+    log.info("MFA verified for %s", user["username"])
+    return _complete_login(request, user)
 
 
 @app.post("/signup/free-trial", response_class=HTMLResponse)
@@ -2379,6 +2604,13 @@ async def mobile_auth_login(request: Request, payload: MobileAuthRequest) -> Mob
         raise HTTPException(status_code=403, detail="Account disabled")
     if user.get("require_password_change"):
         raise HTTPException(status_code=403, detail="Password change required before mobile access")
+    if _user_requires_mfa(user):
+        if not _user_has_mfa_enrolled(user):
+            raise HTTPException(status_code=403, detail="MFA setup required via web sign-in")
+        if not payload.otp_code:
+            raise HTTPException(status_code=401, detail="MFA code required")
+        if not _verify_totp_code(user.get("mfa_secret"), payload.otp_code):
+            raise HTTPException(status_code=401, detail="Invalid MFA code")
     response = _issue_mobile_tokens(user)
     log.info("Mobile login success for %s via %s", username, getattr(request.client, "host", "-"))
     return response
@@ -2479,12 +2711,11 @@ async def change_password_action(
     if not updated:
         request.session.clear()
         return RedirectResponse(url="/", status_code=303)
-    updated["session_token"] = user_store.set_session_token(updated["id"])
-    _start_session_for_user(request, updated)
     log.info("User %s changed password", username)
-    request.session.pop("pending_user_id", None)
-    request.session.pop("pending_username", None)
-    return RedirectResponse(url="/dashboard", status_code=303)
+    if pending_user_id:
+        request.session.pop("pending_password_change", None)
+        return _complete_primary_auth(request, updated)
+    return _complete_login(request, updated)
 
 
 @app.get("/forgot-password", response_class=HTMLResponse)
@@ -2527,10 +2758,8 @@ async def forgot_password_action(
                 user_store.set_password(user["id"], new_password, require_change=False)
                 updated = user_store.get_user_by_id(user["id"])
                 if updated:
-                    updated["session_token"] = user_store.set_session_token(updated["id"])
-                    _start_session_for_user(request, updated)
                     log.info("User %s reset password via self-service", username)
-                    return RedirectResponse(url="/dashboard", status_code=303)
+                    return _complete_primary_auth(request, updated)
                 error = "Unable to update password. Please contact support."
     return templates.TemplateResponse(
         "forgot_password.html",
@@ -2587,6 +2816,8 @@ class AdminUserOut(BaseModel):
     is_company_admin: bool
     is_active: bool
     require_password_change: bool
+    mfa_required: bool
+    mfa_enabled: bool
     license_tier: str
     license_label: str
     user_type: str
@@ -2611,6 +2842,7 @@ class AdminUserCreate(BaseModel):
     is_company_admin: bool = False
     is_active: bool = True
     require_password_change: bool = True
+    mfa_required: bool = False
     license_tier: str = Field(default=user_store.DEFAULT_LICENSE_TIER)
     user_type: str = Field(default=user_store.DEFAULT_USER_TYPE)
 
@@ -2626,6 +2858,7 @@ class AdminUserUpdate(BaseModel):
     is_company_admin: Optional[bool] = None
     is_active: Optional[bool] = None
     require_password_change: Optional[bool] = None
+    mfa_required: Optional[bool] = None
     license_tier: Optional[str] = None
     user_type: Optional[str] = None
 
@@ -4076,6 +4309,8 @@ async def admin_export_users(request: Request) -> Response:
         "Is Company Admin",
         "Is Active",
         "Require Password Change",
+        "MFA Required",
+        "MFA Enabled",
         "Total Searches",
         "Monthly Searches",
         "Monthly Limit",
@@ -4108,6 +4343,8 @@ async def admin_export_users(request: Request) -> Response:
             int(bool(user.get("is_company_admin"))),
             int(bool(user.get("is_active"))),
             int(bool(user.get("require_password_change"))),
+            int(bool(user.get("mfa_required"))),
+            int(_user_has_mfa_enrolled(user)),
             int(search_counts.get(user.get("username"), 0)),
             int(monthly_counts.get(user.get("username"), 0)),
             "unlimited" if monthly_limit is None else monthly_limit,
@@ -4135,6 +4372,7 @@ async def admin_create_user(request: Request):
     phone = (form.get("phone") or "").strip()
     license_tier_raw = (form.get("license_tier") or user_store.DEFAULT_LICENSE_TIER).strip()
     user_type_raw = (form.get("user_type") or user_store.DEFAULT_USER_TYPE).strip()
+    mfa_required = form.get("mfa_required") == "on"
     redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
     if not is_global_admin:
         if not managed_company_id:
@@ -4175,6 +4413,7 @@ async def admin_create_user(request: Request):
             is_company_admin=is_company_admin,
             license_tier=license_tier,
             user_type=user_type,
+            mfa_required=mfa_required,
         )
         if created:
             log.info(
@@ -4244,6 +4483,9 @@ async def admin_update_user(request: Request, user_id: int):
     require_values = form.getlist("require_password_change")
     if require_values:
         updates["require_password_change"] = require_values[-1] == "on"
+    mfa_values = form.getlist("mfa_required")
+    if mfa_values:
+        updates["mfa_required"] = mfa_values[-1] == "on"
     if not updates:
         _add_flash(request, "Nothing to update.", "info")
         return _redirect_admin_users(redirect_company_id)
@@ -4304,6 +4546,27 @@ async def admin_reset_password(request: Request, user_id: int):
     else:
         user_store.set_password(user["id"], new_password, require_change=True)
         _add_flash(request, f"Password updated for '{user['username']}'.", "success")
+    return _redirect_admin_users(redirect_company_id)
+
+
+@app.post("/admin/users/{user_id}/reset-mfa")
+async def admin_reset_mfa(request: Request, user_id: int):
+    manager, is_global_admin, managed_company_id = _require_user_management_scope(request)
+    form = await request.form()
+    redirect_company_id = _parse_optional_int(form.get("redirect_company_id"))
+    if not is_global_admin:
+        redirect_company_id = managed_company_id
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not is_global_admin:
+        _ensure_user_in_scope(manager, user)
+        if user.get("is_admin"):
+            _add_flash(request, "Only platform administrators can reset global admin MFA.", "error")
+            return _redirect_admin_users(redirect_company_id)
+    user_store.clear_mfa(user["id"])
+    user_store.clear_session_token(user["username"])
+    _add_flash(request, f"MFA reset for '{user['username']}'.", "success")
     return _redirect_admin_users(redirect_company_id)
 @app.post("/admin/users/{user_id}/delete")
 async def admin_delete_user(request: Request, user_id: int):
@@ -4475,6 +4738,7 @@ async def api_admin_create_user(request: Request, payload: AdminUserCreate) -> A
             is_company_admin=is_company_admin,
             is_active=payload.is_active,
             require_password_change=payload.require_password_change,
+            mfa_required=payload.mfa_required,
             license_tier=payload.license_tier,
             user_type=user_type,
         )
@@ -4523,6 +4787,8 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         updates["is_company_admin"] = data["is_company_admin"]
     if "require_password_change" in data:
         updates["require_password_change"] = data["require_password_change"]
+    if "mfa_required" in data:
+        updates["mfa_required"] = data["mfa_required"]
     target_is_admin = updates.get("is_admin", record["is_admin"])
     if "is_active" in data:
         if not is_global_admin and record.get("is_admin") and not data["is_active"]:

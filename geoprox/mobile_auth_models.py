@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class MobileAuthRequest(BaseModel):
     username: str
     password: str
+    otp_code: Optional[str] = None
 
 
 class MobileRefreshRequest(BaseModel):

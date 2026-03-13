@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GeoProx - Set Up Authenticator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/css/geoprox-theme.css">
+</head>
+<body>
+  <div class="gp-app">
+    <header class="gp-header">
+      <div class="gp-header-title">
+        <img src="/static/geoprox-logo.png" alt="GeoProx logo" style="height:32px">
+        <span>GeoProx</span>
+      </div>
+      <nav class="gp-nav">
+        <a class="gp-btn gp-btn-outline" href="/">Back to sign in</a>
+      </nav>
+    </header>
+
+    <div class="gp-center" style="padding:2rem 1rem;">
+      <div class="gp-modal" style="width:min(760px,100%)">
+        <h1>Set up Microsoft Authenticator</h1>
+        <p>Account: <strong>{{ username }}</strong></p>
+        <p>Scan the QR code below in Microsoft Authenticator, then enter the current 6 digit code to finish sign-in.</p>
+
+        {% if error %}
+        <div class="gp-alert error">{{ error }}</div>
+        {% endif %}
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.5rem;align-items:start;">
+          <div class="gp-card" style="text-align:center;">
+            <img src="{{ qr_code_data_uri }}" alt="Authenticator QR code" style="width:min(100%,280px);height:auto;background:#fff;padding:1rem;border-radius:12px;">
+          </div>
+          <div class="gp-card">
+            <h3 style="margin-top:0;">Manual setup</h3>
+            <p>If you cannot scan the code, add an account manually in Microsoft Authenticator.</p>
+            <p><strong>Account</strong><br>{{ account_name }}</p>
+            <p><strong>Issuer</strong><br>{{ issuer }}</p>
+            <p><strong>Key</strong><br><code style="word-break:break-word;">{{ manual_key }}</code></p>
+            <form method="post" action="/mfa/setup">
+              <label for="otp_code">6 digit code</label>
+              <input id="otp_code" name="otp_code" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" placeholder="123456" required>
+              <button class="gp-btn" type="submit" style="width:100%;margin-top:1rem;">Verify and continue</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

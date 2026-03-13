@@ -204,7 +204,10 @@ def init_db() -> None:
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    require_password_change BOOLEAN NOT NULL DEFAULT FALSE
+                    require_password_change BOOLEAN NOT NULL DEFAULT FALSE,
+                    mfa_required BOOLEAN NOT NULL DEFAULT FALSE,
+                    mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    mfa_secret TEXT
                 )
                 """
             )
@@ -213,6 +216,9 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_company_admin BOOLEAN NOT NULL DEFAULT FALSE")
             conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT NOT NULL DEFAULT 'desktop'")
             conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token TEXT")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_required BOOLEAN NOT NULL DEFAULT FALSE")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_secret TEXT")
         return
 
     with _get_conn() as conn:
@@ -253,6 +259,9 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 require_password_change INTEGER NOT NULL DEFAULT 0,
+                mfa_required INTEGER NOT NULL DEFAULT 0,
+                mfa_enabled INTEGER NOT NULL DEFAULT 0,
+                mfa_secret TEXT,
                 FOREIGN KEY(company_id) REFERENCES companies(id)
             )
             """
@@ -282,6 +291,12 @@ def _ensure_additional_user_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN user_type TEXT NOT NULL DEFAULT 'desktop'")
     if "session_token" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN session_token TEXT")
+    if "mfa_required" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN mfa_required INTEGER NOT NULL DEFAULT 0")
+    if "mfa_enabled" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0")
+    if "mfa_secret" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT")
 
 
 def _ensure_company(
@@ -375,6 +390,9 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "is_active": bool(row["is_active"]),
         "require_password_change": bool(row["require_password_change"]) if "require_password_change" in row.keys() else False,
         "session_token": row["session_token"] if "session_token" in row.keys() else None,
+        "mfa_required": bool(row["mfa_required"]) if "mfa_required" in row.keys() else False,
+        "mfa_enabled": bool(row["mfa_enabled"]) if "mfa_enabled" in row.keys() else False,
+        "mfa_secret": row["mfa_secret"] if "mfa_secret" in row.keys() else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -601,6 +619,7 @@ def create_user(
     is_active: bool = True,
     require_password_change: bool = True,
     license_tier: str = DEFAULT_LICENSE_TIER,
+    mfa_required: bool = False,
 ) -> Dict[str, Any]:
     resolved_company = _resolve_company(company_id, company)
     salt = secrets.token_bytes(16)
@@ -609,8 +628,8 @@ def create_user(
     normalized_tier = normalize_license_tier(license_tier)
     normalized_user_type = normalize_user_type(user_type)
     sql = """
-        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, license_tier, user_type, session_token, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (username, name, email, company, company_number, phone, company_id, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, license_tier, user_type, session_token, mfa_required, mfa_enabled, mfa_secret, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     params = (
         username,
@@ -629,11 +648,14 @@ def create_user(
         normalized_tier,
         normalized_user_type,
         None,
+        _coerce_bool(mfa_required),
+        False,
+        None,
         now,
         now,
     )
     if USE_POSTGRES:
-        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, user_type, session_token, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, created_at, updated_at"
+        sql += " RETURNING id, username, name, email, company, company_number, phone, company_id, license_tier, user_type, session_token, salt, password_hash, is_admin, is_company_admin, is_active, require_password_change, mfa_required, mfa_enabled, mfa_secret, created_at, updated_at"
         created_row: Optional[Dict[str, Any]] = None
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
@@ -702,6 +724,9 @@ def update_user(user_id: int, **fields: Any) -> None:
         "is_active",
         "require_password_change",
         "license_tier",
+        "mfa_required",
+        "mfa_enabled",
+        "mfa_secret",
     }
     updates: Dict[str, Any] = {}
     company_update_requested = any(key in fields for key in ("company", "company_id"))
@@ -726,7 +751,7 @@ def update_user(user_id: int, **fields: Any) -> None:
             if value is None:
                 continue
             updates[key] = normalize_user_type(value)
-        elif key in {"is_admin", "is_company_admin", "is_active", "require_password_change"}:
+        elif key in {"is_admin", "is_company_admin", "is_active", "require_password_change", "mfa_required", "mfa_enabled"}:
             updates[key] = _coerce_bool(value)
         else:
             updates[key] = value
@@ -798,6 +823,20 @@ def disable_user(user_id: int) -> None:
 
 def enable_user(user_id: int) -> None:
     update_user(user_id, is_active=True)
+
+
+def set_mfa_secret(user_id: int, secret: str, *, required: Optional[bool] = None) -> None:
+    updates: Dict[str, Any] = {
+        "mfa_secret": secret,
+        "mfa_enabled": True,
+    }
+    if required is not None:
+        updates["mfa_required"] = required
+    update_user(user_id, **updates)
+
+
+def clear_mfa(user_id: int) -> None:
+    update_user(user_id, mfa_secret=None, mfa_enabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -879,7 +918,9 @@ __all__ = [
     "init_db",
     "list_companies",
     "list_users",
+    "clear_mfa",
     "set_password",
+    "set_mfa_secret",
     "set_session_token",
     "clear_session_token",
     "update_company",

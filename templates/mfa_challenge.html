@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GeoProx - Enter Authenticator Code</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/css/geoprox-theme.css">
+</head>
+<body>
+  <div class="gp-app">
+    <header class="gp-header">
+      <div class="gp-header-title">
+        <img src="/static/geoprox-logo.png" alt="GeoProx logo" style="height:32px">
+        <span>GeoProx</span>
+      </div>
+      <nav class="gp-nav">
+        <a class="gp-btn gp-btn-outline" href="/">Back to sign in</a>
+      </nav>
+    </header>
+
+    <div class="gp-center">
+      <div class="gp-modal" style="width:min(420px,100%)">
+        <h1>Enter your authenticator code</h1>
+        <p>Account: <strong>{{ username }}</strong></p>
+        <p>Open Microsoft Authenticator and enter the current 6 digit code.</p>
+        {% if error %}
+        <div class="gp-alert error">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/mfa/verify">
+          <label for="otp_code">6 digit code</label>
+          <input id="otp_code" name="otp_code" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" placeholder="123456" required>
+          <button class="gp-btn" type="submit" style="width:100%">Verify</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
