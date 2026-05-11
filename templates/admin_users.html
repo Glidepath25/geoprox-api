@@ -42,7 +42,7 @@
         </div>
         <div class="gp-collapsible-body">
           <div class="gp-muted gp-small">Companies define the scope that company admins can manage. Create or update records here.</div>
-          <form class="gp-form" method="post" action="/admin/companies">
+          <form class="gp-form" method="post" action="/admin/companies/create">
             <div class="gp-form-grid">
               <div class="gp-form-group">
                 <label for="company_name">Company</label>
@@ -65,6 +65,10 @@
               <label for="company_notes">Notes</label>
               <textarea id="company_notes" name="notes" placeholder="Optional internal notes"></textarea>
             </div>
+            <div class="gp-checkbox">
+              <input type="checkbox" id="company_mfa_required" name="mfa_required">
+              <label for="company_mfa_required">Require MFA for all users in this company</label>
+            </div>
             <div class="gp-form-actions">
               <button class="gp-btn" type="submit">Create company</button>
             </div>
@@ -79,6 +83,7 @@
                 <th>Phone</th>
                 <th>Email</th>
                 <th>Status</th>
+                <th>MFA</th>
                 <th>Notes</th>
                 <th style="width:240px;">Actions</th>
               </tr>
@@ -95,6 +100,11 @@
                     {{ 'Active' if company.is_active else 'Inactive' }}
                   </span>
                 </td>
+                <td>
+                  <span class="gp-badge {{ 'red' if company.mfa_required else '' }}">
+                    {{ 'Required' if company.mfa_required else 'Not required' }}
+                  </span>
+                </td>
                 <td>{{ company.notes or '-' }}</td>
                 <td>
                   <form class="gp-inline-form" method="post" action="/admin/companies/{{ company.id }}/update">
@@ -106,6 +116,11 @@
                       <option value="true" {% if company.is_active %}selected{% endif %}>Active</option>
                       <option value="false" {% if not company.is_active %}selected{% endif %}>Inactive</option>
                     </select>
+                    <div class="gp-checkbox">
+                      <input type="hidden" name="mfa_required" value="off">
+                      <input type="checkbox" id="company_mfa_{{ company.id }}" name="mfa_required" value="on" {% if company.mfa_required %}checked{% endif %}>
+                      <label for="company_mfa_{{ company.id }}">Require MFA</label>
+                    </div>
                     <button class="gp-btn gp-btn-outline" type="submit">Update</button>
                     <button class="gp-btn gp-btn-outline gp-btn-danger" type="submit" name="action" value="delete" onclick="return confirm('Delete company {{ company.name }}? This cannot be undone. All users will be orphaned.');">Delete</button>
                   </form>
@@ -273,8 +288,11 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% if user.mfa_required %}
+                  {% if user.mfa_effective_required %}
                     <span class="gp-badge {{ 'green' if user.mfa_enabled else 'red' }}">{{ 'Enabled' if user.mfa_enabled else 'Setup pending' }}</span>
+                    {% if not user.mfa_direct_required %}
+                    <div class="gp-note">Company required</div>
+                    {% endif %}
                   {% else %}
                     <span class="gp-badge">Not required</span>
                     {% if user.mfa_enabled %}
@@ -341,7 +359,7 @@
                       </div>
                       <div class="gp-checkbox">
                         <input type="hidden" name="mfa_required" value="off">
-                        <input type="checkbox" id="mfa_{{ user.id }}" name="mfa_required" value="on" {% if user.mfa_required %}checked{% endif %}>
+                        <input type="checkbox" id="mfa_{{ user.id }}" name="mfa_required" value="on" {% if user.mfa_direct_required %}checked{% endif %}>
                         <label for="mfa_{{ user.id }}">Require authenticator code</label>
                       </div>
                       <button class="gp-btn gp-btn-outline" type="submit">Save changes</button>

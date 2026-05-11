@@ -863,11 +863,25 @@ def _clear_pending_auth(request: Request) -> None:
 
 
 def _user_requires_mfa(user: Dict[str, Any]) -> bool:
-    return bool(user.get("mfa_required"))
+    if bool(user.get("mfa_required")):
+        return True
+    company_id = user.get("company_id")
+    if not company_id:
+        return False
+    try:
+        company = user_store.get_company_by_id(int(company_id))
+    except (TypeError, ValueError):
+        return False
+    return bool(company and company.get("mfa_required"))
 
 
 def _user_has_mfa_enrolled(user: Dict[str, Any]) -> bool:
     return bool(user.get("mfa_enabled")) and bool(user.get("mfa_secret"))
+
+
+def _clear_company_session_tokens(company_id: int) -> None:
+    for user in user_store.list_users(include_disabled=True, company_id=company_id):
+        user_store.clear_session_token(user["username"])
 
 
 def _clean_otp_code(value: Optional[str]) -> str:
@@ -1516,7 +1530,7 @@ def _user_to_out(
         is_company_admin=bool(user.get("is_company_admin")),
         is_active=bool(user["is_active"]),
         require_password_change=bool(user.get("require_password_change")),
-        mfa_required=bool(user.get("mfa_required")),
+        mfa_required=_user_requires_mfa(user),
         mfa_enabled=_user_has_mfa_enrolled(user),
         license_tier=normalized_tier,
         license_label=tier_label,
@@ -1538,6 +1552,7 @@ def _company_to_out(company: Dict[str, Any]) -> AdminCompanyOut:
         email=company["email"] or "",
         notes=company["notes"] or "",
         is_active=bool(company["is_active"]),
+        mfa_required=bool(company.get("mfa_required")),
         created_at=company["created_at"],
         updated_at=company["updated_at"],
     )
@@ -2879,6 +2894,7 @@ class AdminCompanyOut(BaseModel):
     phone: str
     email: str
     notes: str
+    mfa_required: bool
     is_active: bool
     created_at: str
     updated_at: str
@@ -2890,6 +2906,7 @@ class AdminCompanyCreate(BaseModel):
     phone: Optional[str] = Field(default="", max_length=64)
     email: Optional[str] = Field(default="", max_length=256)
     notes: Optional[str] = Field(default="", max_length=1024)
+    mfa_required: bool = False
     is_active: bool = True
 
 
@@ -2899,6 +2916,7 @@ class AdminCompanyUpdate(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=64)
     email: Optional[str] = Field(default=None, max_length=256)
     notes: Optional[str] = Field(default=None, max_length=1024)
+    mfa_required: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
@@ -4258,6 +4276,14 @@ async def admin_users_page(request: Request, company_id: Optional[str] = None) -
         company_record = user_store.get_company_by_id(managed_company_id) if managed_company_id else None
         companies = [company_record] if company_record else []
     users = user_store.list_users(include_disabled=True, company_id=selected_company_id)
+    users = [
+        {
+            **user,
+            "mfa_direct_required": bool(user.get("mfa_required")),
+            "mfa_effective_required": _user_requires_mfa(user),
+        }
+        for user in users
+    ]
     visible_usernames = {user["username"] for user in users}
     counts_all = history_store.get_user_search_counts()
     monthly_all = history_store.get_user_monthly_search_counts()
@@ -4343,7 +4369,7 @@ async def admin_export_users(request: Request) -> Response:
             int(bool(user.get("is_company_admin"))),
             int(bool(user.get("is_active"))),
             int(bool(user.get("require_password_change"))),
-            int(bool(user.get("mfa_required"))),
+            int(_user_requires_mfa(user)),
             int(_user_has_mfa_enrolled(user)),
             int(search_counts.get(user.get("username"), 0)),
             int(monthly_counts.get(user.get("username"), 0)),
@@ -4494,6 +4520,8 @@ async def admin_update_user(request: Request, user_id: int):
     except ValueError as exc:
         _add_flash(request, str(exc) or "Invalid company selection.", "error")
         return _redirect_admin_users(redirect_company_id)
+    if updates.get("mfa_required") is True and not bool(user.get("mfa_required")):
+        user_store.clear_session_token(user["username"])
     _add_flash(request, f"Updated profile for '{user['username']}'.", "success")
     return _redirect_admin_users(redirect_company_id)
 @app.post("/admin/users/{user_id}/toggle")
@@ -4601,6 +4629,7 @@ async def admin_create_company_form(request: Request):
     phone = (form.get("phone") or "").strip()
     email = (form.get("email") or "").strip()
     notes = (form.get("notes") or "").strip()
+    mfa_required = form.get("mfa_required") == "on"
     if not name:
         _add_flash(request, "Company name is required.", "error")
     else:
@@ -4611,6 +4640,7 @@ async def admin_create_company_form(request: Request):
                 phone=phone,
                 email=email,
                 notes=notes,
+                mfa_required=mfa_required,
             )
             _add_flash(request, f"Company '{name}' created.", "success")
         except sqlite3.IntegrityError:
@@ -4650,8 +4680,15 @@ async def admin_update_company_form(request: Request, company_id: int):
         value = form.get(field)
         if value is not None:
             updates[field] = value.strip()
+    mfa_values = form.getlist("mfa_required")
+    if mfa_values:
+        updates["mfa_required"] = mfa_values[-1] == "on"
+    if form.get("is_active") is not None:
+        updates["is_active"] = (form.get("is_active") or "").lower() == "true"
     if updates:
         user_store.update_company(company_id, **updates)
+        if updates.get("mfa_required") is True and not bool(company.get("mfa_required")):
+            _clear_company_session_tokens(company_id)
         _add_flash(request, "Company details updated.", "success")
     else:
         _add_flash(request, "Nothing to update.", "info")
@@ -4810,6 +4847,8 @@ async def api_admin_update_user(request: Request, user_id: int, payload: AdminUs
         user_store.update_user(record["id"], **updates)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc) or "Invalid company selection.")
+    if updates.get("mfa_required") is True and not bool(record.get("mfa_required")):
+        user_store.clear_session_token(record["username"])
     updated = user_store.get_user_by_id(record["id"])
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
@@ -4860,6 +4899,7 @@ async def api_admin_create_company(request: Request, payload: AdminCompanyCreate
             email=(payload.email or "").strip(),
             notes=(payload.notes or "").strip(),
             is_active=payload.is_active,
+            mfa_required=payload.mfa_required,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="Company name already exists.")
@@ -4876,6 +4916,8 @@ async def api_admin_update_company(request: Request, company_id: int, payload: A
     if not data:
         return _company_to_out(record)
     user_store.update_company(company_id, **data)
+    if data.get("mfa_required") is True and not bool(record.get("mfa_required")):
+        _clear_company_session_tokens(company_id)
     updated = user_store.get_company_by_id(company_id)
     if not updated:
         raise HTTPException(status_code=404, detail="Company not found")

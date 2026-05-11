@@ -177,6 +177,7 @@ def init_db() -> None:
                     phone TEXT,
                     email TEXT,
                     notes TEXT,
+                    mfa_required BOOLEAN NOT NULL DEFAULT FALSE,
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -184,6 +185,7 @@ def init_db() -> None:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(name)")
+            conn.execute("ALTER TABLE companies ADD COLUMN IF NOT EXISTS mfa_required BOOLEAN NOT NULL DEFAULT FALSE")
 
             conn.execute(
                 """
@@ -231,12 +233,14 @@ def init_db() -> None:
                 phone TEXT,
                 email TEXT,
                 notes TEXT,
+                mfa_required INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """
         )
+        _ensure_additional_company_columns(conn)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(name)")
 
         conn.execute(
@@ -297,6 +301,14 @@ def _ensure_additional_user_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0")
     if "mfa_secret" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT")
+
+
+def _ensure_additional_company_columns(conn: sqlite3.Connection) -> None:
+    if USE_POSTGRES:
+        return
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(companies)")}
+    if "mfa_required" not in columns:
+        conn.execute("ALTER TABLE companies ADD COLUMN mfa_required INTEGER NOT NULL DEFAULT 0")
 
 
 def _ensure_company(
@@ -406,6 +418,7 @@ def _company_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "phone": row["phone"],
         "email": row["email"],
         "notes": row["notes"],
+        "mfa_required": bool(row["mfa_required"]) if "mfa_required" in row.keys() else False,
         "is_active": bool(row["is_active"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -449,14 +462,15 @@ def create_company(
     email: str = "",
     notes: str = "",
     is_active: bool = True,
+    mfa_required: bool = False,
 ) -> Dict[str, Any]:
     cleaned = name.strip()
     if not cleaned:
         raise ValueError("Company name is required")
     now = _now()
     sql = """
-        INSERT INTO companies (name, company_number, phone, email, notes, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO companies (name, company_number, phone, email, notes, mfa_required, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     params = (
         cleaned,
@@ -464,12 +478,13 @@ def create_company(
         phone.strip(),
         email.strip(),
         notes.strip(),
+        _coerce_bool(mfa_required),
         _coerce_bool(is_active),
         now,
         now,
     )
     if USE_POSTGRES:
-        sql += " RETURNING id, name, company_number, phone, email, notes, is_active, created_at, updated_at"
+        sql += " RETURNING id, name, company_number, phone, email, notes, mfa_required, is_active, created_at, updated_at"
         with _get_conn() as conn:
             cursor = conn.execute(sql, params)
             row = cursor.fetchone()
@@ -497,8 +512,8 @@ def create_company(
     return record
 
 def update_company(company_id: int, **fields: Any) -> None:
-    allowed = {"name", "company_number", "phone", "email", "notes", "is_active"}
-    updates = {k: (_coerce_bool(v) if k == "is_active" else v) for k, v in fields.items() if k in allowed}
+    allowed = {"name", "company_number", "phone", "email", "notes", "is_active", "mfa_required"}
+    updates = {k: (_coerce_bool(v) if k in {"is_active", "mfa_required"} else v) for k, v in fields.items() if k in allowed}
     if not updates:
         return
     updates["updated_at"] = _now()
