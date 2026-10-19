@@ -46,12 +46,13 @@ DEFAULT_USER = "Contractor A - Streetworks coordinator"
 
 USER_AGENT = "GlidePath-GeoProx-API/1.0"
 HTTP_TIMEOUT = 40.0  # seconds per Overpass attempt
+OVERSPAN_API_KEY = os.getenv("OVERSPAN_API_KEY", "").strip()
 OVERPASS_ENDPOINTS = [
     endpoint for endpoint in re.split(r"[\s,]+", os.getenv("OVERPASS_ENDPOINTS", "").strip()) if endpoint
-] or [
+] or (["https://api.overspan.dev/api/interpreter"] if OVERSPAN_API_KEY else [
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-]
+])
 
 # Categories â†’ list of OSM filters (each filter is either `key`, `key=value` or `key=*`)
 OSM_FILTERS: Dict[str, List[str]] = {
@@ -474,7 +475,11 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
 
 def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
     import requests
-    return requests.post(url, data=data, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)
+    headers = {"User-Agent": USER_AGENT}
+    target = urlsplit(url)
+    if OVERSPAN_API_KEY and target.scheme == "https" and target.hostname == "api.overspan.dev":
+        headers["Authorization"] = f"Bearer {OVERSPAN_API_KEY}"
+    return requests.post(url, data=data, headers=headers, timeout=HTTP_TIMEOUT)
 
 
 def run_overpass_resilient(qi: QueryInput, abort_cb: Optional[callable] = None) -> Dict[str, Any]:

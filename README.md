@@ -9,6 +9,15 @@ pip install -r requirements.txt
 
 ## Overpass data service
 
+For Overspan, set the `OVERSPAN_API_KEY` environment variable. GeoProx then uses
+`https://api.overspan.dev/api/interpreter` and sends the key in an Authorization
+header from the backend. Its queries and assessment rules remain the same.
+
+The App Runner configuration loads this variable from the `OVERSPAN_API_KEY`
+JSON field in the existing `apprunner_MVP2-HGPnrg` secret in Secrets Manager
+(Ireland / eu-west-1). Add this field before deploying the configuration.
+App Runner loads the secret during deployment.
+
 Set the `OVERPASS_ENDPOINTS` environment variable in the hosting service to use
 your own or a provider's Overpass interpreter. Supply full HTTPS URLs separated
 by commas or whitespace, in the order they should be tried. For example:
@@ -17,8 +26,9 @@ by commas or whitespace, in the order they should be tried. For example:
 OVERPASS_ENDPOINTS=https://your-overpass.example/api/interpreter
 ```
 
-When set, this replaces the public defaults. Redeploy after changing it. Without
-an override, GeoProx tries Private.coffee and overpass-api.de. Availability of
+When set, this overrides automatic Overspan selection and the public defaults.
+Redeploy after changing it. Without an override or Overspan key, GeoProx tries
+Private.coffee and overpass-api.de. Availability of
 those public services is outside GeoProx's control; retries cannot fix an outage
 or an access restriction. A failed or incomplete query produces no assessment.
 

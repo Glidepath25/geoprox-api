@@ -87,6 +87,36 @@ class OverpassTests(unittest.TestCase):
             "https://backup.example/api/interpreter",
         ])
 
+    def test_overspan_key_selects_authenticated_provider(self):
+        environment = dict(os.environ, OVERSPAN_API_KEY="overspan-test-key", OVERPASS_ENDPOINTS="")
+        result = subprocess.run(
+            [sys.executable, "-c", "import json; from geoprox.core import OVERPASS_ENDPOINTS; print(json.dumps(OVERPASS_ENDPOINTS))"],
+            env=environment, capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(json.loads(result.stdout), ["https://api.overspan.dev/api/interpreter"])
+
+    def test_overspan_credential_only_sent_to_its_https_host(self):
+        with patch.object(core, "OVERSPAN_API_KEY", "overspan-test-key"):
+            for url in (
+                "https://api.overspan.dev/api/interpreter",
+                "https://overpass-api.de/api/interpreter",
+                "https://api.overspan.dev.other.example/api/interpreter",
+                "http://api.overspan.dev/api/interpreter",
+                "https://api.overspan.dev@other.example/api/interpreter",
+            ):
+                with self.subTest(url=url), patch.object(requests, "post") as post:
+                    core._http_post(url, {"data": "test query"})
+                    headers = post.call_args.kwargs["headers"]
+                    if url == "https://api.overspan.dev/api/interpreter":
+                        self.assertEqual(headers["Authorization"], "Bearer overspan-test-key")
+                    else:
+                        self.assertNotIn("Authorization", headers)
+
+    def test_overspan_without_credential_sends_no_authorization(self):
+        with patch.object(core, "OVERSPAN_API_KEY", ""), patch.object(requests, "post") as post:
+            core._http_post("https://api.overspan.dev/api/interpreter", {"data": "test query"})
+        self.assertNotIn("Authorization", post.call_args.kwargs["headers"])
+
 
 if __name__ == "__main__":
     unittest.main()

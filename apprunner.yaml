@@ -44,6 +44,8 @@ run:
     - name: DB_PORT
       value: '5432'
   secrets:
+    - name: OVERSPAN_API_KEY
+      value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:OVERSPAN_API_KEY::'
     - name: SMTP_PASSWORD
       value-from: 'arn:aws:secretsmanager:eu-west-1:342597974606:secret:apprunner_MVP2-HGPnrg:SMTP_PASSWORD::'
     - name: WHAT3WORDS_API_KEY
