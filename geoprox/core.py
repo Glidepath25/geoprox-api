@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
+from urllib.parse import urlsplit
 
 # ---------- third-party ----------
 import requests
@@ -46,9 +47,10 @@ DEFAULT_USER = "Contractor A - Streetworks coordinator"
 USER_AGENT = "GlidePath-GeoProx-API/1.0"
 HTTP_TIMEOUT = 40.0  # seconds per Overpass attempt
 OVERPASS_ENDPOINTS = [
+    endpoint for endpoint in re.split(r"[\s,]+", os.getenv("OVERPASS_ENDPOINTS", "").strip()) if endpoint
+] or [
+    "https://overpass.private.coffee/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.openstreetmap.fr/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
 ]
 
 # Categories â†’ list of OSM filters (each filter is either `key`, `key=value` or `key=*`)
@@ -499,9 +501,13 @@ def run_overpass_resilient(qi: QueryInput, abort_cb: Optional[callable] = None) 
                     return payload
                 last_err = f"HTTP {r.status_code}"
                 retryable = r.status_code in (408, 429) or r.status_code >= 500
-            except (requests.RequestException, ValueError) as e:
+            except requests.RequestException as e:
+                # Dedicated providers may include API keys in the URL. Requests
+                # exception messages can include that URL, so log the type only.
+                last_err = type(e).__name__
+            except ValueError as e:
                 last_err = f"{type(e).__name__}: {e}"
-            log.warning("Overpass attempt %s failed at %s: %s", attempt + 1, ep, last_err)
+            log.warning("Overpass attempt %s failed at %s: %s", attempt + 1, urlsplit(ep).hostname, last_err)
             if retryable:
                 next_endpoints.append(ep)
         if not next_endpoints or attempt == 1:

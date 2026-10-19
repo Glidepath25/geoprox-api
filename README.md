@@ -7,6 +7,21 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+## Overpass data service
+
+Set the `OVERPASS_ENDPOINTS` environment variable in the hosting service to use
+your own or a provider's Overpass interpreter. Supply full HTTPS URLs separated
+by commas or whitespace, in the order they should be tried. For example:
+
+```text
+OVERPASS_ENDPOINTS=https://your-overpass.example/api/interpreter
+```
+
+When set, this replaces the public defaults. Redeploy after changing it. Without
+an override, GeoProx tries Private.coffee and overpass-api.de. Availability of
+those public services is outside GeoProx's control; retries cannot fix an outage
+or an access restriction. A failed or incomplete query produces no assessment.
+
 ## What3words API key
 
 Set `WHAT3WORDS_API_KEY` in your environment or place the key in `config/what3words_key.txt` (one line, no quotes).
