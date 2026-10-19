@@ -467,7 +467,7 @@ def build_overpass_query_flat(q: QueryInput, cat_subset: Optional[List[str]] = N
                 f"relation{flt}(around:{q.radius_m},{q.lat},{q.lon});",
             ]
     body = "\n".join(parts)
-    return "[out:json][timeout:180];\n(\n" + body + "\n);\n" "out body center geom;\n"
+    return "[out:json][timeout:25];\n(\n" + body + "\n);\n" "out body center geom;\n"
 
 
 def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
@@ -477,17 +477,43 @@ def _http_post(url: str, data: Dict[str, Any]) -> "requests.Response":
 
 def run_overpass_resilient(qi: QueryInput, abort_cb: Optional[callable] = None) -> Dict[str, Any]:
     query_all = build_overpass_query_flat(qi)
-    last_err: Optional[str] = None
-    for ep in OVERPASS_ENDPOINTS:
-        try:
-            r = _http_post(ep, {"data": query_all})
-            if r.status_code == 200 and r.headers.get("content-type", "").startswith("application/json"):
-                return r.json()
-            last_err = f"HTTP {r.status_code} from {ep}"
-        except Exception as e:
-            last_err = f"{type(e).__name__}: {e}"
-        time.sleep(1.0)
-    raise RuntimeError(f"Overpass request failed: {last_err}")
+    # Retry transient failures once, after trying the other servers. Do not
+    # accept partial results: Overpass can return HTTP 200 with a runtime error.
+    retry_endpoints = list(OVERPASS_ENDPOINTS)
+    for attempt in range(2):
+        next_endpoints = []
+        for ep in retry_endpoints:
+            if abort_cb and abort_cb():
+                raise RuntimeError("Overpass search cancelled.")
+            retryable = True
+            try:
+                r = _http_post(ep, {"data": query_all})
+                if r.status_code == 200:
+                    payload = r.json()
+                    if not isinstance(payload, dict):
+                        raise ValueError("Invalid Overpass response")
+                    if payload.get("remark"):
+                        raise ValueError(str(payload["remark"]))
+                    if not isinstance(payload.get("elements"), list):
+                        raise ValueError("Overpass response has no elements list")
+                    return payload
+                last_err = f"HTTP {r.status_code}"
+                retryable = r.status_code in (408, 429) or r.status_code >= 500
+            except (requests.RequestException, ValueError) as e:
+                last_err = f"{type(e).__name__}: {e}"
+            log.warning("Overpass attempt %s failed at %s: %s", attempt + 1, ep, last_err)
+            if retryable:
+                next_endpoints.append(ep)
+        if not next_endpoints or attempt == 1:
+            break
+        if abort_cb and abort_cb():
+            raise RuntimeError("Overpass search cancelled.")
+        time.sleep(2.0)
+        retry_endpoints = next_endpoints
+    raise RuntimeError(
+        "The map data service could not complete this search after trying multiple servers. "
+        "Please try again shortly. No proximity assessment was completed."
+    )
 
 
 def osm_elements_to_df(data: Dict[str, Any]) -> pd.DataFrame:
