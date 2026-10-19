@@ -14,12 +14,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 # ---------- third-party ----------
 import requests
 import pandas as pd
 import folium
-from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
+from shapely.geometry import LineString, Point as ShapelyPoint, Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform, nearest_points
 from matplotlib.figure import Figure
@@ -718,9 +719,9 @@ def _display_category(tags: Dict[str, Any]) -> str:
         return "Sub-Stations"
     if (t.get("man_made") == "wastewater_plant") or (t.get("water") == "wastewater"):
         return "Sewage Treatment Works"
-    if (t.get("landuse") == "quarry") or ("quarry" in t) or (t.get("man_made") == "mineshaft"):
+    if (t.get("landuse") == "quarry") or ("quarry" in t) or (t.get("man_made") == "mineshaft") or ("mine" in t):
         return "Mining (coal, metalliferous)"
-    if (t.get("landuse") == "industrial") or (t.get("man_made") == "works") or ("factory" in t):
+    if ("industrial" in t) or (t.get("landuse") == "industrial") or (t.get("man_made") == "works") or ("factory" in t):
         return "Industrial / Manufacturing"
     if (t.get("landuse") == "landfill") or (t.get("amenity") in {"waste_disposal", "waste_transfer_station"}):
         return "Waste Site - Landfill & Treatment / Disposal"
@@ -728,7 +729,7 @@ def _display_category(tags: Dict[str, Any]) -> str:
         return "Waste Site - Scrapyard / Metal Recycling"
     if (t.get("amenity") == "recycling"):
         return "Waste Site - Other"
-    if (t.get("man_made") == "gasometer") or (t.get("storage") == "tank"):
+    if (t.get("man_made") == "gasometer") or (t.get("storage") == "tank") or (t.get("gas") == "storage"):
         return "Gas holder stations"
     return "Other"
 
@@ -997,7 +998,8 @@ def _render_static_map_image(
                 except Exception:
                     font = None
                 badge_text = f"Radius: {radius_m} m"
-                text_w, text_h = draw.textsize(badge_text, font=font)
+                text_bounds = draw.textbbox((0, 0), badge_text, font=font)
+                text_w, text_h = text_bounds[2] - text_bounds[0], text_bounds[3] - text_bounds[1]
                 pad = 6
                 badge_box = (cx + radius_px * 0.2, cy - radius_px * 0.9 - text_h - pad * 2, cx + radius_px * 0.2 + text_w + pad * 2, cy - radius_px * 0.9)
                 draw.rounded_rectangle(badge_box, radius=6, fill=(255, 255, 255, 235), outline=(180, 186, 195, 255))
@@ -1466,6 +1468,7 @@ def run_geoprox_search(
     selection_mode: str = "point",
     polygon: Optional[List[Tuple[float, float]]] = None,
     extra_locations: Optional[List[Dict[str, Any]]] = None,
+    defer_reports: bool = False,
 ) -> dict:
     # filter/normalise categories
     valid = set(OSM_FILTERS.keys())
@@ -1533,35 +1536,13 @@ def run_geoprox_search(
     if max_results is not None:
         details = details[: int(max_results)]
 
-    # 4) Artifacts (local)
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # Build the complete assessment before rendering any map or PDF.
     _permit = permit or ""
-    safe_permit = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _permit)[:60] or "no_permit"
-    map_html = out_dir / f"proximity_map_{safe_permit}.html"
-    make_map(df, (lat, lon), radius_m, str(map_html), selection_mode=effective_mode, selection_geom=selection_polygon)
-    map_image_path = out_dir / f"proximity_static_{safe_permit}.png"
-    map_image_file = _render_static_map_image(
-        df,
-        center=(lat, lon),
-        radius_m=radius_m,
-        out_path=map_image_path,
-        selection_mode=effective_mode,
-        selection_geom=selection_polygon,
-    )
-
-    safe_name = safe_permit or "no_permit"
-    pdf_path = out_dir / f"GeoProx - {safe_name}.pdf"
     _now = datetime.utcnow()
     _outcome = compute_outcome(summary)
     summary_payload = _build_summary_payload(
-        summary_bins=summary,
-        outcome=_outcome,
-        center=display_center,
-        radius=radius_m,
-        permit=_permit,
-        lat=lat,
-        lon=lon,
+        summary_bins=summary, outcome=_outcome, center=display_center,
+        radius=radius_m, permit=_permit, lat=lat, lon=lon,
     )
     if address:
         summary_payload["address"] = address
@@ -1571,112 +1552,169 @@ def run_geoprox_search(
     summary_payload["selection_mode"] = effective_mode
     if polygon_latlon:
         summary_payload["polygon"] = polygon_latlon
-    generate_pdf_summary(
-        display_center=display_center,
-        summary_bins=summary,
-        pdf_path=str(pdf_path),
-        map_image=str(map_image_file) if map_image_file else None,
-        details_rows=details,
-        map_html=str(map_html),
-        permit=_permit,
-        address=address,
-        highway_authority=highway_authority,
-        user_name=user_name,
-        search_dt=_now,
-        outcome=_outcome,
-        selection_mode=effective_mode,
-    )
-
-    # 5) JSON details for API
-    details_rows_json = [
-        {"distance_m": int(r[0]), "category": r[1], "name": r[2], "lat": float(r[3]), "lon": float(r[4]), "address": r[5]}
-        for r in details
-    ]
+    details_rows_json, map_features = _assessment_map_features(df, max_results=max_results)
     selection_payload = {"mode": effective_mode, "centroid": {"lat": lat, "lon": lon}, "radius_m": radius_m}
     if effective_mode == "polygon":
         selection_payload["query_radius_m"] = query_radius
     if polygon_latlon:
         selection_payload["polygon"] = polygon_latlon
-    if map_image_file:
-        selection_payload["map_image_path"] = str(map_image_file)
-
-
-
-    # 6) Optional S3 upload
-    bucket = os.environ.get("GEOPROX_BUCKET", "").strip()
-    if bucket:
-        try:
-            import boto3
-
-            s3 = boto3.client("s3")
-            ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            base_key = f"searches/{ts}_{safe_permit}"
-
-            def _ct(p: str) -> str:
-                if p.endswith(".pdf"):
-                    return "application/pdf"
-                if p.endswith(".html"):
-                    return "text/html; charset=utf-8"
-                return "application/octet-stream"
-
-            pdf_key = f"{base_key}.pdf"
-            html_key = f"{base_key}.html"
-
-            s3.upload_file(str(pdf_path), bucket, pdf_key, ExtraArgs={"ContentType": _ct(str(pdf_path))})
-            s3.upload_file(str(map_html), bucket, html_key, ExtraArgs={"ContentType": _ct(str(map_html))})
-
-            pdf_url = s3.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": pdf_key}, ExpiresIn=86400)
-            html_url = s3.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": html_key}, ExpiresIn=86400)
-
-            artifacts = {
-                "pdf_url": pdf_url,
-                "pdf_download_url": pdf_url,
-                "pdf_path": str(pdf_path),
-                "pdf_key": pdf_key,
-                "map_url": html_url,
-                "map_embed_url": html_url,
-                "map_html_url": html_url,
-                "map_html_path": str(map_html),
-                "map_key": html_key,
-                "map_image_path": str(map_image_file) if map_image_file else None,
-            }
-            artifacts = {k: v for k, v in artifacts.items() if v}
-
-            return {
-                "center": {"lat": lat, "lon": lon, "display": display_center},
-                "radius_m": radius_m,
-                "permit": _permit,
-                "summary": summary_payload,
-                "summary_bins": summary,
-                "details_100m": details_rows_json,
-                "artifacts": artifacts,
-                "selection": selection_payload,
-            }
-        except Exception as e:
-            # Fall through to local paths with a warning
-            return {
-                "center": {"lat": lat, "lon": lon, "display": display_center},
-                "radius_m": radius_m,
-                "permit": _permit,
-                "summary": summary_payload,
-                "summary_bins": summary,
-                "details_100m": details_rows_json,
-                "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html), "map_image_path": str(map_image_file) if map_image_file else None},
-                "warning": f"S3 upload failed: {e}",
-                "selection": selection_payload,
-            }
-
-    # 7) No S3 configured â†’ local paths
-    return {
+    result = {
         "center": {"lat": lat, "lon": lon, "display": display_center},
         "radius_m": radius_m,
         "permit": _permit,
         "summary": summary_payload,
         "summary_bins": summary,
         "details_100m": details_rows_json,
-        "artifacts": {"pdf_path": str(pdf_path), "map_html_path": str(map_html), "map_image_path": str(map_image_file) if map_image_file else None},
+        "map_features": map_features,
+        "artifacts": {},
         "selection": selection_payload,
+        "searched_at": _now.isoformat() + "Z",
+        "search_categories": categories,
     }
+    context = {
+        "search_id": uuid4().hex,
+        "rows": _serialize_report_rows(df),
+        "details_rows": details,
+        "search_dt": _now.isoformat(),
+    }
+    if defer_reports:
+        result["_report_context"] = context
+        return result
+    # Existing API/mobile clients receive integer distances as before. Exact
+    # values are additive; the opt-in browser assessment keeps float distances.
+    result["details_100m"] = [
+        dict(row, distance_m_exact=row["distance_m"], distance_m=int(round(row["distance_m"])))
+        for row in details_rows_json
+    ]
+    return generate_geoprox_reports(result, context, out_dir=out_dir)
 
 
+def _assessment_map_features(df: pd.DataFrame, *, max_results: Optional[int]) -> Tuple[List[dict], dict]:
+    """Full geometries aligned with the exact, sorted assessment distances."""
+    details, features = [], []
+    if df.empty:
+        return details, {"type": "FeatureCollection", "features": features}
+    matches = df[df["distance_m"] <= 100].sort_values("distance_m", kind="stable")
+    if max_results is not None:
+        matches = matches.head(int(max_results))
+    for feature_index, (_, row) in enumerate(matches.iterrows()):
+        tags = row.get("tags") or {}
+        detail = {
+            "feature_index": feature_index,
+            "distance_m": float(row["distance_m"]),
+            "category": _display_category(tags),
+            "name": row.get("name") or "(unnamed)",
+            "lat": float(row.get("lat") or 0.0),
+            "lon": float(row.get("lon") or 0.0),
+            "address": tags.get("addr:full") or "",
+        }
+        for key in ("nearest_lat", "nearest_lon", "feature_edge_lat", "feature_edge_lon"):
+            value = row.get(key)
+            if value is not None and not pd.isna(value):
+                detail[key] = float(value)
+        details.append(detail)
+        geom = row.get("geom")
+        if not isinstance(geom, BaseGeometry) or geom.is_empty:
+            geom = ShapelyPoint(detail["lon"], detail["lat"])
+        features.append({
+            "type": "Feature", "id": feature_index,
+            "geometry": mapping(geom),
+            "properties": dict(detail, source=tags.get("__source", "openstreetmap")),
+        })
+    return details, {"type": "FeatureCollection", "features": features}
 
+
+def _serialize_report_rows(df: pd.DataFrame) -> List[dict]:
+    """Use JSON/GeoJSON, never pickle, for durable report rendering context."""
+    rows = []
+    for _, row in df.iterrows():
+        item = {"type": row.get("type"), "name": row.get("name"), "tags": row.get("tags") or {}}
+        geom = row.get("geom")
+        item["geometry"] = mapping(geom) if isinstance(geom, BaseGeometry) else None
+        for key in ("lat", "lon", "distance_m", "nearest_lat", "nearest_lon", "feature_edge_lat", "feature_edge_lon"):
+            value = row.get(key)
+            item[key] = float(value) if value is not None and pd.notna(value) and math.isfinite(float(value)) else None
+        rows.append(item)
+    return rows
+
+
+def generate_geoprox_reports(result: dict, context: dict, *, out_dir: Path) -> dict:
+    """Render a completed assessment without geocoding or another paid query."""
+    rows = []
+    for stored in context.get("rows", []):
+        row = dict(stored)
+        geometry = row.pop("geometry", None)
+        row["geom"] = shape(geometry) if geometry else None
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        df = pd.DataFrame(columns=["type", "name", "lat", "lon", "tags", "geom", "distance_m"])
+    center = result["center"]
+    lat, lon = float(center["lat"]), float(center["lon"])
+    selection_payload = dict(result.get("selection") or {})
+    effective_mode = selection_payload.get("mode", "point")
+    polygon_latlon = selection_payload.get("polygon")
+    selection_polygon = Polygon([(pt[1], pt[0]) for pt in polygon_latlon]) if polygon_latlon else None
+    if selection_polygon is not None and not selection_polygon.is_valid:
+        selection_polygon = selection_polygon.buffer(0)
+    radius_m = int(result["radius_m"])
+    permit = result.get("permit") or ""
+    safe_permit = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in permit)[:60] or "no_permit"
+    # Unique local paths and S3 prefixes prevent concurrent same-permit collisions.
+    search_id = context["search_id"]
+    out_dir = Path(out_dir) / "searches" / search_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    map_html = out_dir / f"proximity_map_{safe_permit}.html"
+    make_map(df, (lat, lon), radius_m, str(map_html), selection_mode=effective_mode, selection_geom=selection_polygon)
+    map_image_file = _render_static_map_image(
+        df, center=(lat, lon), radius_m=radius_m,
+        out_path=out_dir / f"proximity_static_{safe_permit}.png",
+        selection_mode=effective_mode, selection_geom=selection_polygon,
+    )
+    if map_image_file:
+        selection_payload["map_image_path"] = str(map_image_file)
+    pdf_path = out_dir / f"GeoProx - {safe_permit}.pdf"
+    summary = result["summary"]
+    generate_pdf_summary(
+        display_center=center["display"], summary_bins=result["summary_bins"],
+        pdf_path=str(pdf_path), map_image=str(map_image_file) if map_image_file else None,
+        details_rows=context["details_rows"], map_html=str(map_html),
+        permit=permit, address=summary.get("address"),
+        highway_authority=summary.get("highway_authority"),
+        user_name=summary.get("user", DEFAULT_USER),
+        search_dt=datetime.fromisoformat(context["search_dt"]),
+        outcome=summary["outcome"], selection_mode=effective_mode,
+    )
+    artifacts = {
+        "pdf_path": str(pdf_path), "map_html_path": str(map_html),
+        "map_image_path": str(map_image_file) if map_image_file else None,
+    }
+    completed = dict(result, artifacts=artifacts, selection=selection_payload)
+    bucket = os.environ.get("GEOPROX_BUCKET", "").strip()
+    if bucket:
+        try:
+            import boto3
+            s3 = boto3.client("s3")
+            base_key = f"searches/{search_id}/{safe_permit}"
+            pdf_key, html_key = f"{base_key}.pdf", f"{base_key}.html"
+            s3.upload_file(str(pdf_path), bucket, pdf_key, ExtraArgs={"ContentType": "application/pdf"})
+            s3.upload_file(str(map_html), bucket, html_key, ExtraArgs={"ContentType": "text/html; charset=utf-8"})
+            pdf_url = s3.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": pdf_key}, ExpiresIn=86400)
+            html_url = s3.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": html_key}, ExpiresIn=86400)
+            artifacts.update({
+                "pdf_url": pdf_url, "pdf_download_url": pdf_url, "pdf_key": pdf_key,
+                "map_url": html_url, "map_embed_url": html_url, "map_html_url": html_url, "map_key": html_key,
+            })
+            if map_image_file:
+                image_key = f"{base_key}.png"
+                s3.upload_file(str(map_image_file), bucket, image_key, ExtraArgs={"ContentType": "image/png"})
+                artifacts["map_image_key"] = image_key
+                artifacts["map_image_url"] = s3.generate_presigned_url(
+                    "get_object", Params={"Bucket": bucket, "Key": image_key}, ExpiresIn=86400,
+                )
+        except Exception as exc:
+            if result.get("report"):
+                raise RuntimeError("Reports could not be stored. Please retry preparing the reports.") from exc
+            completed["warning"] = "S3 upload failed; local artifacts are available."
+    completed["artifacts"] = {k: v for k, v in artifacts.items() if v}
+    return completed

@@ -14,7 +14,7 @@ For Overspan, set the `OVERSPAN_API_KEY` environment variable. GeoProx then uses
 header from the backend. Its queries and assessment rules remain the same.
 
 The App Runner configuration loads this variable from the `OVERSPAN_API_KEY`
-JSON field in the existing `apprunner_MVP2-HGPnrg` secret in Secrets Manager
+JSON field in the existing `apprunner_MVP2` secret in Secrets Manager
 (Ireland / eu-west-1). Add this field before deploying the configuration.
 App Runner loads the secret during deployment.
 
@@ -35,6 +35,28 @@ or an access restriction. A failed or incomplete query produces no assessment.
 ## What3words API key
 
 Set `WHAT3WORDS_API_KEY` in your environment or place the key in `config/what3words_key.txt` (one line, no quotes).
+
+## Search workspace and deferred reports
+
+The browser uses one interactive map for point/polygon selection and assessment
+features. Recent searches and Street View are available in tabs. Results include
+an explanation, exact feature distances and geometries linked to the map.
+Existing category thresholds and synchronous API behavior are preserved.
+
+The workspace sends `defer_reports: true` to `POST /api/search`. This returns the
+completed assessment before rendering PDF/static-map files. Its `result.report`
+contains `status: pending` and a URL. The browser then posts to that URL to build
+the reports from the saved assessment, without another Overpass query or search
+quota charge. The response is `done` with ready artifacts, `processing` while
+another request holds the generation lease, or `error` with the valid assessment
+and a retry URL. Report jobs use the existing application database; their table
+is created automatically. Files use a unique prefix per report attempt.
+
+Downloads and permit saving become available when report files are ready. A
+report failure leaves the assessment visible and offers a report-only retry.
+Requests that omit `defer_reports` keep the original synchronous behavior.
+
+Backend checks: `python -m unittest discover -s tests -q`.
 
 ## Mobile API Authentication
 

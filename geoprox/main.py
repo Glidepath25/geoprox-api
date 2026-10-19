@@ -39,7 +39,7 @@ import pyotp
 import qrcode
 import qrcode.image.svg
 
-from geoprox import history_store, permit_store, report_store, user_store
+from geoprox import history_store, permit_store, report_store, search_report_store, user_store
 from geoprox.auth_tokens import (
     TokenError,
     create_access_token,
@@ -47,7 +47,7 @@ from geoprox.auth_tokens import (
     decode_access_token,
     decode_refresh_token,
 )
-from geoprox.core import SEARCH_CATEGORY_LABELS, SEARCH_CATEGORY_OPTIONS, run_geoprox_search
+from geoprox.core import SEARCH_CATEGORY_LABELS, SEARCH_CATEGORY_OPTIONS, generate_geoprox_reports, run_geoprox_search
 from geoprox.mobile_auth_models import (
     MobileAuthRequest,
     MobileAuthResponse,
@@ -1670,6 +1670,12 @@ def _normalize_artifact_link(value: Optional[str]) -> Optional[str]:
     lowered = trimmed.lower()
     if lowered.startswith('http://') or lowered.startswith('https://'):
         return trimmed
+    if trimmed.startswith('/artifacts/'):
+        return trimmed
+    if Path(trimmed).is_absolute():
+        relative = _relative_artifact_path(trimmed)
+        if relative:
+            return f"/artifacts/{relative}"
     if trimmed.startswith('/'):
         return trimmed
     relative = _relative_artifact_path(trimmed)
@@ -1797,6 +1803,7 @@ def _normalize_search_artifacts(artifacts: Dict[str, Any]) -> Dict[str, Any]:
         artifacts.get('map_embed_url'),
         artifacts.get('map_html_url'),
         artifacts.get('map_path'),
+        artifacts.get('map_html_path'),
     )
     if map_url:
         data['map_url'] = map_url
@@ -3013,6 +3020,7 @@ class SearchReq(BaseModel):
     max_results: Optional[int] = Field(default=None, ge=1, le=10000)
     selection_mode: str = Field(default="point", description="Search selection mode (point or polygon)")
     polygon: Optional[List[List[float]]] = Field(default=None, description="Polygon vertices as [lat, lon] pairs")
+    defer_reports: bool = Field(default=False, description="Return the assessment before preparing report artifacts")
 
 
 class SearchResp(BaseModel):
@@ -5247,14 +5255,24 @@ def api_search(request: Request, req: SearchReq):
             selection_mode=selection_mode,
             polygon=polygon_vertices,
             extra_locations=extra_locations,
+            defer_reports=req.defer_reports,
         )
 
-        log.info(f"Search result: {result}")
+        log.info("Search completed: outcome=%s, matches=%s, reports_deferred=%s",
+                 (result or {}).get("summary", {}).get("outcome"),
+                 len((result or {}).get("details_100m", [])), req.defer_reports)
 
         if not result:
             raise RuntimeError("run_geoprox_search returned None")
 
-        _persist_search_artifacts(result)
+        report_context = result.pop("_report_context", None)
+        if report_context:
+            result["report"] = {
+                "status": "pending",
+                "url": f"/api/search/reports/{report_context['search_id']}",
+            }
+        else:
+            _persist_search_artifacts(result)
         arts = result.get("artifacts", {}) or {}
         normalized_artifacts = _normalize_search_artifacts(arts)
         result["artifacts"] = normalized_artifacts
@@ -5271,7 +5289,7 @@ def api_search(request: Request, req: SearchReq):
         pdf_link = normalized_artifacts.get("pdf_url") or normalized_artifacts.get("pdf_download_url")
         map_link = normalized_artifacts.get("map_url") or normalized_artifacts.get("map_embed_url")
 
-        history_store.record_search(
+        history_id = history_store.record_search(
             username=username,
             timestamp=timestamp,
             location=safe_location,
@@ -5282,6 +5300,11 @@ def api_search(request: Request, req: SearchReq):
             map_path=map_link,
             result=result,
         )
+        if report_context:
+            search_report_store.create_job(
+                job_id=report_context["search_id"], username=username,
+                history_id=history_id, result=result, context=report_context,
+            )
 
         entry = {"timestamp": timestamp,
                  "location": safe_location,
@@ -5300,6 +5323,49 @@ def api_search(request: Request, req: SearchReq):
         tb = traceback.format_exc(limit=6)
         log.error(f"GeoProx error: {e}\n{tb}")
         return SearchResp(status="error", error=str(e), debug={"trace": tb})
+
+
+@app.post("/api/search/reports/{report_id}", response_model=SearchResp)
+def api_search_reports(request: Request, report_id: str):
+    """Prepare artifacts from the saved assessment, once and only for its owner."""
+    username = _require_desktop_user(request)
+    job = search_report_store.get_job(report_id, username)
+    if not job:
+        raise HTTPException(status_code=404, detail="Search report not found.")
+    if job["status"] == "ready":
+        result = job["result"]
+        result["artifacts"] = _normalize_search_artifacts(result.get("artifacts") or {})
+        return SearchResp(status="done", result=result)
+    token = search_report_store.claim_job(report_id, username)
+    if not token:
+        # Re-read after the claim attempt in case the other instance just finished.
+        latest = search_report_store.get_job(report_id, username) or job
+        if latest["status"] == "ready":
+            result = latest["result"]
+            result["artifacts"] = _normalize_search_artifacts(result.get("artifacts") or {})
+            return SearchResp(status="done", result=result)
+        result = latest["result"]
+        result["report"] = {"status": "pending", "url": f"/api/search/reports/{report_id}", "retry_after_seconds": 2}
+        return SearchResp(status="processing", result=result)
+    initial = job["result"]
+    try:
+        attempt_context = dict(job["context"], search_id=f"{report_id}_{token}")
+        completed = generate_geoprox_reports(initial, attempt_context, out_dir=ARTIFACTS_DIR)
+        _persist_search_artifacts(completed)
+        completed["artifacts"] = _normalize_search_artifacts(completed.get("artifacts") or {})
+        completed["report"] = {"status": "ready", "url": f"/api/search/reports/{report_id}"}
+        if search_report_store.finish_job(report_id, username, token, result=completed, status="ready"):
+            return SearchResp(status="done", result=completed)
+        latest = search_report_store.get_job(report_id, username) or job
+        status = "done" if latest["status"] == "ready" else "processing"
+        return SearchResp(status=status, result=latest["result"])
+    except Exception:
+        log.exception("Report preparation failed for search %s", report_id)
+        message = "Your assessment is ready, but the reports could not be prepared. Please retry preparing the reports."
+        failed = dict(initial, report={"status": "error", "url": f"/api/search/reports/{report_id}", "error": message})
+        search_report_store.finish_job(report_id, username, token, result=failed, status="error")
+        return SearchResp(status="error", result=failed, error=message)
+
 
 def _persist_search_artifacts(payload: Dict[str, Any]) -> None:
     artifacts = payload.get("artifacts")

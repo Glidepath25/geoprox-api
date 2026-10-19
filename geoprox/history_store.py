@@ -199,10 +199,10 @@ def record_search(
     pdf_path: Optional[str],
     map_path: Optional[str],
     result: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> int:
     payload = json.dumps(result or {}, ensure_ascii=False)
     with _get_conn() as conn:
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT INTO search_history (username, timestamp, location, radius_m, outcome, permit, pdf_path, map_path, result_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -220,6 +220,23 @@ def record_search(
             ),
         )
         conn.commit()
+        return int(cursor.lastrowid)
+
+
+def update_search_result(*, search_id: int, username: str, result: Dict[str, Any], connection=None) -> None:
+    """Refresh reports on the original history row, preserving quota counts."""
+    artifacts = result.get("artifacts") or {}
+    if connection is None:
+        with _get_conn() as conn:
+            return update_search_result(search_id=search_id, username=username, result=result, connection=conn)
+    connection.execute(
+        "UPDATE search_history SET pdf_path = ?, map_path = ?, result_json = ? WHERE id = ? AND username = ?",
+        (
+            artifacts.get("pdf_url") or artifacts.get("pdf_download_url"),
+            artifacts.get("map_url") or artifacts.get("map_embed_url"),
+            json.dumps(result, ensure_ascii=False), search_id, username,
+        ),
+    )
 
 
 
